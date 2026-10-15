@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.0 — AI training lab and project terminal
+
+- Added a causal decoder-only Transformer with 2,002,048 trainable parameters at a 1,024-token vocabulary.
+- Added byte-level BPE tokenizer training, corpus ingest/deduplication, deterministic train/validation split, next-token loss, gradient clipping, metrics, checkpoints, resume support and a local interactive chat CLI.
+- Added a SQLite-backed queue for up to 10,000,000 independent experiment definitions with bounded concurrency and validation-loss ranking.
+- Added optional PyTorch DistributedDataParallel execution for properly provisioned multi-process hardware.
+- Added a real local project CLI and a browser terminal for the Kodex file workspace.
+- Added CI tests and an actual two-step training smoke run for the larger model configuration.
+- Added an opt-in workflow for longer training that produces PyTorch checkpoint artifacts only. No APK is built by this branch.
+- Preserved the existing AGENTS.md and Copilot repository instructions without modifying them.
+
+### Limits
+The corpus is still small and the full training workflow is opt-in. The CI smoke run executes two optimizer steps and does not produce a generally capable chatbot. Million-trial queues are not millions of concurrent processes; concurrency is hardware and runner limited.
+
+
 ## 0.4.0 — Local project workspace
 
 - Added a standalone, mobile-first workspace that creates, edits, renames, deletes, imports, and downloads project text files.
