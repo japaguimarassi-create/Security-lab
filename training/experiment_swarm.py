@@ -160,6 +160,15 @@ def main():
                 "elapsed_seconds": round(time.time() - run_started, 2),
                 "metrics": None,
             }
+            if completed.returncode != 0:
+                diagnostic = completed.stderr[-4000:] or completed.stdout[-2000:]
+                result["error_excerpt"] = diagnostic
+                print(json.dumps({
+                    "event": "trial_error",
+                    "trial_id": trial_id,
+                    "return_code": completed.returncode,
+                    "diagnostic_tail": diagnostic,
+                }, ensure_ascii=False), flush=True)
             metrics_path = trial_dir / "metrics.json"
             if completed.returncode == 0 and metrics_path.is_file():
                 result["metrics"] = json.loads(metrics_path.read_text(encoding="utf-8"))
