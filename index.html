@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101318">
+  <meta name="description" content="Kodex — bancada experimental de engenharia de software e IA especializada em programação.">
+  <title>Kodex — Engineering Workbench</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="Kodex início">
+      <span class="brand-mark">K<span>/</span></span>
+      <span class="brand-copy"><strong>KODEX</strong><small>ENGINEERING WORKBENCH</small></span>
+    </a>
+    <div class="top-context">
+      <span class="context-dot"></span>
+      <span>Security-lab</span>
+      <span class="context-slash">/</span>
+      <span class="branch-chip"><span class="branch-icon">⑂</span> kodex-programming-ai</span>
+    </div>
+    <div class="top-actions">
+      <span class="runtime-state"><span class="state-led"></span> LOCAL LAB</span>
+      <button class="button button-primary" id="run-checks" type="button"><span aria-hidden="true">▷</span> Run checks</button>
+    </div>
+  </header>
+
+  <div class="app-shell">
+    <nav class="rail" aria-label="Workspace navigation">
+      <button class="rail-item active" data-view="workspace" aria-label="Workspace" title="Workspace" type="button"><span>⌘</span><small>WORK</small></button>
+      <button class="rail-item" data-view="build" aria-label="Build" title="Build" type="button"><span>⌁</span><small>BUILD</small></button>
+      <button class="rail-item" data-view="review" aria-label="Review" title="Review" type="button"><span>⌕</span><small>REVIEW</small></button>
+      <button class="rail-item" data-view="knowledge" aria-label="Knowledge" title="Knowledge" type="button"><span>▤</span><small>INDEX</small></button>
+      <button class="rail-item" data-view="tests" aria-label="Tests" title="Tests" type="button"><span>✓</span><small>TESTS</small></button>
+      <div class="rail-spacer"></div>
+      <a class="rail-item rail-link" href="https://github.com/japaguimarassi-create/Security-lab/tree/kodex-programming-ai" target="_blank" rel="noreferrer" aria-label="Abrir repositório" title="Repository"><span>↗</span><small>GIT</small></a>
+    </nav>
+
+    <aside class="project-pane" aria-label="Project explorer">
+      <div class="pane-heading"><span>PROJECT</span><button class="subtle-icon" id="toggle-project" type="button" aria-label="Recolher arquivos">−</button></div>
+      <div class="project-name"><span class="project-glyph">◈</span><div><strong>kodex-lab</strong><small>WORKSPACE 01</small></div><span class="project-menu">···</span></div>
+      <div class="tree-caption">EXPLORER <span>⌄</span></div>
+      <div class="file-tree" id="file-tree">
+        <div class="tree-folder"><span>⌄</span> src</div>
+        <button class="file-row selected" type="button" data-file="src/main.js"><span class="file-type js">JS</span><span>main.js</span></button>
+        <button class="file-row" type="button" data-file="src/math.js"><span class="file-type js">JS</span><span>math.js</span></button>
+        <div class="tree-folder"><span>⌄</span> tests</div>
+        <button class="file-row" type="button" data-file="tests/math.test.js"><span class="file-type test">T</span><span>math.test.js</span></button>
+        <div class="tree-folder"><span>⌄</span> docs</div>
+        <button class="file-row" type="button" data-file="README.md"><span class="file-type md">MD</span><span>README.md</span></button>
+      </div>
+      <div class="project-lower">
+        <div class="lower-label">TASK QUEUE <span class="queue-count" id="queue-count">0</span></div>
+        <div id="task-list" class="task-list"><p class="empty-queue">No tasks in this session.</p></div>
+      </div>
+      <div class="pane-foot"><span class="connection-led"></span> SESSION ISOLATED <span class="pane-foot-end">V0.1</span></div>
+    </aside>
+
+    <main class="editor-column">
+      <div class="editor-tabs">
+        <div class="open-tab"><span class="file-type js">JS</span><span id="active-file-name">main.js</span><span class="tab-dot" id="unsaved-dot" hidden></span><button id="close-tab" type="button" aria-label="Fechar aba">×</button></div>
+        <div class="tab-tail"><select id="mobile-file-select" aria-label="Selecionar arquivo"><option value="src/main.js">src/main.js</option><option value="src/math.js">src/math.js</option><option value="tests/math.test.js">tests/math.test.js</option><option value="README.md">README.md</option></select><span>UTF-8</span><span>Spaces: 2</span></div>
+      </div>
+      <div class="editor-breadcrumb"><span>src</span><span class="crumb-sep">/</span><strong id="breadcrumb-file">main.js</strong><span class="crumb-tail">›</span><span id="view-label">WORKSPACE</span></div>
+      <div class="editor-tools">
+        <div class="editor-title"><span class="tiny-state"></span><span id="editor-heading">Application entry</span></div>
+        <div class="editor-tool-buttons"><button id="save-local" class="button button-quiet" type="button">Save local</button><button id="format-code" class="button button-quiet" type="button">Format</button></div>
+      </div>
+      <div class="code-frame">
+        <pre class="line-numbers" id="line-numbers" aria-hidden="true"></pre>
+        <textarea id="source-editor" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" aria-label="Editor de código" wrap="off"></textarea>
+      </div>
+      <div class="editor-status">
+        <div><span class="status-check">✓</span><span id="editor-status-text">Ready for local inspection</span></div>
+        <div><span id="cursor-status">Ln 1, Col 1</span><span>JavaScript</span><span>UTF-8</span></div>
+      </div>
+      <section class="bottom-console" id="console-section">
+        <div class="console-heading"><div><span class="console-icon">⌁</span><span>ENGINEERING LOG</span><span class="console-count" id="log-count">01</span></div><button type="button" id="clear-log">Clear</button></div>
+        <div class="console-body" id="console-body" aria-live="polite">
+          <div class="log-row"><span class="log-time">INIT</span><span class="log-mark">●</span><span>Kodex workspace mounted. No remote model connected.</span></div>
+          <div class="log-row log-muted"><span class="log-time">INFO</span><span class="log-mark">›</span><span>Local checks inspect patterns only; they do not execute the opened code.</span></div>
+        </div>
+      </section>
+    </main>
+
+    <aside class="kodex-pane" aria-label="Kodex assistant">
+      <div class="assistant-header">
+        <div class="assistant-badge"><span class="badge-core">K</span><span class="badge-ring"></span></div>
+        <div class="assistant-heading"><strong>Kodex <span class="preview-tag">LAB</span></strong><small>PROGRAMMING INTELLIGENCE</small></div>
+        <button id="assistant-menu" class="subtle-icon" type="button" aria-label="Informações do runtime">···</button>
+      </div>
+      <div class="mode-switch" role="group" aria-label="Agent mode">
+        <button type="button" data-mode="ask" class="mode-option active">Ask</button>
+        <button type="button" data-mode="build" class="mode-option">Build</button>
+        <button type="button" data-mode="review" class="mode-option">Review</button>
+      </div>
+      <div class="model-card">
+        <div class="model-card-top"><span class="tiny-cube">◇</span><span>MODEL STATUS</span><span class="offline-tag">OFFLINE</span></div>
+        <strong>No trained model connected</strong>
+        <p>Local utilities are available. Generative coding and autonomous edits require an inference adapter and a restricted execution runtime.</p>
+        <div class="model-progress"><span></span></div>
+        <div class="model-footer"><span>264,192 logical units</span><span>UNTRAINED PROFILE</span></div>
+      </div>
+      <div class="quick-actions">
+        <div class="section-label">ENGINEERING TOOLS <span>03</span></div>
+        <button class="tool-action" type="button" data-action="explain"><span class="tool-icon explain-icon">i</span><span><strong>Explain this file</strong><small>Structure and symbols</small></span><span class="action-arrow">↗</span></button>
+        <button class="tool-action" type="button" data-action="review"><span class="tool-icon review-icon">⌕</span><span><strong>Inspect for risks</strong><small>Pattern-based scan</small></span><span class="action-arrow">↗</span></button>
+        <button class="tool-action" type="button" data-action="tests"><span class="tool-icon tests-icon">✓</span><span><strong>Plan test coverage</strong><small>Draft test checklist</small></span><span class="action-arrow">↗</span></button>
+      </div>
+      <div class="response-area">
+        <div class="response-heading"><span>WORKING NOTES</span><span class="response-dot"></span></div>
+        <div class="response-content" id="response-content">
+          <div class="response-flag"><span>LOCAL MODE</span><span>NO MODEL</span></div>
+          <p>Choose an engineering tool or describe the task you want to prepare.</p>
+          <p class="response-hint">The current workspace does not send code to any server.</p>
+        </div>
+      </div>
+      <form class="task-composer" id="task-form">
+        <label for="task-input">NEW ENGINEERING TASK</label>
+        <textarea id="task-input" rows="3" placeholder="Describe a feature, bug, refactor, or question…" required></textarea>
+        <div class="composer-bottom"><span><span class="composer-led"></span> Session-only queue</span><button class="send-task" type="submit" aria-label="Add task to queue">↗</button></div>
+      </form>
+      <div class="assistant-foot"><span>DESIGNED FOR EVIDENCE</span><span>BUILD 0.1.0</span></div>
+    </aside>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
