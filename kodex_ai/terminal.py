@@ -107,7 +107,7 @@ class ProjectTerminal:
                 except (json.JSONDecodeError, UnicodeDecodeError) as error:
                     failures += 1
                     reports.append("FALHA JSON " + self.relative(path) + ": " + str(error))
-        reports.append(f"Checagem estática: {failures} falha(s), {len(reports) - failures - 1} arquivo(s) verificado(s).")
+        reports.append(f"Checagem estática: {failures} falha(s), {len(reports) - failures} arquivo(s) verificado(s).")
         reports.append("Isso não executa o programa nem substitui os testes.")
         return "\n".join(reports)
 
@@ -211,13 +211,18 @@ class ProjectTerminal:
                 path = self.resolve_inside(rest[0])
                 path.parent.mkdir(parents=True, exist_ok=True)
                 content = " ".join(rest[1:])
-                mode = "a" if command == "append" else "w"
                 if command == "write" and path.exists():
                     return "O arquivo já existe; use append para acrescentar conteúdo ou abra o editor do workspace para substituí-lo.", False
-                with path.open(mode, encoding="utf-8") as handle:
-                    handle.write(content)
-                    if command == "append":
-                        handle.write("\n")
+                if command == "append" and path.exists():
+                    with path.open("a", encoding="utf-8") as handle:
+                        if path.stat().st_size:
+                            current = path.read_text(encoding="utf-8")
+                            if current and not current.endswith("\n"):
+                                handle.write("\n")
+                        handle.write(content + "\n")
+                else:
+                    with path.open("w", encoding="utf-8") as handle:
+                        handle.write(content)
                 return f"{'Conteúdo acrescentado' if command == 'append' else 'Arquivo criado'}: {self.relative(path)}", False
             if command == "rm":
                 if len(rest) != 1:
