@@ -259,6 +259,23 @@
   }
 
   function triggerDownload(blob, filename) {
+    if (/KodexAndroid/i.test(navigator.userAgent)) {
+      blob.arrayBuffer().then(buffer => {
+        const bytes = new Uint8Array(buffer);
+        const chunks = [];
+        for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+          chunks.push(String.fromCharCode.apply(null, bytes.subarray(offset, Math.min(offset + 0x8000, bytes.length))));
+        }
+        window.KodexNativePendingDownload = {
+          filename: String(filename || "kodex-export").split(/[\\/]/).pop(),
+          mime: blob.type.startsWith("application/zip") ? "application/zip" : "text/plain",
+          base64: btoa(chunks.join(""))
+        };
+        setStatus("Escolha onde salvar o arquivo…", "saved");
+        window.location.href = "kodex-download://save/" + encodeURIComponent(window.KodexNativePendingDownload.filename);
+      }).catch(() => showToast("Não foi possível preparar o arquivo para exportação."));
+      return;
+    }
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -269,6 +286,11 @@
     anchor.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+
+  window.KodexNativeDownloadComplete = (success, message) => {
+    showToast(message || (success ? "Arquivo salvo." : "Exportação cancelada."));
+    if (!success) setStatus("Exportação cancelada", "error");
+  };
 
   function downloadCurrentFile() {
     const file = activeFile();
