@@ -17,16 +17,16 @@ EOS_ID = 256
 MODEL_CONFIG = {
     "vocab_size": VOCAB_SIZE,
     "context_length": 128,
-    "d_model": 128,
-    "n_heads": 4,
-    "n_layers": 4,
-    "feedforward_dim": 512,
+    "d_model": 160,
+    "n_heads": 5,
+    "n_layers": 6,
+    "feedforward_dim": 640,
     "dropout": 0.1,
     "architecture": "decoder-only causal Transformer",
     "tokenizer": "UTF-8 bytes plus EOS token",
     "pretrained_weights": False
 }
-EXPECTED_PARAMETERS = 875777
+EXPECTED_PARAMETERS = 1958977
 
 
 class KodexTransformer(nn.Module):
@@ -71,6 +71,16 @@ def encode_text(text):
 
 def read_records(path):
     path = Path(path)
+    if path.is_dir():
+        files = sorted(path.glob("*.jsonl")) + sorted(path.glob("*.txt"))
+        if not files:
+            raise FileNotFoundError(f"No .jsonl or .txt training corpus found in: {path}")
+        combined = []
+        for corpus_file in files:
+            combined.extend(read_records(corpus_file))
+        if len(combined) < 2:
+            raise ValueError("At least two usable records are required.")
+        return combined
     if not path.is_file():
         raise FileNotFoundError(f"Training data was not found: {path}")
     if path.suffix.lower() == ".txt":
@@ -166,8 +176,8 @@ def save_checkpoint(path, model, optimizer, scheduler, step, best_validation, co
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Train Kodex's 875,777-parameter causal Transformer from scratch.")
-    parser.add_argument("--data", type=Path, default=Path("training/data/mobile_dialogue.jsonl"))
+    parser = argparse.ArgumentParser(description="Train Kodex's 1,958,977-parameter causal Transformer from scratch.")
+    parser.add_argument("--data", type=Path, default=Path("training/data"))
     parser.add_argument("--out-dir", type=Path, default=Path("training/runs/default"))
     parser.add_argument("--steps", type=int, default=2000)
     parser.add_argument("--batch-size", type=int, default=16)
