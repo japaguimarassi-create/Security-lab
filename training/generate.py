@@ -35,9 +35,23 @@ def main():
     model.load_state_dict(payload["model_state_dict"])
     model.eval()
 
-    context = torch.tensor([encode_bytes(args.prompt)], dtype=torch.long, device=device_name)
-    if context.numel() == 0:
-        context = torch.zeros((1, 1), dtype=torch.long, device=device_name)
+    tokenizer = None
+    if payload.get("tokenizer_kind") == "byte-level-bpe":
+        try:
+            from tokenizers import Tokenizer
+        except ImportError as error:
+            raise SystemExit("Install the tokenizers package to load this checkpoint") from error
+        tokenizer_json = payload.get("tokenizer_json")
+        if not isinstance(tokenizer_json, str) or not tokenizer_json:
+            raise SystemExit("BPE checkpoint is missing its tokenizer definition")
+        tokenizer = Tokenizer.from_str(tokenizer_json)
+        prompt_ids = tokenizer.encode(args.prompt).ids
+    else:
+        prompt_ids = encode_bytes(args.prompt)
+
+    if not prompt_ids:
+        prompt_ids = [10]
+    context = torch.tensor([prompt_ids], dtype=torch.long, device=device_name)
 
     with torch.no_grad():
         for _ in range(args.max_new_tokens):
@@ -51,11 +65,14 @@ def main():
             next_token = torch.multinomial(probabilities, num_samples=1)
             context = torch.cat((context, next_token), dim=1)
 
-    print(decode_bytes(context[0].tolist()))
+    generated_ids = context[0].tolist()
+    generated_text = tokenizer.decode(generated_ids, skip_special_tokens=True) if tokenizer else decode_bytes(generated_ids)
+    print(generated_text)
     print(json.dumps({
         "status": "generated",
         "checkpoint": str(checkpoint_path),
         "pretrained_weights": False,
+        "tokenizer_kind": payload.get("tokenizer_kind", "utf8-bytes"),
         "warning": "This is a tiny experimental model trained on a smoke corpus, not a capable programming assistant."
     }, sort_keys=True))
 
