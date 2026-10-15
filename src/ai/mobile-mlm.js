@@ -167,8 +167,16 @@
   function generate(text, mode = "chat", options = {}) {
     const clean = String(text ?? "").trim();
     if (!clean) return "";
+    const history = Array.isArray(options.history)
+      ? options.history.slice(-4).filter(turn => turn && (turn.role === "user" || turn.role === "assistant"))
+      : [];
+    const historyText = history.map(turn => {
+      const speaker = turn.role === "assistant" ? "Kodex" : "Usuário";
+      return speaker + ": " + String(turn.text ?? "").trim().slice(0, 360);
+    }).filter(line => !line.endsWith(": ")).join("\n");
     const context = "Modo: " + (mode === "build" ? "build" : "chat") +
-      "\nUsuário: " + clean + "\nKodex: ";
+      "\nHistórico:\n" + (historyText ? historyText + "\n" : "") +
+      "Usuário: " + clean + "\nKodex: ";
     let inputIds = encode(context);
     const maxContext = payload.maxContextTokens || 144;
     if (inputIds.length > maxContext) inputIds = inputIds.slice(-maxContext);
