@@ -1,0 +1,128 @@
+name: Kodex AI Training Lab
+
+on:
+  push:
+    branches:
+      - kodex-0.4.0-workspace
+    paths:
+      - "training/**"
+      - "tests/**"
+      - "src/workspace/**"
+      - "workspace.html"
+      - "workspace.css"
+      - "package.json"
+      - "README.md"
+      - "CHANGELOG.md"
+      - ".github/workflows/ai-training-lab.yml"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Select the run type"
+        type: choice
+        options:
+          - smoke
+          - train
+          - sweep
+        default: smoke
+        required: true
+      steps:
+        description: "Training steps per run"
+        type: string
+        default: "10"
+        required: true
+      trials:
+        description: "Logical experiment candidates to describe (maximum 1000000)"
+        type: string
+        default: "1000000"
+        required: true
+      execute:
+        description: "Actual experiments to execute now (bounded by workers and available CPU)"
+        type: string
+        default: "2"
+        required: true
+      workers:
+        description: "Concurrent experiment processes on this runner"
+        type: string
+        default: "2"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  training-lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      RUN_MODE: ${{ inputs.mode || 'smoke' }}
+      TRAIN_STEPS: ${{ inputs.steps || '10' }}
+      LOGICAL_TRIALS: ${{ inputs.trials || '1000000' }}
+      EXECUTE_TRIALS: ${{ inputs.execute || '2' }}
+      SWEEP_WORKERS: ${{ inputs.workers || '2' }}
+    steps:
+      - name: Checkout repository source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check application and terminal syntax
+        run: npm run check
+
+      - name: Run project and terminal regression tests
+        run: npm test
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install CPU training dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Check training source syntax
+        run: |
+          python -m py_compile training/train_transformer.py
+          python -m py_compile training/run_sweep.py
+          python -m py_compile training/build_mobile_mlm.py
+
+      - name: Test both model architectures and the sweep scheduler
+        run: python -m unittest training.tests.test_mobile_mlm training.tests.test_transformer -v
+
+      - name: Print the new model profile
+        run: python training/train_transformer.py --data training/data --dry-run --out-dir training/runs/profile
+
+      - name: Execute selected training experiment
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$RUN_MODE" in
+            smoke)
+              python training/train_transformer.py --data training/data --out-dir training/runs/ci-smoke --steps 5 --batch-size 2 --eval-every 2 --eval-batches 1 --seed 42 --device cpu
+              python training/run_sweep.py --data training/data --out-dir training/runs/ci-sweep --trials 1000000 --execute 2 --workers 2 --steps 2 --eval-batches 1 --seed 42 --trial-timeout-seconds 600
+              ;;
+            train)
+              python training/train_transformer.py --data training/data --out-dir training/runs/manual-train --steps "$TRAIN_STEPS" --batch-size 4 --eval-every 25 --eval-batches 2 --seed 42 --device cpu
+              ;;
+            sweep)
+              python training/run_sweep.py --data training/data --out-dir training/runs/manual-sweep --trials "$LOGICAL_TRIALS" --execute "$EXECUTE_TRIALS" --workers "$SWEEP_WORKERS" --steps "$TRAIN_STEPS" --eval-batches 2 --seed 42 --trial-timeout-seconds 1800
+              ;;
+            *)
+              echo "Unsupported run mode: $RUN_MODE" >&2
+              exit 2
+              ;;
+          esac
+
+      - name: Upload training checkpoints, metrics, and sweep reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kodex-AI-Training-Lab-${{ github.run_id }}
+          path: training/runs/**
+          if-no-files-found: warn
+          retention-days: 14
