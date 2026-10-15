@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="./workspace.css">
   <script src="./src/workspace/workspace-engine.js" defer></script>
   <script src="./src/workspace/workspace-app.js" defer></script>
+  <script src="./src/workspace/terminal.js" defer></script>
 </head>
 <body>
   <div class="workspace-frame">
@@ -35,6 +36,7 @@
       </div>
       <div class="toolbar-group primary-actions">
         <button id="check-project" class="tool-button secondary" type="button">✓ Verificar</button>
+        <button id="toggle-terminal" class="tool-button secondary" type="button" aria-expanded="false" aria-controls="terminal-panel">⌁ Terminal</button>
         <button id="preview-project" class="tool-button secondary" type="button">▷ Pré-visualizar</button>
         <button id="export-zip" class="tool-button primary" type="button">↓ Exportar ZIP</button>
       </div>
@@ -86,7 +88,24 @@
       </section>
     </main>
 
-    <footer class="workspace-bottom">
+    <section id="terminal-panel" class="terminal-panel" hidden aria-label="Terminal de arquivos do projeto">
+    <header class="terminal-header">
+      <div class="terminal-heading"><span class="terminal-indicator"></span><strong>Terminal do projeto</strong><span class="terminal-type">WORKSPACE SHELL</span></div>
+      <div class="terminal-header-actions"><span>Arquivos locais · sem acesso ao sistema Android</span><button id="clear-terminal" class="terminal-close" type="button" title="Limpar saída">Limpar</button><button id="close-terminal" class="terminal-close" type="button" aria-label="Fechar terminal">×</button></div>
+    </header>
+    <div id="terminal-output" class="terminal-output" role="log" aria-live="polite" aria-relevant="additions text">
+      <div class="terminal-entry info">Kodex Project Terminal 0.5.0</div>
+      <div class="terminal-entry muted">Use help para ver os comandos disponíveis. Comandos atuam apenas nos arquivos importados ou criados neste workspace.</div>
+    </div>
+    <form id="terminal-form" class="terminal-form" autocomplete="off">
+      <span id="terminal-prompt" class="terminal-prompt">~/ $</span>
+      <input id="terminal-input" type="text" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Comando do terminal" placeholder="help, ls, cat, touch, write, grep…" maxlength="2000">
+      <button type="submit" class="terminal-run">Executar</button>
+    </form>
+    <div class="terminal-footnote">Este terminal não é Bash, não executa comandos do sistema, não instala pacotes e não compila projetos nativos. Verificar faz análise estática; Pré-visualizar executa HTML no iframe isolado.</div>
+  </section>
+
+  <footer class="workspace-bottom">
       <span><span class="status-dot"></span> Arquivos locais</span>
       <span>Sem conta, sem API de IA, sem acesso automático ao GitHub ou ao restante do aparelho.</span>
     </footer>
