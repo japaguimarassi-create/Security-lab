@@ -1,10 +1,17 @@
-# Kodex 0.4.0 — Local Language Model and Project Workspace
+# Kodex 0.5.0 — Local AI Training Lab and Project Terminal
 
-Kodex is an experimental, mobile-first programming assistant with a locally executed neural language model. Version 0.4.0 keeps conversation separate from implementation planning, bundles trained model weights into the Android APK, and adds a usable local file workspace.
+Kodex is an experimental, mobile-first programming assistant with a locally executed neural language model. Version 0.5.0 adds a project terminal, a from-scratch causal Transformer, reproducible training and validation, resumable checkpoints, an interactive local chat CLI, and a persistent SQLite experiment queue. This branch does not build an APK.
 
-## What changed in 0.4.0
+## What changed in 0.5.0
 
 - **Chat-first behavior remains:** greetings, short replies, and normal questions do not turn into build tasks automatically.
+- **Project terminal:** browser terminal commands operate only on files stored in Kodex's local workspace; the Python CLI can run a limited set of real local commands.
+- **New neural model:** decoder-only causal Transformer with tied token/output embeddings; configured for **2,002,048 trainable parameters** when its BPE vocabulary reaches 1,024 tokens.
+- **Real training pipeline:** PyTorch, explicit train/validation split, next-token prediction, gradient clipping, evaluation metrics, checkpoint-best/checkpoint-last, and resume support.
+- **Experiment queue:** SQLite-backed queue accepts up to 10,000,000 planned independent experiments and runs only a bounded number of workers at once.
+- **Distributed training:** the trainer can run under torchrun/PyTorch DistributedDataParallel on properly configured multi-process hardware.
+- **Local neural chat:** `python -m kodex_ai.chat --checkpoint ...` loads a trained checkpoint and answers without a remote inference API.
+- **No APK workflow:** the added workflow runs tests and, when explicitly requested, trains and uploads a model checkpoint artifact; it does not package Android applications.
 - **Local project workspace:** create, edit, rename, delete, import and download text files; preview HTML in a restricted iframe; run basic static checks; export the project as a ZIP.
 - **No runtime package downloads:** workspace functionality uses browser/platform features and is packaged with the Android app.
 - **Explicit Build mode:** prepare an implementation brief and optional model-generated draft; the chat mode stays conversational.
@@ -12,9 +19,44 @@ Kodex is an experimental, mobile-first programming assistant with a locally exec
 - **No remote AI API:** each APK build trains model weights from random initialization and embeds an int8-quantized model into the app.
 - **Conversation history:** threads are stored in local browser/app storage.
 
+## AI training and experiment queue 0.5.0
+
+Install Python 3.12 and PyTorch in a desktop/Linux/CI environment:
+
+```sh
+python -m pip install -r requirements-ai.txt
+python -m kodex_ai.prepare_data --input training/data/mobile_dialogue.jsonl
+python -m kodex_ai.train --dry-run --data training/data/mobile_dialogue.jsonl
+python -m kodex_ai.train --data training/data/mobile_dialogue.jsonl --steps 1000 --output-dir artifacts/kodex-ai-run
+python -m kodex_ai.chat --checkpoint artifacts/kodex-ai-run/checkpoint_best.pt
+```
+
+The model is a small causal Transformer trained to predict the next token. Its default configuration has 4 layers, hidden size 192, 6 attention heads, feed-forward size 768, block size 128, learned byte-level BPE vocabulary of up to 1,024 tokens, and tied token/output embeddings. The count is 2,002,048 parameters at vocabulary size 1,024; it is a parameter count, not a count of literal/biological neurons. If the corpus does not produce all 768 BPE merges, the actual count is lower but remains above 1.8 million for the current architecture.
+
+Train/validation splits are deterministic for the chosen seed. Evaluation logs train and validation loss, estimates tokens processed, and saves the best validation checkpoint plus the latest resumable checkpoint. After interruption, resume with `--resume artifacts/kodex-ai-run/checkpoint_last.pt` and keep the same model shape and block size.
+
+### Queue millions of experiments without pretending they run simultaneously
+
+```sh
+python -m kodex_ai.sweep plan --trials 1000000 --steps 100 --db artifacts/kodex-sweep/jobs.sqlite3
+python -m kodex_ai.sweep status --db artifacts/kodex-sweep/jobs.sqlite3
+python -m kodex_ai.sweep run --workers 2 --max-completions 2 --db artifacts/kodex-sweep/jobs.sqlite3
+python -m kodex_ai.sweep retry-failed --db artifacts/kodex-sweep/jobs.sqlite3
+```
+
+The persistent SQLite database schedules independent runs with varying seeds, learning rates, dropout, weight decay, and batch sizes. It supports millions of queued trials, atomic trial claiming and bounded local concurrency. One million jobs in a queue is not one million active training processes. Actual simultaneous training is bounded by the available CPUs/GPUs, RAM, disk, and worker count. Use a properly provisioned multi-node PyTorch DDP environment for distributed training; it synchronizes gradients across processes but does not create additional compute by itself.
+
+The CLI terminal is real local command execution for the approved project commands and scoped file operations:
+
+```sh
+python -m kodex_ai.terminal
+```
+
+The default terminal is restricted. The optional `--unsafe-shell` mode explicitly enables arbitrary shell commands and can access the user's system; enable it only when necessary. The browser terminal does not run OS processes; it edits only the local project workspace and prints the corresponding Python commands for real training.
+
 ## Local file workspace 0.4.0
 
-Open `workspace.html` from the chat screen using **Arquivos**. The workspace starts with an editable HTML/CSS/JavaScript example. It supports creating files and relative folders, editing content, renaming and deleting files, importing multiple text files, downloading one file, exporting all project text files as a ZIP, basic JSON/classic-JavaScript/HTML checks, and sandboxed HTML preview.
+Open `workspace.html` from the chat screen using **Arquivos**, or `terminal.html` using **Terminal**. The workspace starts with an editable HTML/CSS/JavaScript example. It supports creating files and relative folders, editing content, renaming and deleting files, importing multiple text files, downloading one file, exporting all project text files as a ZIP, basic JSON/classic-JavaScript/HTML checks, and sandboxed HTML preview.
 
 The workspace is **local to Kodex's WebView/browser storage**. It does not automatically read other Android files, write to the GitHub repository, authenticate to GitHub, run shell commands, install dependencies, or compile arbitrary projects. Import files explicitly with the picker and export a ZIP to move your work elsewhere. Binary files and ZIP import are not supported by this version.
 
@@ -70,7 +112,7 @@ The generated `kodex-model.js` contains tokenizer merges, quantized tensors, the
 
 ## APK
 
-Push changes to `kodex-programming-ai` that touch the Android app, model runtime, or model training files to trigger the GitHub Actions build. The artifact is named `Kodex-Android-APK-v0.4.0` and remains available for 14 days. It is a debug APK signed with the debug key; it is not a Google Play-certified release.
+This branch uses a separate AI-lab workflow for tests and optional model training. It does not invoke Android packaging. The existing 0.4.0 branch's APK notes are historical. This 0.5.0 AI-lab branch does not build an APK. Its optional model-training workflow artifact is a PyTorch checkpoint, not an Android application. It is a debug APK signed with the debug key; it is not a Google Play-certified release.
 
 ## Privacy and safety
 
