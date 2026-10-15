@@ -146,6 +146,9 @@ def main():
             metrics_path = trial_dir / "metrics.json"
             if completed.returncode == 0 and metrics_path.is_file():
                 result["metrics"] = json.loads(metrics_path.read_text(encoding="utf-8"))
+            elif completed.returncode == 0:
+                result["status"] = "failed"
+                result["error"] = "Trainer exited successfully but did not write metrics.json."
         except subprocess.TimeoutExpired as error:
             result = {
                 **config,
@@ -189,6 +192,36 @@ def main():
         } for item in results],
         "honesty_note": "Unexecuted candidate trials remain pending. A planned experiment or a low loss does not prove human-like language ability.",
     }
+    if ranked:
+        import shutil
+        best_id = ranked[0]["trial_id"]
+        best_dir = out_dir / f"trial-{best_id:08d}"
+        best_model = best_dir / "model-final.pt"
+        if best_model.is_file():
+            shutil.copy2(best_model, out_dir / "best-model.pt")
+            write_json(out_dir / "best-model-selection.json", {
+                "trial_id": best_id,
+                "selection_metric": "validation_loss",
+                "validation_loss": ranked[0]["metrics"].get("validation_loss"),
+                "test_loss": ranked[0]["metrics"].get("test_loss"),
+                "source": str(best_dir / "model-final.pt"),
+                "note": "The selected weights are a checkpoint, not proof of useful language quality.",
+            })
+    best_id = ranked[0]["trial_id"] if ranked else None
+    for item in results:
+        trial_dir = out_dir / f"trial-{item['trial_id']:08d}"
+        checkpoint = trial_dir / "checkpoint-last.pt"
+        if checkpoint.exists():
+            checkpoint.unlink()
+        if item["status"] == "completed":
+            for log_name in ("stdout.log", "stderr.log"):
+                log_path = trial_dir / log_name
+                if log_path.exists():
+                    log_path.unlink()
+        if item["trial_id"] != best_id:
+            model_path = trial_dir / "model-final.pt"
+            if model_path.exists():
+                model_path.unlink()
     write_json(out_dir / "summary.json", summary)
     (out_dir / "results.jsonl").write_text(
         "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in summary["results"]),
@@ -202,7 +235,7 @@ def main():
         "best_validation_loss": (ranked[0]["metrics"].get("validation_loss") if ranked else None),
         "summary_path": str(out_dir / "summary.json"),
     }, ensure_ascii=False), flush=True)
-    return 0 if results and completed else (0 if args.mode == "plan" else 1)
+    return 0 if results and all(item["status"] == "completed" and item.get("metrics") for item in results) else 1
 
 
 if __name__ == "__main__":
