@@ -51,8 +51,6 @@ class ByteBPE:
             if not counts:
                 break
             (left, right), frequency = counts.most_common(1)[0]
-            if frequency < 2:
-                break
             new_id = 256 + len(self.merges)
             self.merges.append((left, right))
             self.token_bytes.append(self.token_bytes[left] + self.token_bytes[right])
