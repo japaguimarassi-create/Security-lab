@@ -1,4 +1,4 @@
-name: Build Kodex Android APK
+name: Build Kodex Android APK 0.4.0
 
 on:
   push:
@@ -7,6 +7,12 @@ on:
     paths:
       - "android-app/**"
       - "index.html"
+      - "workspace.html"
+      - "workspace.css"
+      - "src/workspace/**"
+      - "tests/workspace.test.mjs"
+      - "AGENTS.md"
+      - ".github/copilot-instructions.md"
       - "styles.css"
       - "app.js"
       - "package.json"
@@ -31,6 +37,16 @@ jobs:
       - name: Checkout project
         uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check JavaScript sources and run regression tests
+        run: |
+          npm run check
+          npm test
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -44,7 +60,7 @@ jobs:
           python -m py_compile training/build_mobile_mlm.py
           python -m unittest training.tests.test_mobile_mlm -v
 
-      - name: Train 264,192-parameter model from scratch
+      - name: Train unchanged 264,192-parameter local model from scratch
         run: python training/build_mobile_mlm.py --data training/data/mobile_dialogue.jsonl --output kodex-model.js --steps 500 --batch-size 8 --seed 42
 
       - name: Verify exported model
@@ -117,7 +133,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kodex-Android-APK-v0.3.0
+          name: Kodex-Android-APK-v0.4.0
           path: android-app/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
