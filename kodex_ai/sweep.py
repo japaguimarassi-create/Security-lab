@@ -27,14 +27,16 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def connect_db(path: str | Path) -> sqlite3.Connection:
+def connect_db(path: str | Path, initialize: bool = True) -> sqlite3.Connection:
     db_path = Path(path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(db_path, timeout=30)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA busy_timeout=30000")
-    connection.execute("PRAGMA journal_mode=WAL")
     connection.execute("PRAGMA synchronous=NORMAL")
+    if not initialize:
+        return connection
+    connection.execute("PRAGMA journal_mode=WAL")
     connection.execute(
         """
         CREATE TABLE IF NOT EXISTS trials (
@@ -65,7 +67,6 @@ def connect_db(path: str | Path) -> sqlite3.Connection:
     connection.execute("CREATE INDEX IF NOT EXISTS idx_trials_validation_loss ON trials(status, validation_loss)")
     connection.commit()
     return connection
-
 
 def enqueue_trials(
     db_path: str | Path,
@@ -138,7 +139,7 @@ def enqueue_trials(
 
 
 def claim_trial(db_path: str | Path):
-    connection = connect_db(db_path)
+    connection = connect_db(db_path, initialize=False)
     try:
         connection.execute("BEGIN IMMEDIATE")
         row = connection.execute(
@@ -239,7 +240,8 @@ def trial_worker(db_path: str, dataset: str, device: str, timeout: int, log_root
 
 
 def summarize(db_path: str | Path) -> dict:
-    connection = connect_db(db_path)
+    db_file = Path(db_path)
+    connection = connect_db(db_file, initialize=not db_file.exists())
     try:
         counts = {row["status"]: row["count"] for row in connection.execute(
             "SELECT status, COUNT(*) AS count FROM trials GROUP BY status"
