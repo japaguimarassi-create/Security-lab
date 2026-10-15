@@ -34,6 +34,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--learning-rate", type=float, default=3e-4)
     parser.add_argument("--weight-decay", type=float, default=0.01)
     parser.add_argument("--validation-fraction", type=float, default=0.1)
+    parser.add_argument("--split-seed", type=int, default=42)
     parser.add_argument("--eval-interval", type=int, default=50)
     parser.add_argument("--eval-batches", type=int, default=4)
     parser.add_argument("--checkpoint-interval", type=int, default=250)
@@ -144,7 +145,7 @@ def main() -> int:
             torch.cuda.manual_seed_all(args.seed)
 
         records = load_records(args.data)
-        train_records, val_records = split_records(records, args.validation_fraction, args.seed)
+        train_records, val_records = split_records(records, args.validation_fraction, args.split_seed)
         if args.resume:
             checkpoint = torch.load(args.resume, map_location="cpu", weights_only=False)
             tokenizer = ByteBPETokenizer.from_dict(checkpoint["tokenizer"])
@@ -173,6 +174,12 @@ def main() -> int:
         parameter_total = parameter_count(model)
         if args.resume:
             model.load_state_dict(checkpoint["model_state"])
+        if distributed_run:
+            rank_seed = args.seed + rank * 100003
+            torch.manual_seed(rank_seed)
+            random.seed(rank_seed)
+            if device.type == "cuda":
+                torch.cuda.manual_seed_all(rank_seed)
         if args.dry_run:
             if rank == 0:
                 print(json.dumps({
@@ -203,6 +210,7 @@ def main() -> int:
                 "parameter_count": parameter_total,
                 "architecture": "decoder-only causal Transformer with tied token/output embeddings",
                 "seed": args.seed,
+                "split_seed": args.split_seed,
                 "dataset": str(Path(args.data)),
                 "train_examples": len(train_records),
                 "validation_examples": len(val_records),
@@ -257,6 +265,7 @@ def main() -> int:
                     "tokens_processed_estimate": step * args.batch_size * config.block_size * world_size,
                     "parameter_count": parameter_total,
                     "seed": args.seed,
+                    "split_seed": args.split_seed,
                 })
                 last_metrics = metrics
                 if rank == 0:
