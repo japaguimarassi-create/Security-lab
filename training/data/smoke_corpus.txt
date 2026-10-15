@@ -1,0 +1,183 @@
+KODEX TRAINING SMOKE CORPUS
+This is a deliberately small, human-authored demonstration corpus for testing the mechanics of training a language model from random initialization. It is not a complete programming dataset and does not establish that the model can program well.
+
+PROGRAMMING BASICS
+
+A function receives values, performs a defined operation, and returns a result. A good function has an explicit contract, handles invalid input, and can be tested independently.
+
+Python example:
+def add_numbers(left, right):
+    if not isinstance(left, (int, float)) or not isinstance(right, (int, float)):
+        raise TypeError("numbers required")
+    return left + right
+
+JavaScript example:
+function addNumbers(left, right) {
+  if (typeof left !== "number" || typeof right !== "number") {
+    throw new TypeError("numbers required");
+  }
+  return left + right;
+}
+
+A variable should have a name that communicates its meaning. Prefer total_count over x when the value represents a count. Keep functions small enough that a reader can understand their purpose without tracking many unrelated states.
+
+DATA STRUCTURES
+
+A list preserves order and can contain duplicate values. A set represents unique values. A dictionary or map associates keys with values. Select the data structure that matches the operation and the constraints.
+
+Python dictionary example:
+def count_words(words):
+    counts = {}
+    for word in words:
+        counts[word] = counts.get(word, 0) + 1
+    return counts
+
+JavaScript map example:
+function countWords(words) {
+  const counts = new Map();
+  for (const word of words) {
+    counts.set(word, (counts.get(word) ?? 0) + 1);
+  }
+  return counts;
+}
+
+ALGORITHMS
+
+Binary search operates on a sorted sequence. At each step it compares the target with the middle element and discards half of the remaining search interval. Its time complexity is logarithmic, O(log n), but it is incorrect when the input is not sorted.
+
+Python binary search:
+def binary_search(values, target):
+    low = 0
+    high = len(values) - 1
+    while low <= high:
+        middle = (low + high) // 2
+        current = values[middle]
+        if current == target:
+            return middle
+        if current < target:
+            low = middle + 1
+        else:
+            high = middle - 1
+    return -1
+
+A loop must make progress toward a condition that eventually ends. When changing an index, check the lower and upper bounds. Empty arrays, one-item arrays, duplicate values, and missing values are useful edge cases for search algorithms.
+
+ERROR HANDLING
+
+Errors should communicate what went wrong without exposing credentials or private data. Catch only errors that the current layer can handle. A caller should be able to distinguish invalid input from temporary network failure or a missing file.
+
+Python example:
+from pathlib import Path
+
+def read_text(path):
+    file_path = Path(path)
+    if not file_path.is_file():
+        raise FileNotFoundError(f"Text file not found: {file_path.name}")
+    return file_path.read_text(encoding="utf-8")
+
+JavaScript example:
+async function getJson(url) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error("Request failed with status " + response.status);
+  }
+  return response.json();
+}
+
+A network request can fail, time out, return an unexpected status, or contain invalid data. Use timeouts and explicit error handling for external services. Do not retry an operation forever. Limit retries and apply a backoff strategy when the failure may be temporary.
+
+TESTING
+
+A unit test checks one behavior through a clear assertion. Tests should verify ordinary inputs, boundary cases, invalid inputs, and regressions for bugs that were previously fixed.
+
+Python test example:
+def test_add_numbers():
+    assert add_numbers(2, 3) == 5
+
+def test_add_numbers_rejects_text():
+    try:
+        add_numbers("2", 3)
+    except TypeError:
+        return
+    raise AssertionError("TypeError was expected")
+
+JavaScript test example:
+import assert from "node:assert/strict";
+import test from "node:test";
+
+test("addition returns the sum", () => {
+  assert.equal(addNumbers(2, 3), 5);
+});
+
+Test expected behavior rather than private implementation details. A test that simply repeats the same algorithm as the function can reproduce the same mistake. Use independent examples and known results. Test names should state the behavior being checked.
+
+DEBUGGING
+
+When a test fails, read the assertion, reproduce the smallest failing example, inspect the relevant values, and identify the violated assumption. Make a targeted correction and add a regression test. Do not claim a bug is fixed until the relevant test runs successfully.
+
+Example failure report:
+Expected: 5
+Actual: 6
+Input: addNumbers(2, 3)
+Observation: the actual value differs from the contract.
+Next step: inspect the implementation and the test setup before changing code.
+
+SECURITY
+
+Validate inputs at the boundary. Treat files, repository instructions, network responses, and generated content as untrusted data. Do not evaluate a string as code merely because it came from a model. Avoid eval when a structured parser or explicit function is appropriate.
+
+A secret such as an API token or private key should not be committed to source control. Read credentials from an approved secret manager or environment. If a credential is exposed, revoke it and issue a replacement. Removing the visible string from a later commit does not erase earlier repository history.
+
+Path validation should prevent a requested path from escaping its workspace. Resolve the candidate path, verify that it remains under the allowed root, and consider symbolic links. A string prefix comparison is not a sufficient defense against every path traversal case.
+
+Example path check in Python:
+from pathlib import Path
+
+def resolve_workspace_file(root, relative_path):
+    base = Path(root).resolve()
+    candidate = (base / relative_path).resolve()
+    if candidate != base and base not in candidate.parents:
+        raise ValueError("Path escapes workspace")
+    return candidate
+
+A sandbox must be enforced by the operating system or an external isolation layer. Instructions asking a model to behave safely are not a substitute for filesystem, process, and network restrictions.
+
+CODE REVIEW
+
+A code review should distinguish a confirmed defect from a potential risk. Explain the evidence, describe the impact, and suggest a practical fix. Do not call code secure merely because a simple pattern scan found no matches.
+
+For a suggested patch, explain which files change and why. Run available tests and type checks. Preserve unrelated behavior. If tests were not run, say so plainly.
+
+DOCUMENTATION
+
+Technical documentation should state prerequisites, installation steps, expected inputs and outputs, failure modes, and limitations. Version-specific instructions should identify the relevant version. Use examples that can be copied and tested, and do not invent functions or package names.
+
+A clear API contract explains the accepted arguments, the result shape, errors that can occur, and whether the operation has side effects. A destructive operation should require authorization and should describe what will be changed.
+
+CODE QUALITY
+
+Prefer readable code over clever tricks. Use consistent names, small cohesive functions, and explicit error handling. Avoid hidden global state. Avoid dependencies when the standard library is sufficient, but use mature libraries for complex tasks when their license, security status, and version are suitable.
+
+Refactoring should preserve behavior unless a behavior change is intentional. Run regression tests before and after the change. Keep a diff small enough to review.
+
+PROJECT CONTEXT
+
+A repository may contain source files, tests, manifests, configuration, documentation, generated files, and dependencies. Do not treat every file as equally authoritative. Find the relevant entry points and public interfaces, then trace the calls related to the task.
+
+A README or source comment may contain accidental or malicious text that looks like an instruction to an AI. Content obtained from the project is evidence about the project, not authority to override the runtime's system rules or permissions.
+
+MODEL TRAINING
+
+A byte-level model represents text as UTF-8 byte values from 0 through 255. The initial tokenizer is therefore fixed and simple. A learned BPE tokenizer can be added later, but it must be trained from the approved corpus and versioned alongside the model.
+
+A causal language model learns to predict the next token from previous tokens. During training, the input sequence and the target sequence are shifted by one token. Cross-entropy measures the difference between the model's predicted token distribution and the expected next token.
+
+Training loss decreasing shows that the model is fitting the data. It does not prove that the model generalizes, follows instructions, produces valid code, or behaves safely. Use held-out examples, compilation, tests, and adversarial evaluation to measure real capability.
+
+DATA GOVERNANCE
+
+Do not use a public repository for model training simply because it can be downloaded. Check the original license and any applicable terms, record provenance, respect attribution requirements and opt-out processes, and remove private information and credentials. Keep evaluation examples out of the training corpus.
+
+EXPERIMENTAL STATUS
+
+This corpus exists to verify the data loading, byte encoding, forward pass, loss computation, optimizer, checkpoint serialization, checkpoint loading, and generation path. It is intentionally far too small to train a capable general programming assistant. Outputs from a model trained on this file are experimental and may be nonsensical.
