@@ -1,4 +1,4 @@
-name: Build Kodexz Android from source ZIP
+name: Import Kodexz source files and build Android APK
 
 on:
   workflow_dispatch:
@@ -6,49 +6,101 @@ on:
     branches: [kodexz-android]
     paths:
       - 'Kodexz_Android_v6_Source.zip'
+      - 'Kodexz_Kit_v3.zip'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  build-apk:
+  prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     steps:
-      - name: Checkout workspace
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
-      - name: Verify source archive exists
-        run: test -f Kodexz_Android_v6_Source.zip
+      - name: Verify an archive was uploaded
+        run: |
+          test -f Kodexz_Android_v6_Source.zip || test -f Kodexz_Kit_v3.zip
 
-      - name: Extract source archive
-        run: unzip -q Kodexz_Android_v6_Source.zip -d source
+      - name: Extract archives into real source directories
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p source/android source/web
+          if [ -f Kodexz_Android_v6_Source.zip ]; then
+            unzip -q Kodexz_Android_v6_Source.zip -d source/android
+            test -f source/android/Kodexz_Android_v6/app/build.gradle
+            mkdir -p Kodexz_Android_v6
+            rsync -a --delete source/android/Kodexz_Android_v6/ Kodexz_Android_v6/
+          fi
+          if [ -f Kodexz_Kit_v3.zip ]; then
+            unzip -q Kodexz_Kit_v3.zip -d source/web
+            test -f source/web/Kodexz_Kit_v3/index.html
+            mkdir -p Kodexz_Kit_v3
+            rsync -a --delete source/web/Kodexz_Kit_v3/ Kodexz_Kit_v3/
+          fi
+
+      - name: Commit extracted source files to this branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Kodexz_Android_v6 Kodexz_Kit_v3
+          if git diff --cached --quiet; then
+            echo "No source changes to commit."
+          else
+            git commit -m "Import actual Kodexz source files"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
 
       - name: Set up Java 17
+        if: hashFiles('Kodexz_Android_v6_Source.zip') != ''
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Android SDK
+        if: hashFiles('Kodexz_Android_v6_Source.zip') != ''
         uses: android-actions/setup-android@v3
 
       - name: Install Android platform and build tools
+        if: hashFiles('Kodexz_Android_v6_Source.zip') != ''
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Set up Gradle
+        if: hashFiles('Kodexz_Android_v6_Source.zip') != ''
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
 
       - name: Build debug APK
-        working-directory: source/Kodexz_Android_v6
+        if: hashFiles('Kodexz_Android_v6_Source.zip') != ''
+        working-directory: Kodexz_Android_v6
         run: gradle --no-daemon assembleDebug
 
       - name: Upload installable APK
+        if: hashFiles('Kodexz_Android_v6_Source.zip') != ''
         uses: actions/upload-artifact@v4
         with:
           name: Kodexz-Android-debug-APK
-          path: source/Kodexz_Android_v6/app/build/outputs/apk/debug/app-debug.apk
+          path: Kodexz_Android_v6/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Package web app source
+        if: hashFiles('Kodexz_Kit_v3.zip') != ''
+        run: zip -qr Kodexz-Web-App-Source.zip Kodexz_Kit_v3
+
+      - name: Upload web app source
+        if: hashFiles('Kodexz_Kit_v3.zip') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kodexz-Web-App-Source
+          path: Kodexz-Web-App-Source.zip
           if-no-files-found: error
           retention-days: 14
