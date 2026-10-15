@@ -28,7 +28,8 @@ class TransformerTrainingTests(unittest.TestCase):
         count = count_parameters(model)
         self.assertEqual(count, EXPECTED_PARAMETERS)
         self.assertGreater(count, 780000)
-        self.assertEqual(count, 875777)
+        self.assertGreater(count, 1_500_000)
+        self.assertEqual(count, 1958977)
 
     def test_causal_transformer_returns_logits_for_every_input_token(self):
         model = KodexTransformer()
