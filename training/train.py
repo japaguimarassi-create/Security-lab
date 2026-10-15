@@ -12,6 +12,7 @@ from kodex_lm import KodexLanguageModel, ModelConfig, encode_bytes
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", type=Path, default=Path("training/data/smoke_corpus.txt"))
+    parser.add_argument("--tokenizer", type=Path, default=None)
     parser.add_argument("--output", type=Path, default=Path("training/checkpoints/kodex-smoke.pt"))
     parser.add_argument("--steps", type=int, default=100)
     parser.add_argument("--batch-size", type=int, default=16)
@@ -71,14 +72,35 @@ def main():
     if len(raw_text.encode("utf-8")) < 512:
         raise SystemExit("Training corpus is too small; expected at least 512 UTF-8 bytes")
 
-    token_ids = torch.tensor(encode_bytes(raw_text), dtype=torch.long)
+    tokenizer_json = None
+    if args.tokenizer is not None:
+        tokenizer_path = args.tokenizer.resolve()
+        if not tokenizer_path.is_file():
+            raise SystemExit(f"Tokenizer file not found: {tokenizer_path}")
+        try:
+            from tokenizers import Tokenizer
+        except ImportError as error:
+            raise SystemExit("Install the tokenizers package to use a BPE tokenizer") from error
+        tokenizer = Tokenizer.from_file(str(tokenizer_path))
+        encoded = tokenizer.encode(raw_text)
+        ids = encoded.ids
+        vocab_size = tokenizer.get_vocab_size()
+        tokenizer_kind = "byte-level-bpe"
+        tokenizer_json = tokenizer.to_str()
+    else:
+        ids = encode_bytes(raw_text)
+        vocab_size = 256
+        tokenizer_kind = "utf8-bytes"
+
+    token_ids = torch.tensor(ids, dtype=torch.long)
     split_index = int(token_ids.numel() * 0.9)
     train_data = token_ids[:split_index].to(device)
     val_data = token_ids[split_index:].to(device)
-    if len(val_data) <= args.block_size + 1:
-        raise SystemExit("Validation split is too short; add more approved training text or reduce block-size")
+    if len(train_data) <= args.block_size + 1 or len(val_data) <= args.block_size + 1:
+        raise SystemExit("Train or validation split is too short; add approved text or reduce block-size")
 
     config = ModelConfig(
+        vocab_size=vocab_size,
         block_size=args.block_size,
         n_layer=args.layers,
         n_head=args.heads,
@@ -92,8 +114,10 @@ def main():
         "status": "training_started",
         "device": str(device),
         "corpus_bytes": len(raw_text.encode("utf-8")),
-        "train_bytes": int(train_data.numel()),
-        "validation_bytes": int(val_data.numel()),
+        "training_tokens": int(train_data.numel()),
+        "validation_tokens": int(val_data.numel()),
+        "tokenizer_kind": tokenizer_kind,
+        "vocabulary_size": vocab_size,
         "parameter_count": model.parameter_count(),
         "config": model.config_dict(),
         "pretrained_weights": False,
@@ -123,15 +147,21 @@ def main():
 
     payload = {
         "schema_version": 1,
-        "model_name": "KodexByteLM",
+        "model_name": "KodexScratchLM",
         "config": model.config_dict(),
         "model_state_dict": model.state_dict(),
+        "tokenizer_kind": tokenizer_kind,
+        "tokenizer_json": tokenizer_json,
         "training": {
             "steps": args.steps,
             "seed": args.seed,
             "device": str(device),
             "data_file": str(data_path),
             "corpus_bytes": len(raw_text.encode("utf-8")),
+            "training_tokens": int(train_data.numel()),
+            "validation_tokens": int(val_data.numel()),
+            "tokenizer_kind": tokenizer_kind,
+            "vocabulary_size": vocab_size,
             "elapsed_seconds": round(time.time() - started, 2),
             "pretrained_weights": False,
         },
