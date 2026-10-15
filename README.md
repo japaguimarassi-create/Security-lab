@@ -27,6 +27,8 @@ Unchecked items are not implemented yet. The front-end's code review and explana
 
 Open [index.html](index.html) in a modern browser, or enable GitHub Pages for this branch in repository settings. The static workbench does not require a third-party runtime. No model provider or API key is connected.
 
+To run a training experiment from a mobile browser, open the [Kodex from-scratch training notebook in Google Colab](https://colab.research.google.com/github/japaguimarassi-create/Security-lab/blob/kodex-programming-ai/training/notebooks/kodex_scratch_training.ipynb). Colab GPU availability is variable and the sample corpus only tests the pipeline.
+
 ## Train the small model from scratch
 
 Requires Python 3.12, PyTorch, and (for BPE) Hugging Face Tokenizers.
@@ -74,7 +76,8 @@ The GitHub Actions workflow `.github/workflows/kodex-training-smoke.yml` runs a 
 - `src/ai/agent-loop.mjs`: bounded model/tool orchestration contract.
 - `training/kodex_lm.py`: byte-level causal Transformer initialized from random parameters.
 - `training/train_tokenizer.py`: train a byte-level BPE vocabulary from the selected corpus.
-- `training/train.py`: train/validation split, next-token objective, gradient clipping, metrics and checkpoint save; supports byte or BPE tokens.
+- `training/train.py`: train/validation split, next-token objective, gradient clipping, corpus hashing, metrics and checkpoint save; supports byte or BPE tokens.
+- `training/notebooks/kodex_scratch_training.ipynb`: phone-friendly Colab notebook for a scratch-training run using Drive-backed inputs and checkpoints.
 - `training/generate.py`: load a trained local checkpoint and sample next bytes.
 - `training/prepare_corpus.py`: manifest validation, provenance report, license allowlist and basic secret/path filters.
 - `training/data/smoke_corpus.txt`: intentionally tiny, human-authored smoke-test corpus.
