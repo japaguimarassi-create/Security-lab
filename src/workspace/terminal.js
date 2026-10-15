@@ -244,9 +244,9 @@
       writeBlock([
         "Kodex Transformer 0.5 — perfil do sistema de treinamento",
         "Arquitetura: decoder-only causal Transformer",
-        "Parâmetros treináveis: 875.777",
+        "Parâmetros treináveis: 1.958.977",
         "Tokenizer: bytes UTF-8 (0–255) + EOS (256)",
-        "Embedding: 128 · cabeças de atenção: 4 · blocos: 4 · FFN: 512 · contexto: 128",
+        "Embedding: 160 · cabeças de atenção: 5 · blocos: 6 · FFN: 640 · contexto: 128",
         "Treinamento: PyTorch, do zero, AdamW, clipping de gradiente, validação separada e checkpoints",
         "O modelo de 875.777 parâmetros é um experimento separado; não foi conectado ao chat nem convertido para APK."
       ].join("\n"), "info");
@@ -261,7 +261,7 @@
         logicalTrials: count,
         workers: Math.max(1, Math.min(4, navigator.hardwareConcurrency || 2)),
         stepsPerTrial: 100,
-        modelParameters: 875777,
+        modelParameters: 1958977,
         createdAt: new Date().toISOString(),
         status: "planned-not-executed",
         note: "Esta é apenas a configuração. O terminal do workspace não inicia Python nem GitHub Actions."
