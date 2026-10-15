@@ -23,7 +23,7 @@
   "weightsIncludedInSourceRepository": false,
   "weightsIncludedInApk": true,
   "trainingCorpus": "training/data/mobile_dialogue.jsonl",
-  "trainingExampleCount": 81,
+  "trainingExampleCount": 90,
   "defaultTrainingSteps": 500,
   "pretrainedWeightsUsed": false,
   "notes": [
