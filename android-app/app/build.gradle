@@ -1,0 +1,34 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "com.kodex.lab"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.kodex.lab"
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "0.1.0"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+tasks.register("syncWorkbenchAssets", Copy) {
+    from(rootProject.projectDir.parentFile) {
+        include "index.html"
+        include "styles.css"
+        include "app.js"
+    }
+    into(layout.projectDirectory.dir("src/main/assets"))
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(tasks.named("syncWorkbenchAssets"))
+}
