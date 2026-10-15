@@ -363,13 +363,27 @@ def main():
                     output_dir / "model-best.pt",
                 )
 
+    best_checkpoint_path = output_dir / "model-best.pt"
+    if not best_checkpoint_path.is_file():
+        raise RuntimeError("Training completed without a validation-selected checkpoint.")
+    best_checkpoint = torch.load(best_checkpoint_path, map_location=device, weights_only=False)
+    model.load_state_dict(best_checkpoint["model_state_dict"])
+    selected_step = int(best_checkpoint["step"])
+    train_eval = evaluate_loss(model, train_tokens, config.block_size, device)
+    validation_eval = evaluate_loss(model, validation_tokens, config.block_size, device)
     test_eval = evaluate_loss(model, test_tokens, config.block_size, device)
-    last_metrics.update({
+    final_metrics = {
+        **last_metrics,
         "step": args.steps,
+        "selected_model_step": selected_step,
+        "train_loss": train_eval["cross_entropy"],
+        "validation_loss": validation_eval["cross_entropy"],
+        "train_objective_loss": train_eval["objective_loss"],
+        "validation_objective_loss": validation_eval["objective_loss"],
         "test_loss": test_eval["cross_entropy"],
         "test_objective_loss": test_eval["objective_loss"],
-        "train_perplexity": math.exp(min(float(last_metrics["train_loss"]), 20)),
-        "validation_perplexity": math.exp(min(float(last_metrics["validation_loss"]), 20)),
+        "train_perplexity": math.exp(min(float(train_eval["cross_entropy"]), 20)),
+        "validation_perplexity": math.exp(min(float(validation_eval["cross_entropy"]), 20)),
         "test_perplexity": math.exp(min(float(test_eval["cross_entropy"]), 20)),
         "elapsed_seconds": round(time.time() - started, 2),
         "tokens_seen_estimate": args.steps * args.batch_size * config.block_size,
@@ -378,16 +392,14 @@ def main():
         "best_step": best_step,
         "test_tokens": test_eval["tokens"],
         "tokenizer_file": "tokenizer.json",
-    })
+        "selected_checkpoint_policy": "lowest held-out validation cross-entropy; test data is evaluated after selection",
+    }
     final_payload = build_checkpoint(
-        model, optimizer, args.steps, config, last_metrics, data_digest, tokenizer_digest, tokenizer_path
+        model, optimizer, selected_step, config, final_metrics, data_digest, tokenizer_digest, tokenizer_path
     )
-    atomic_torch_save(final_payload, output_dir / "checkpoint-last.pt")
-    atomic_torch_save(
-        {key: value for key, value in final_payload.items() if key != "optimizer_state_dict"},
-        output_dir / "model-final.pt",
-    )
-    atomic_json_save(last_metrics, output_dir / "metrics.json")
+    final_model_payload = {key: value for key, value in final_payload.items() if key != "optimizer_state_dict"}
+    atomic_torch_save(final_model_payload, output_dir / "model-final.pt")
+    atomic_json_save(final_metrics, output_dir / "metrics.json")
     atomic_json_save({
         "model_id": "kodex-sparse-transformer-0.5.0",
         "architecture": "decoder-only causal Transformer; grouped-query attention; rotary embeddings; sparse top-k mixture-of-experts; multi-token prediction",
@@ -408,7 +420,7 @@ def main():
             "The held-out score and sample generations require manual review."
         ],
     }, output_dir / "model-card.json")
-    print(json.dumps({"event": "training_completed", **last_metrics}, ensure_ascii=False), flush=True)
+    print(json.dumps({"event": "training_completed", **final_metrics}, ensure_ascii=False), flush=True)
 
 
 if __name__ == "__main__":
