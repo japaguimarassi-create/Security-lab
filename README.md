@@ -4,20 +4,22 @@ O branch `kodexz-android` contém a automação para importar os fontes do Kodex
 
 ## Arquivos-fonte necessários
 
-- [Kodexz Android v6 — projeto Android](https://sandbox:/mnt/data/Kodexz_Android_v6_Source.zip)
-- [Kodexz Kit v3 — aplicação web](https://sandbox:/mnt/data/Kodexz_Kit_v3.zip)
+Envie um ou ambos os arquivos ZIP para a raiz deste branch:
 
-Os links acima são anexos desta conversa e **não ficam automaticamente disponíveis no GitHub**. Para enviar os fontes ao repositório, baixe o ZIP correspondente e faça upload para a raiz da branch `kodexz-android):
+- `Kodexz_Android_v6_Source.zip` — projeto Android, incluindo código Java, interface, assets e Gradle.
+- `Kodexz_Kit_v3.zip` — aplicação web, modelo JavaScript e documentação.
 
-[Enviar ZIPs para o branch](https://github.com/japaguimarassi-create/Security-lab/upload/kodexz-android)
+[Enviar os ZIPs para esta branch](https://github.com/japaguimarassi-create/Security-lab/upload/kodexz-android)
+
+> Os ZIPs anexados nesta conversa não são transferidos automaticamente para o GitHub. É necessário baixá-los para o dispositivo e enviar os arquivos pelo link acima.
 
 ## O que acontece depois do upload
 
-O workflow em [GitHub Actions](https://github.com/japaguimarassi-create/Security-lab/actions) extrai os ZIPs e comita os arquivos reais para:
+O workflow em [GitHub Actions](https://github.com/japaguimarassi-create/Security-lab/actions) extrai os arquivos e cria os diretórios de código:
 
-- `Kodexz_Android_v6/` — projeto Android com código Java, interface web, assets e configuração Gradle.
-- `Kodexz_Kit_v3/` — aplicação web, modelo JavaScript e documentação.
+- `Kodexz_Android_v6/` — projeto Android.
+- `Kodexz_Kit_v3/` — aplicação web e documentação.
 
-Se o arquivo Android estiver presente, o workflow também compila um APK de depuração e publica o artefato `Kodexz-Android-debug-APK`.
+Se `Kodexz_Android_v6_Source.zip` estiver presente, o workflow também compila um APK de depuração e publica o artefato `Kodexz-Android-debug-APK`.
 
-**Estado atual:** a automação foi configurada, mas os ZIPs ainda precisam ser enviados ao GitHub. Portanto, os diretórios de código ainda não foram criados no branch.
+**Estado atual:** a automação está configurada, mas os ZIPs ainda precisam ser enviados ao GitHub. Os diretórios de fonte ainda não foram criados no branch.
