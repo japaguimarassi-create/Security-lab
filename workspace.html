@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111214">
+  <meta name="description" content="Workspace local do Kodex para criar, editar, verificar e exportar arquivos de projeto.">
+  <title>Kodex — Workspace local</title>
+  <link rel="stylesheet" href="./workspace.css">
+  <script src="./src/workspace/workspace-engine.js" defer></script>
+  <script src="./src/workspace/workspace-app.js" defer></script>
+</head>
+<body>
+  <div class="workspace-frame">
+    <header class="workspace-topbar">
+      <div class="topbar-branding">
+        <a class="back-link" href="./index.html" aria-label="Voltar para a conversa">← <span>Conversa</span></a>
+        <span class="brand-separator"></span>
+        <span class="brand-mark">K</span>
+        <div class="brand-copy"><strong>Kodex</strong><small>WORKSPACE LOCAL</small></div>
+      </div>
+      <label class="project-name-wrap">
+        <span>Projeto</span>
+        <input id="project-name" maxlength="80" value="Meu projeto" aria-label="Nome do projeto">
+      </label>
+      <div class="save-status" id="save-status" role="status" data-state="saved">Carregando arquivos locais…</div>
+    </header>
+
+    <div class="workspace-toolbar" role="toolbar" aria-label="Ações do projeto">
+      <div class="toolbar-group">
+        <button id="new-project" class="tool-button secondary" type="button">Novo projeto</button>
+        <button id="new-file" class="tool-button secondary" type="button">＋ Arquivo</button>
+        <button id="import-files" class="tool-button secondary" type="button">Importar</button>
+        <input id="import-input" type="file" multiple hidden>
+      </div>
+      <div class="toolbar-group primary-actions">
+        <button id="check-project" class="tool-button secondary" type="button">✓ Verificar</button>
+        <button id="preview-project" class="tool-button secondary" type="button">▷ Pré-visualizar</button>
+        <button id="export-zip" class="tool-button primary" type="button">↓ Exportar ZIP</button>
+      </div>
+    </div>
+
+    <main class="workspace-body">
+      <aside class="file-sidebar" aria-label="Arquivos do projeto">
+        <div class="sidebar-heading">
+          <div><span class="section-eyebrow">PROJETO</span><h1>Arquivos</h1></div>
+          <span id="file-count" class="file-count">0</span>
+        </div>
+        <div id="file-list" class="file-list" role="list"></div>
+        <div class="sidebar-note">
+          <span class="note-mark">i</span>
+          <p>Os arquivos ficam no armazenamento deste app/navegador. Importe arquivos de texto ou exporte um ZIP para guardar uma cópia fora daqui.</p>
+        </div>
+      </aside>
+
+      <section class="editor-column" aria-label="Editor de arquivos">
+        <div class="editor-heading">
+          <div class="active-file-title">
+            <span class="file-dot"></span>
+            <strong id="active-path">index.html</strong>
+          </div>
+          <div class="file-actions">
+            <button id="save-file" class="small-action" type="button">Salvar</button>
+            <button id="download-file" class="small-action" type="button">Baixar</button>
+            <button id="rename-file" class="small-action" type="button">Renomear</button>
+            <button id="delete-file" class="small-action danger" type="button">Excluir</button>
+          </div>
+        </div>
+
+        <div class="editor-surface">
+          <div id="line-numbers" class="line-numbers" aria-hidden="true">1</div>
+          <textarea id="code-editor" autocomplete="off" autocapitalize="off" spellcheck="false" wrap="off" aria-label="Conteúdo do arquivo selecionado"></textarea>
+        </div>
+
+        <footer class="editor-footer">
+          <span id="editor-info">0 linhas</span>
+          <span>Texto simples · Tab insere espaços · Ctrl+S salva</span>
+        </footer>
+
+        <section id="check-results" class="check-results" aria-live="polite" hidden>
+          <div class="check-heading">
+            <div><span class="section-eyebrow">ANÁLISE LOCAL</span><h2>Verificações</h2></div>
+            <strong id="check-summary"></strong>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <footer class="workspace-bottom">
+      <span><span class="status-dot"></span> Arquivos locais</span>
+      <span>Sem conta, sem API de IA, sem acesso automático ao GitHub ou ao restante do aparelho.</span>
+    </footer>
+  </div>
+
+  <section id="preview-shell" class="preview-shell" aria-label="Pré-visualização isolada" hidden>
+    <header class="preview-header">
+      <div><span class="section-eyebrow">EXECUÇÃO ISOLADA</span><h2>Pré-visualização HTML</h2></div>
+      <button id="close-preview" class="tool-button secondary" type="button">Fechar pré-visualização</button>
+    </header>
+    <p class="preview-warning">O HTML roda em um iframe com sandbox e política restritiva de conteúdo. Isso é uma prévia, não um sandbox de segurança profissional nem uma compilação de aplicativo.</p>
+    <iframe id="preview-frame" title="Pré-visualização isolada do projeto" sandbox="allow-scripts"></iframe>
+  </section>
+
+  <div id="workspace-toast" class="workspace-toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
