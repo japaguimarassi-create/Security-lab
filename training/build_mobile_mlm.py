@@ -106,9 +106,9 @@ def read_samples(path):
                 raise ValueError(f"Invalid history turn on line {line_number}")
             speaker = "Usuário" if turn["role"] == "user" else "Kodex"
             history_lines.append(f"{speaker}: {turn['text'].strip()[:360]}")
-        history_text = "".join(line + "\\n" for line in history_lines)
-        prefix = f"Modo: {mode}\\nHistórico:\\n{history_text}Usuário: {prompt.strip()}\\nKodex: "
-        suffix = answer.strip() + "\\n<fim>\\n"
+        history_text = "".join(line + "\n" for line in history_lines)
+        prefix = f"Modo: {mode}\nHistórico:\n{history_text}Usuário: {prompt.strip()}\nKodex: "
+        suffix = answer.strip() + "\n<fim>\n"
         samples.append((prefix, suffix))
     if len(samples) < 20:
         raise ValueError("At least 20 curated dialogue samples are required")
