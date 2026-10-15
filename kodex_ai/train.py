@@ -191,6 +191,11 @@ def main() -> int:
             return 0
 
         output_dir = Path(args.output_dir)
+        checkpoints = (output_dir / "checkpoint_best.pt", output_dir / "checkpoint_last.pt")
+        if not args.resume and any(path.exists() for path in checkpoints):
+            raise FileExistsError(
+                f"Checkpoints already exist in {output_dir}. Choose a new --output-dir or resume from checkpoint_last.pt."
+            )
         if rank == 0:
             output_dir.mkdir(parents=True, exist_ok=True)
             write_json(output_dir / "config.json", {
