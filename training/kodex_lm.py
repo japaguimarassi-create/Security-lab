@@ -13,6 +13,9 @@ class ModelConfig:
     n_head: int = 4
     n_embd: int = 128
     n_kv_head: int = 2
+    n_experts: int = 4
+    experts_per_token: int = 2
+    router_aux_loss_coef: float = 0.01
     dropout: float = 0.0
     rope_theta: float = 10000.0
     initializer_range: float = 0.02
@@ -108,18 +111,57 @@ class FeedForward(nn.Module):
         return self.dropout(self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x)))
 
 
+class SparseMixtureOfExperts(nn.Module):
+    def __init__(self, config: ModelConfig):
+        super().__init__()
+        if config.n_experts < 1:
+            raise ValueError("n_experts must be positive")
+        if config.experts_per_token < 1 or config.experts_per_token > config.n_experts:
+            raise ValueError("experts_per_token must be between 1 and n_experts")
+        if config.router_aux_loss_coef < 0:
+            raise ValueError("router_aux_loss_coef must be non-negative")
+        self.n_experts = config.n_experts
+        self.experts_per_token = config.experts_per_token
+        self.router = nn.Linear(config.n_embd, config.n_experts, bias=False)
+        self.experts = nn.ModuleList(FeedForward(config) for _ in range(config.n_experts))
+
+    def forward(self, x):
+        batch, length, channels = x.shape
+        flat = x.reshape(-1, channels)
+        probabilities = torch.softmax(self.router(flat).float(), dim=-1)
+        top_probabilities, top_indices = torch.topk(probabilities, self.experts_per_token, dim=-1)
+        top_probabilities = top_probabilities / top_probabilities.sum(dim=-1, keepdim=True).clamp_min(1e-9)
+        output = torch.zeros_like(flat)
+
+        for expert_id, expert in enumerate(self.experts):
+            token_indices, slot_indices = (top_indices == expert_id).nonzero(as_tuple=True)
+            if token_indices.numel() == 0:
+                continue
+            expert_output = expert(flat[token_indices])
+            weights = top_probabilities[token_indices, slot_indices].to(expert_output.dtype).unsqueeze(-1)
+            output = output.index_add(0, token_indices, expert_output * weights)
+
+        if self.training:
+            importance = probabilities.mean(dim=0)
+            load = F.one_hot(top_indices, num_classes=self.n_experts).float().mean(dim=(0, 1))
+            auxiliary_loss = self.n_experts * torch.sum(importance * load)
+        else:
+            auxiliary_loss = x.new_zeros(())
+        return output.view(batch, length, channels), auxiliary_loss
+
+
 class TransformerBlock(nn.Module):
     def __init__(self, config: ModelConfig):
         super().__init__()
         self.input_norm = RMSNorm(config.n_embd)
         self.attention = CausalSelfAttention(config)
         self.post_attention_norm = RMSNorm(config.n_embd)
-        self.feed_forward = FeedForward(config)
+        self.feed_forward = SparseMixtureOfExperts(config)
 
     def forward(self, x):
         x = x + self.attention(self.input_norm(x))
-        x = x + self.feed_forward(self.post_attention_norm(x))
-        return x
+        feed_forward_output, auxiliary_loss = self.feed_forward(self.post_attention_norm(x))
+        return x + feed_forward_output, auxiliary_loss
 
 
 class KodexLanguageModel(nn.Module):
@@ -129,11 +171,16 @@ class KodexLanguageModel(nn.Module):
             raise ValueError("vocab_size and block_size must be at least 2")
         if config.n_layer < 1 or config.n_head < 1 or config.n_embd < 2:
             raise ValueError("model dimensions must be positive")
+        if config.n_experts < 1 or not 1 <= config.experts_per_token <= config.n_experts:
+            raise ValueError("experts_per_token must be between 1 and n_experts")
+        if config.router_aux_loss_coef < 0:
+            raise ValueError("router_aux_loss_coef must be non-negative")
         self.config = config
         self.token_embedding = nn.Embedding(config.vocab_size, config.n_embd)
         self.embedding_dropout = nn.Dropout(config.dropout)
-        self.blocks = nn.Sequential(*(TransformerBlock(config) for _ in range(config.n_layer)))
+        self.blocks = nn.ModuleList(TransformerBlock(config) for _ in range(config.n_layer))
         self.final_norm = RMSNorm(config.n_embd)
+        self.last_aux_loss = torch.tensor(0.0)
         self.language_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         self.apply(self._initialize_weights)
         self.language_head.weight = self.token_embedding.weight
@@ -159,15 +206,24 @@ class KodexLanguageModel(nn.Module):
         if input_ids.numel() and (input_ids.min() < 0 or input_ids.max() >= self.config.vocab_size):
             raise ValueError("input token ID is outside the configured vocabulary")
 
-        x = self.token_embedding(input_ids)
-        x = self.embedding_dropout(x)
-        x = self.final_norm(self.blocks(x))
+        x = self.embedding_dropout(self.token_embedding(input_ids))
+        auxiliary_losses = []
+        for block in self.blocks:
+            x, auxiliary_loss = block(x)
+            auxiliary_losses.append(auxiliary_loss)
+        if auxiliary_losses:
+            self.last_aux_loss = torch.stack(auxiliary_losses).mean()
+        else:
+            self.last_aux_loss = x.new_zeros(())
+        x = self.final_norm(x)
         logits = self.language_head(x)
         loss = None
         if targets is not None:
             if targets.shape != input_ids.shape:
                 raise ValueError("targets must have the same shape as input_ids")
             loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), targets.reshape(-1))
+            if self.training:
+                loss = loss + self.config.router_aux_loss_coef * self.last_aux_loss
         return logits, loss
 
     def parameter_count(self):
