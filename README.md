@@ -47,6 +47,16 @@ python training/generate.py --checkpoint training/checkpoints/kodex-bpe.pt --pro
 
 Both the BPE tokenizer and model weights are trained from scratch; no pretrained tokenizer or model checkpoint is loaded. You can omit `--tokenizer` to use the baseline UTF-8 byte tokenizer. The output is expected to be weak and often nonsensical because the bundled corpus is only a smoke test. This verifies the training mechanics, not useful programming intelligence. To use a GPU, install a PyTorch build appropriate for the machine and pass `--device cuda`.
 
+## Supervised instruction fine-tuning
+
+After a useful base checkpoint has been trained, prepare JSONL files with one object per conversation. Each object uses a messages array with role/content objects; roles may be system, user, assistant, or tool. Keep a separate validation JSONL file. The checked-in smoke examples demonstrate the schema and are not sufficient for real training.
+
+```sh
+python training/finetune_sft.py --checkpoint training/checkpoints/kodex-bpe.pt --data /path/to/instructions-train.jsonl --validation-data /path/to/instructions-validation.jsonl --output training/checkpoints/kodex-instruct.pt --steps 2000 --device cuda
+```
+
+This stage fine-tunes the selected base checkpoint and writes a separate instruction checkpoint. It does not make a weak smoke-trained base model into a capable assistant by itself.
+
 ## Prepare a candidate training corpus
 
 Do not scrape public code without checking rights. The manifest-first preparation script requires an explicit training-permission field, an allowlisted SPDX license, a source URL and a source commit. It rejects paths outside the supplied root, unsupported file types, common generated/dependency folders, exact duplicates, and certain known secret patterns.
@@ -105,5 +115,6 @@ Training does not need terminal or repository-editing tools. Keep training-data 
 
 - [Codex and Copilot research](docs/ENGINEERING_RESEARCH.md)
 - [From-scratch training plan](docs/FROM_SCRATCH_TRAINING_PLAN.md)
+- [Kodex model blueprint and current research roadmap](docs/KODEX_MODEL_BLUEPRINT.md)
 - [Implementation roadmap](docs/IMPLEMENTATION_ROADMAP.md)
 - [Project directives](KODEX_DIRETRIZES.md)
