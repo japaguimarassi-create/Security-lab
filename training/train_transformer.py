@@ -69,6 +69,25 @@ def encode_text(text):
     return list(text.encode("utf-8")) + [EOS_ID]
 
 
+def dataset_digest(path):
+    path = Path(path)
+    digest = hashlib.sha256()
+    if path.is_dir():
+        corpus_files = sorted(path.glob("*.jsonl")) + sorted(path.glob("*.txt"))
+        if not corpus_files:
+            raise FileNotFoundError(f"No .jsonl or .txt training corpus found in: {path}")
+        for corpus_file in corpus_files:
+            digest.update(corpus_file.name.encode("utf-8"))
+            digest.update(b"\\0")
+            digest.update(corpus_file.read_bytes())
+            digest.update(b"\\0")
+    elif path.is_file():
+        digest.update(path.read_bytes())
+    else:
+        raise FileNotFoundError(f"Training data was not found: {path}")
+    return digest.hexdigest()
+
+
 def read_records(path):
     path = Path(path)
     if path.is_dir():
@@ -225,7 +244,7 @@ def main():
     parameter_count = count_parameters(model)
     if parameter_count != EXPECTED_PARAMETERS:
         raise RuntimeError(f"Architecture has {parameter_count} trainable parameters; expected {EXPECTED_PARAMETERS}.")
-    dataset_hash = hashlib.sha256(args.data.read_bytes()).hexdigest()
+    dataset_hash = dataset_digest(args.data)
     metadata = {
         "model": "Kodex Transformer 0.5",
         "architecture": config,
