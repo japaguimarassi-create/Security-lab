@@ -6,7 +6,6 @@ on:
     branches: [kodexz-android]
     paths:
       - 'Kodexz_Android_v6_Source.zip'
-      - '.github/workflows/build-kodexz-from-zip.yml'
 
 permissions:
   contents: read
