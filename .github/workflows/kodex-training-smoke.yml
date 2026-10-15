@@ -1,0 +1,44 @@
+name: Kodex from-scratch training smoke test
+
+on:
+  push:
+    branches:
+      - kodex-programming-ai
+    paths:
+      - "training/**"
+      - ".github/workflows/kodex-training-smoke.yml"
+  pull_request:
+    branches:
+      - main
+      - kodex-programming-ai
+    paths:
+      - "training/**"
+      - ".github/workflows/kodex-training-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  train-small-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install CPU PyTorch
+        run: python -m pip install --upgrade pip && python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Validate Python source
+        run: python -m py_compile training/kodex_lm.py training/train.py training/generate.py training/prepare_corpus.py
+      - name: Test corpus preparation policy
+        run: python -m unittest discover -s training/tests -v
+      - name: Train randomly initialized model
+        run: python training/train.py --data training/data/smoke_corpus.txt --output /tmp/kodex-smoke.pt --steps 5 --batch-size 2 --block-size 64 --layers 2 --heads 2 --embedding-size 32 --eval-interval 1 --device cpu
+      - name: Reload checkpoint and generate sample
+        run: python training/generate.py --checkpoint /tmp/kodex-smoke.pt --prompt "def add(a, b):" --max-new-tokens 12 --top-k 8 --device cpu
+      - name: Verify checkpoint exists
+        run: test -s /tmp/kodex-smoke.pt
