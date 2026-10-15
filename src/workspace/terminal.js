@@ -424,16 +424,6 @@
       if (results.length > 200) writeLine("Exibidos 200 de " + results.length + " resultados.", "warn");
       return;
     }
-    if (tokens.includes(">")) {
-      const redirectAt = tokens.indexOf(">");
-      if (redirectAt === tokens.length - 1 || redirectAt > tokens.length - 2) throw new Error("Uso do redirecionamento: echo texto > arquivo");
-      const target = resolvePath(tokens[redirectAt + 1]);
-      const sourceTokens = tokens.slice(0, redirectAt);
-      if (sourceTokens[0] !== "echo") throw new Error("Redirecionamento suportado apenas com echo: echo texto > arquivo");
-      const text = sourceTokens.slice(1).join(" ") + "\n";
-      const result = api().write(target, text);
-      return writeLine("Redirecionado para " + target + " (" + result.bytes + " bytes)", "success");
-    }
     throw new Error("Comando desconhecido: " + command + ". Digite help.");
   }
 
