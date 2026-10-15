@@ -32,7 +32,7 @@ jobs:
       - name: Install CPU PyTorch
         run: python -m pip install --upgrade pip && python -m pip install torch --index-url https://download.pytorch.org/whl/cpu && python -m pip install tokenizers
       - name: Validate Python source
-        run: python -m py_compile training/kodex_lm.py training/train.py training/generate.py training/prepare_corpus.py training/train_tokenizer.py training/evaluate.py
+        run: python -m py_compile training/kodex_lm.py training/train.py training/generate.py training/prepare_corpus.py training/train_tokenizer.py training/evaluate.py training/finetune_sft.py
       - name: Test corpus preparation policy
         run: python -m unittest discover -s training/tests -v
       - name: Train randomly initialized byte-level model
@@ -51,5 +51,9 @@ jobs:
         run: python training/generate.py --checkpoint /tmp/kodex-bpe.pt --prompt "def add(a, b):" --max-new-tokens 12 --top-k 8 --device cpu
       - name: Evaluate BPE checkpoint on held-out corpus
         run: python training/evaluate.py --checkpoint /tmp/kodex-bpe.pt --data training/data/smoke_validation.txt --device cpu
+      - name: Smoke-test supervised instruction fine-tuning
+        run: python training/finetune_sft.py --checkpoint /tmp/kodex-byte.pt --data training/data/smoke_instructions.jsonl --validation-data training/data/smoke_instructions_validation.jsonl --output /tmp/kodex-instruct.pt --steps 2 --batch-size 2 --gradient-accumulation-steps 1 --learning-rate 0.0001 --min-learning-rate 0.00001 --warmup-steps 0 --eval-interval 1 --eval-batches 1 --device cpu --save-every 0
+      - name: Reload instruction checkpoint and generate sample
+        run: python training/generate.py --checkpoint /tmp/kodex-instruct.pt --prompt "def clamp(value, minimum, maximum):" --max-new-tokens 12 --top-k 8 --device cpu
       - name: Verify checkpoints and tokenizer exist
-        run: test -s /tmp/kodex-byte.pt && test -s /tmp/kodex-bpe.pt && test -s /tmp/kodex-tokenizer.json
+        run: test -s /tmp/kodex-byte.pt && test -s /tmp/kodex-bpe.pt && test -s /tmp/kodex-instruct.pt && test -s /tmp/kodex-tokenizer.json
