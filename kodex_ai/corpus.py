@@ -62,7 +62,7 @@ def load_records(path: str | Path) -> list[str]:
     for record in records:
         clean = record.replace("\r\n", "\n").replace("\r", "\n")
         clean = "\n".join(line.rstrip() for line in clean.split("\n")).strip()
-                identity = clean.casefold()
+        identity = clean.casefold()
         key = hashlib.sha256(identity.encode("utf-8")).hexdigest()
         if clean and key not in seen:
             unique.append(clean)
