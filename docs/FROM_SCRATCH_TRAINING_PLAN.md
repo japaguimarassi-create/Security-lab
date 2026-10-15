@@ -29,17 +29,25 @@ Exit: a run can be tied to a precise commit, data manifest, config, and software
 ### Stage 1 — Tiny from-scratch proof
 - [x] Implement a small decoder-only Transformer using PyTorch primitives, initialized randomly.
 - [x] Use a transparent UTF-8 byte tokenizer (256 token values) for the first baseline, avoiding dependency on pretrained tokenizer/model assets.
+- [x] Add a byte-level BPE tokenizer trained from the selected corpus; no pretrained vocabulary is loaded.
 - [x] Train on a small, intentionally limited smoke corpus.
-- [x] Save and reload checkpoints; generate bytes after training.
-- [x] Record train/validation loss, corpus bytes, parameter count, elapsed time, and checkpoint/generation success for a CPU smoke run.
+- [x] Save and reload byte-level and BPE checkpoints; generate after training.
+- [x] Record loss, corpus size, parameter count, tokenizer vocabulary, elapsed time, and checkpoint/generation success for CPU smoke runs.
 
-Verified smoke run (GitHub Actions, CPU, commit `21b2bcdd7a167dba96b11a951b097ae2c7ac05b9`): 9,762 corpus bytes; 35,456 trainable parameters; 5 optimization steps; train loss fell from 5.5444 to 5.4717; sampled validation loss fell from 5.5443 to 5.4763; training loop completed in about 0.06 seconds; checkpoint reload and generation passed. This is only proof that the pipeline runs. Five steps on a tiny corpus do not establish useful coding skill, and the ephemeral smoke checkpoint was not published. See https://github.com/japaguimarassi-create/Security-lab/actions/runs/38780216908.
+Verified smoke runs:
+
+- Byte-level model, CI run: https://github.com/japaguimarassi-create/Security-lab/actions/runs/38780216908 — 9,762 corpus bytes; 35,456 trainable parameters; five optimization steps; train loss fell from 5.5444 to 5.4717; sampled validation loss fell from 5.5443 to 5.4763; checkpoint reload and generation passed.
+- Byte-level BPE run, CI run: https://github.com/japaguimarassi-create/Security-lab/actions/runs/38780682809 — tokenizer trained from scratch with 512 vocabulary entries; 4,537 model tokens after encoding the same corpus; 43,648 trainable parameters; five optimization steps; checkpoint reload and generation passed.
+
+Both ran on a GitHub-hosted CPU runner in seconds. These runs only prove that the data-to-tokenizer-to-model-to-checkpoint-to-generation pipeline works. Five steps on a tiny corpus do not establish useful coding skill, and the ephemeral smoke checkpoints were not published.
 
 Exit: the complete loop runs on CPU or a supported GPU and decreases training loss on a tiny test set. Loss reduction alone is not evidence of useful coding ability.
 
 ### Stage 2 — A proper tokenizer and a curated corpus
-- Train a BPE tokenizer from scratch on the approved training corpus and version its vocabulary.
-- Build a manifest-first ingestion pipeline. Every source needs a known origin, license, training permission, and provenance record.
+- [x] Implement a BPE tokenizer trainer that learns a vocabulary from a selected corpus.
+- [x] Build a manifest-first ingestion pipeline with provenance records, a license allowlist and basic path/secret filters.
+- [ ] Train the production tokenizer on an approved, representative programming corpus and version its vocabulary.
+- Build a larger manifest-first ingestion pipeline. Every source needs a known origin, license, training permission, and provenance record.
 - Start with self-authored examples, code explicitly donated for training, and permissively licensed repositories after license verification.
 - Deduplicate exact and near-duplicate code; group related files by repository to reduce leakage.
 - Exclude secrets, credentials, private repositories, binary/generated/dependency files, and sources not approved for training.
