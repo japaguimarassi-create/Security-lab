@@ -3,6 +3,7 @@ import json
 import math
 import random
 import subprocess
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -114,7 +115,7 @@ def main():
         trial_dir.mkdir(parents=True, exist_ok=True)
         command = [
             sys.executable,
-            "training/train_language_model.py",
+            "training/train_kodex_model.py",
             "--data", args.data,
             "--out-dir", str(trial_dir),
             "--steps", str(args.steps),
@@ -193,12 +194,13 @@ def main():
         "honesty_note": "Unexecuted candidate trials remain pending. A planned experiment or a low loss does not prove human-like language ability.",
     }
     if ranked:
-        import shutil
         best_id = ranked[0]["trial_id"]
         best_dir = out_dir / f"trial-{best_id:08d}"
         best_model = best_dir / "model-final.pt"
-        if best_model.is_file():
+        best_tokenizer = best_dir / "tokenizer.json"
+        if best_model.is_file() and best_tokenizer.is_file():
             shutil.copy2(best_model, out_dir / "best-model.pt")
+            shutil.copy2(best_tokenizer, out_dir / "best-model-tokenizer.json")
             write_json(out_dir / "best-model-selection.json", {
                 "trial_id": best_id,
                 "selection_metric": "validation_loss",
@@ -219,9 +221,14 @@ def main():
                 if log_path.exists():
                     log_path.unlink()
         if item["trial_id"] != best_id:
-            model_path = trial_dir / "model-final.pt"
-            if model_path.exists():
-                model_path.unlink()
+            for name in ("model-final.pt", "model-best.pt", "tokenizer.json"):
+                model_path = trial_dir / name
+                if model_path.exists():
+                    model_path.unlink()
+        else:
+            tokenizer_path = trial_dir / "tokenizer.json"
+            if tokenizer_path.exists():
+                tokenizer_path.unlink()
     write_json(out_dir / "summary.json", summary)
     (out_dir / "results.jsonl").write_text(
         "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in summary["results"]),
