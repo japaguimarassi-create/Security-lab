@@ -14,6 +14,9 @@ def parse_args():
     parser.add_argument("--max-new-tokens", type=int, default=160)
     parser.add_argument("--temperature", type=float, default=0.8)
     parser.add_argument("--top-k", type=int, default=40)
+    parser.add_argument("--top-p", type=float, default=0.95)
+    parser.add_argument("--repetition-penalty", type=float, default=1.05)
+    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     return parser.parse_args()
 
@@ -22,6 +25,13 @@ def main():
     args = parse_args()
     if args.max_new_tokens < 1 or args.temperature <= 0 or args.top_k < 1:
         raise SystemExit("max-new-tokens, temperature, and top-k must be positive")
+    if not 0.0 < args.top_p <= 1.0:
+        raise SystemExit("top-p must be in (0, 1]")
+    if args.repetition_penalty < 1.0:
+        raise SystemExit("repetition-penalty must be at least 1.0")
+    torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
     device_name = "cuda" if args.device == "cuda" or (args.device == "auto" and torch.cuda.is_available()) else "cpu"
     if device_name == "cuda" and not torch.cuda.is_available():
         raise SystemExit("CUDA was requested but is not available")
@@ -36,6 +46,7 @@ def main():
     model.eval()
 
     tokenizer = None
+    eos_token_id = None
     if payload.get("tokenizer_kind") == "byte-level-bpe":
         try:
             from tokenizers import Tokenizer
@@ -45,6 +56,7 @@ def main():
         if not isinstance(tokenizer_json, str) or not tokenizer_json:
             raise SystemExit("BPE checkpoint is missing its tokenizer definition")
         tokenizer = Tokenizer.from_str(tokenizer_json)
+        eos_token_id = tokenizer.token_to_id("[EOS]")
         prompt_ids = tokenizer.encode(args.prompt).ids
     else:
         prompt_ids = encode_bytes(args.prompt)
@@ -53,27 +65,47 @@ def main():
         prompt_ids = [10]
     context = torch.tensor([prompt_ids], dtype=torch.long, device=device_name)
 
+    generated_ids = []
     with torch.no_grad():
         for _ in range(args.max_new_tokens):
             input_ids = context[:, -config.block_size:]
             logits, _ = model(input_ids)
             next_logits = logits[:, -1, :] / args.temperature
+            if args.repetition_penalty > 1.0 and generated_ids:
+                recent_tokens = set(generated_ids[-config.block_size:])
+                for token_id in recent_tokens:
+                    score = next_logits[0, token_id]
+                    next_logits[0, token_id] = score * args.repetition_penalty if score < 0 else score / args.repetition_penalty
             top_k = min(args.top_k, next_logits.size(-1))
             threshold = torch.topk(next_logits, top_k).values[:, -1].unsqueeze(-1)
             next_logits = next_logits.masked_fill(next_logits < threshold, float("-inf"))
             probabilities = torch.softmax(next_logits, dim=-1)
+            if args.top_p < 1.0:
+                sorted_probabilities, sorted_indices = torch.sort(probabilities, descending=True, dim=-1)
+                cumulative_probabilities = sorted_probabilities.cumsum(dim=-1)
+                remove = cumulative_probabilities - sorted_probabilities > args.top_p
+                remove[..., 0] = False
+                sorted_probabilities = sorted_probabilities.masked_fill(remove, 0.0)
+                probabilities = torch.zeros_like(probabilities).scatter(-1, sorted_indices, sorted_probabilities)
+                probabilities = probabilities / probabilities.sum(dim=-1, keepdim=True).clamp_min(1e-12)
             next_token = torch.multinomial(probabilities, num_samples=1)
+            token_id = int(next_token.item())
+            if eos_token_id is not None and token_id == eos_token_id:
+                break
+            generated_ids.append(token_id)
             context = torch.cat((context, next_token), dim=1)
 
-    generated_ids = context[0].tolist()
-    generated_text = tokenizer.decode(generated_ids, skip_special_tokens=True) if tokenizer else decode_bytes(generated_ids)
+    full_ids = context[0].tolist()
+    generated_text = tokenizer.decode(full_ids, skip_special_tokens=True) if tokenizer else decode_bytes(full_ids)
     print(generated_text)
     print(json.dumps({
         "status": "generated",
         "checkpoint": str(checkpoint_path),
-        "pretrained_weights": False,
+        "pretrained_weights": payload.get("training", {}).get("pretrained_weights", False),
         "tokenizer_kind": payload.get("tokenizer_kind", "utf8-bytes"),
-        "warning": "This is a tiny experimental model trained on a smoke corpus, not a capable programming assistant."
+        "generated_tokens": len(generated_ids),
+        "seed": args.seed,
+        "warning": "Generation quality depends on the trained checkpoint and data; the smoke model is not evidence of strong coding ability."
     }, sort_keys=True))
 
 
