@@ -263,7 +263,7 @@
       "export                         baixa um ZIP do projeto",
       "edit <arquivo>                 abre o editor nesse arquivo",
       "open editor | open chat        abre a interface selecionada",
-      "train plan [total] [shards]    planeja a fila distribuída",
+      "train plan [total] [shards] [por_shard] [lote]  planeja a fila",
       "train workflow                 abre o workflow de ML no GitHub",
       "clear                          limpa a tela do terminal",
       "",
@@ -285,9 +285,11 @@
     writeLine("Isso não compila dependências ou binários e não substitui testes reais.", "info");
   }
 
-  function planTraining(totalRaw, shardsRaw) {
+  function planTraining(totalRaw, shardsRaw, perShardRaw, batchRaw) {
     const total = totalRaw === undefined ? 1000000 : Number(totalRaw);
     const shards = shardsRaw === undefined ? 16 : Number(shardsRaw);
+    const perShard = perShardRaw === undefined ? 1 : Number(perShardRaw);
+    const batchIndex = batchRaw === undefined ? 0 : Number(batchRaw);
     if (!Number.isSafeInteger(total) || total < 1 || total > 1000000000) {
       writeLine("total deve estar entre 1 e 1.000.000.000.", "error");
       return;
@@ -296,16 +298,32 @@
       writeLine("shards deve estar entre 1 e 256: o GitHub Actions limita cada matriz a 256 trabalhos.", "error");
       return;
     }
-    const perShard = Math.ceil(total / shards);
+    if (!Number.isSafeInteger(perShard) || perShard < 1 || perShard > 100) {
+      writeLine("por_shard deve estar entre 1 e 100 experimentos sequenciais por trabalho.", "error");
+      return;
+    }
+    if (!Number.isSafeInteger(batchIndex) || batchIndex < 0 || batchIndex > 10000000) {
+      writeLine("lote deve estar entre 0 e 10.000.000.", "error");
+      return;
+    }
+    const candidatesPerBatch = shards * perShard;
+    const batchCount = Math.ceil(total / candidatesPerBatch);
+    const pendingBeforeBatch = Math.min(total, batchIndex * candidatesPerBatch);
+    const remainingBeforeBatch = Math.max(0, total - pendingBeforeBatch);
+    const candidatesInThisBatch = Math.min(candidatesPerBatch, remainingBeforeBatch);
     writeLine("Plano da fila experimental", "heading");
-    writeLine("Candidatos de treino: " + total.toLocaleString("pt-BR"));
-    writeLine("Shards solicitados: " + shards);
-    writeLine("Candidatos médios por shard: " + perShard.toLocaleString("pt-BR"));
-    writeLine("Parâmetros do modelo-base: 1.678.592 traináveis (2 blocos Transformer; 256 de dimensão; 4 heads; contexto 128).", "success");
+    writeLine("Candidatos totais: " + total.toLocaleString("pt-BR"));
+    writeLine("Trabalhos por matriz: até " + shards + " (limite técnico de 256)");
+    writeLine("Experimentos sequenciais por trabalho: " + perShard);
+    writeLine("Candidatos por lote: até " + candidatesPerBatch.toLocaleString("pt-BR"));
+    writeLine("Lote atual: " + batchIndex + " de " + (batchCount - 1));
+    writeLine("Candidatos deste lote: " + candidatesInThisBatch.toLocaleString("pt-BR"));
+    writeLine("Lotes estimados para cobrir todos os candidatos: " + batchCount.toLocaleString("pt-BR"));
+    writeLine("Arquitetura do treino: Transformer causal com RoPE, GQA, MoE e multi-token prediction; a configuração é verificada no workflow.", "success");
     writeLine("Estado: PLANEJADO. Nenhum desses treinos foi executado por este comando.", "warning");
-    writeLine("Limite real: no máximo 256 jobs por matriz; simultaneidade efetiva depende da quota de runners e do hardware.", "info");
-    writeLine("Um milhão de candidatos não equivale automaticamente a anos de aprendizagem. Cada execução precisa de dados, FLOPs, tempo e avaliação reais.", "info");
-    writeLine("Inicie o pipeline real em Actions: " + ACTIONS_URL, "link");
+    writeLine("A execução simultânea real pode ser menor por quotas e disponibilidade dos runners do GitHub.", "info");
+    writeLine("Um milhão de candidatos não equivale automaticamente a anos de aprendizagem. Registre tokens, passos, tempo, hardware e métricas.", "info");
+    writeLine("Inicie ou confira a execução real em Actions: " + ACTIONS_URL, "link");
   }
 
   function downloadProject() {
@@ -473,7 +491,7 @@
         else throw new Error("Uso: open editor | open chat | open workflow");
       } else if (command === "train") {
         const action = (args[0] || "plan").toLowerCase();
-        if (action === "plan") planTraining(args[1], args[2]);
+        if (action === "plan") planTraining(args[1], args[2], args[3], args[4]);
         else if (action === "workflow" || action === "github") {
           writeLine("Abrindo GitHub Actions. A execução real será registrada pelo workflow; este terminal não dispara jobs por conta própria.", "info");
           window.open(ACTIONS_URL, "_blank", "noopener,noreferrer");
