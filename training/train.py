@@ -30,7 +30,9 @@ def parse_args():
     parser.add_argument("--experts", type=int, default=4)
     parser.add_argument("--experts-per-token", type=int, default=2)
     parser.add_argument("--router-aux-loss-coef", type=float, default=0.01)
-    parser.add_argument("--embedding-size", type=int, default=192)
+    parser.add_argument("--mtp-heads", type=int, default=2)
+    parser.add_argument("--mtp-loss-weight", type=float, default=0.1)
+    parser.add_argument("--embedding-size", type=int, default=192
     parser.add_argument("--learning-rate", type=float, default=3e-4)
     parser.add_argument("--min-learning-rate", type=float, default=3e-5)
     parser.add_argument("--weight-decay", type=float, default=0.1)
@@ -115,7 +117,7 @@ def make_optimizer(model, learning_rate, weight_decay):
 def save_checkpoint(path, model, optimizer, scaler, config, training, step, best_validation_loss):
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "schema_version": 2,
+        "schema_version": 3,
         "model_name": "KodexScratchLM",
         "config": config,
         "model_state_dict": model.state_dict(),
@@ -155,6 +157,10 @@ def main():
         raise SystemExit("experts-per-token must be between 1 and experts")
     if args.router_aux_loss_coef < 0:
         raise SystemExit("router-aux-loss-coef must be non-negative")
+    if args.mtp_heads < 0 or args.mtp_heads >= args.block_size:
+        raise SystemExit("mtp-heads must be between 0 and block-size - 1")
+    if args.mtp_loss_weight < 0:
+        raise SystemExit("mtp-loss-weight must be non-negative")
     if args.learning_rate <= 0 or args.min_learning_rate < 0 or args.min_learning_rate > args.learning_rate:
         raise SystemExit("Learning rates must satisfy 0 <= min-learning-rate <= learning-rate")
     if args.weight_decay < 0 or not 0.0 <= args.decay_ratio <= 1.0:
@@ -246,8 +252,8 @@ def main():
     if args.resume_from is not None:
         resume_path = args.resume_from.resolve(strict=True)
         resume_payload = torch.load(resume_path, map_location="cpu", weights_only=True)
-        if resume_payload.get("schema_version") != 2:
-            raise SystemExit("Checkpoint schema is incompatible; start a new run with the upgraded model")
+        if resume_payload.get("schema_version") != 3:
+            raise SystemExit("Checkpoint schema is incompatible; start a new run with the current model architecture")
         config = ModelConfig(**resume_payload["config"])
         if config.vocab_size != vocab_size:
             raise SystemExit("Checkpoint vocabulary does not match the current tokenizer")
@@ -267,6 +273,8 @@ def main():
             n_experts=args.experts,
             experts_per_token=args.experts_per_token,
             router_aux_loss_coef=args.router_aux_loss_coef,
+            mtp_heads=args.mtp_heads,
+            mtp_loss_weight=args.mtp_loss_weight,
         )
 
     if args.block_size > config.block_size and resume_payload is not None:
@@ -328,6 +336,8 @@ def main():
         "expert_count": config.n_experts,
         "experts_per_token": config.experts_per_token,
         "router_aux_loss_coef": config.router_aux_loss_coef,
+        "mtp_heads": config.mtp_heads,
+        "mtp_loss_weight": config.mtp_loss_weight,
     }
 
     print(json.dumps({
@@ -351,6 +361,8 @@ def main():
         "experts": config.n_experts,
         "experts_per_token": config.experts_per_token,
         "router_aux_loss_coef": config.router_aux_loss_coef,
+        "mtp_heads": config.mtp_heads,
+        "mtp_loss_weight": config.mtp_loss_weight,
         "resumed_from_step": global_step,
         "pretrained_weights": False,
         "seed": args.seed,
