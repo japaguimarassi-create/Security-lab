@@ -39,8 +39,8 @@ class MobileLanguageModelTests(unittest.TestCase):
         self.assertIn("chat", modes)
         self.assertIn("build", modes)
         self.assertGreaterEqual(len(samples), 50)
-        self.assertIn("Histórico:\\n", samples[0][0])
-        self.assertTrue(any("Histórico:\\nUsuário:" in prefix or "Histórico:\\nKodex:" in prefix for prefix, _ in samples))
+        self.assertIn("Histórico:\n", samples[0][0])
+        self.assertTrue(any("Histórico:\nUsuário:" in prefix or "Histórico:\nKodex:" in prefix for prefix, _ in samples))
 
 
 if __name__ == "__main__":
