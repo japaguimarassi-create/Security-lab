@@ -1,33 +1,32 @@
-# Kodexz — Android e Web
+# Kodexz Android v6 — fonte principal
 
-Este branch contém o workflow de importação dos arquivos-fonte e compilação do APK.
+Este branch prepara a importação e compilação de **Kodexz Android v6.0.0**. O pacote Android v6 é a versão principal selecionada após a auditoria; o nome `Kodexz_Kit_v3` identifica outro pacote web e não define a versão do app Android.
 
-## Como importar o código real
+## Arquivo-fonte esperado
 
-Envie para a raiz deste branch um ou ambos os arquivos:
+Envie para a raiz deste branch o arquivo `Kodexz_Android_v6_Source.zip`. Ele deve conter o diretório `Kodexz_Android_v6/`, com pelo menos:
 
-- `Kodexz_Android_v6_Source.zip` — projeto Android completo.
-- `Kodexz_Kit_v3.zip` — aplicação web, modelo JavaScript e documentação.
+- `app/src/main/java/com/kodexz/app/MainActivity.java`
+- `app/src/main/assets/public/index.html`
+- `app/src/main/assets/public/model.js`
+- `app/build.gradle`
 
-[Enviar arquivos para esta branch](https://github.com/japaguimarassi-create/Security-lab/upload/kodexz-android)
+[Enviar o ZIP Android v6 para esta branch](https://github.com/japaguimarassi-create/Security-lab/upload/kodexz-android)
 
-Quando um arquivo ZIP for enviado e o commit for confirmado, **GitHub Actions extrairá e fará commit dos arquivos individuais** nas pastas `Kodexz_Android_v6/` e/ou `Kodexz_Kit_v3/`. Não é para o repositório ficar apenas com um transformador de ZIP.
+O anexo da conversa não é enviado automaticamente ao GitHub. Baixe o ZIP e faça o upload pelo link acima; depois confirme o commit.
 
-## Compilar o APK
+## Fluxo depois do upload
 
-Depois de enviar `Kodexz_Android_v6_Source.zip`, abra [Actions](https://github.com/japaguimarassi-create/Security-lab/actions) e veja a execução **Import Kodexz source files and build Android APK**. Se a compilação terminar com sucesso, baixe o artefato `Kodexz-Android-debug-APK`.
+1. GitHub Actions verifica se os arquivos essenciais existem e se a configuração declara `versionCode 6` e `versionName '6.0.0'`.
+2. O workflow extrai e confirma os arquivos individuais na pasta versionada `Kodexz_Android_v6/`.
+3. Executa verificações estáticas de JavaScript e estrutura.
+4. Instala Java 17, Android SDK 35 e Gradle 8.10.2 e tenta compilar o APK de depuração.
+5. Se o build terminar com sucesso, publica o artefato `Kodexz-Android-v6-debug-APK` por 14 dias.
 
-O APK é de depuração, não uma versão assinada para publicar na Google Play.
+[Ver execuções e baixar o artefato](https://github.com/japaguimarassi-create/Security-lab/actions)
 
-## Configuração
+## Estado real
 
-- Android application ID: `com.kodexz.app`
-- Android mínimo: API 26
-- Compile SDK: 35
-- Java: 17
+Até o ZIP ser enviado pelo link acima, o branch contém a automação e a documentação, **não** o projeto-fonte completo. Ainda não há APK validado. Não interprete uma execução configurada ou um ZIP de fontes como prova de compilação.
 
-## Estado importante
-
-Neste momento, o workflow está preparado, mas **os ZIPs enviados na conversa ainda não estão armazenados no GitHub**. A importação não começa até que pelo menos um deles seja enviado ao link acima e confirmado em um commit.
-
-Nunca coloque tokens de acesso ou segredos OAuth diretamente no repositório.
+O APK gerado será de depuração, adequado para teste e instalação manual. Ele não será uma versão assinada para publicação na Google Play. Não coloque Client Secrets, tokens pessoais ou outros segredos no repositório.
