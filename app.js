@@ -305,6 +305,10 @@ function conversationalFallback(prompt) {
   if (/^(o que voce pode fazer|o que voce faz)[?.! ]*$/i.test(value)) {
     return "Posso conversar, explicar conceitos, explorar ideias e preparar propostas de programação. Nesta versão, não leio automaticamente seu repositório nem altero arquivos ou executo código.";
   }
+  const tokenCount = (value.match(/[\p{L}\p{N}_+#.-]+/gu) || []).length;
+  if (tokenCount === 1) {
+    return "Você escreveu \"" + String(prompt ?? "").trim().slice(0, 80) + "\". Quer saber o significado, ver um exemplo ou conversar sobre esse assunto?";
+  }
   return "Entendi. Posso explorar isso com você sem transformar automaticamente a mensagem em uma tarefa. Meu modelo local é pequeno e experimental; se a resposta não ficar boa, me dê um pouco mais de contexto.";
 }
 
