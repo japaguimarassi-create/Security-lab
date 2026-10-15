@@ -11,12 +11,12 @@ Kodex is an experimental, mobile-first programming assistant with a locally exec
 - **Experiment queue:** SQLite-backed queue accepts up to 10,000,000 planned independent experiments and runs only a bounded number of workers at once.
 - **Distributed training:** the trainer can run under torchrun/PyTorch DistributedDataParallel on properly configured multi-process hardware.
 - **Local neural chat:** `python -m kodex_ai.chat --checkpoint ...` loads a trained checkpoint and answers without a remote inference API.
-- **No APK workflow:** the added workflow runs tests and, when explicitly requested, trains and uploads a model checkpoint artifact; it does not package Android applications.
+- **No APK workflow:** the AI lab workflow validates the code and briefly trains the larger model configuration; the optional full run uploads a PyTorch checkpoint only.
 - **Local project workspace:** create, edit, rename, delete, import and download text files; preview HTML in a restricted iframe; run basic static checks; export the project as a ZIP.
 - **No runtime package downloads:** workspace functionality uses browser/platform features; the AI-lab branch adds no Android packaging workflow.
 - **Explicit Build mode:** prepare an implementation brief and optional model-generated draft; the chat mode stays conversational.
-- **Local neural model:** one-layer LSTM, 512-token byte-level BPE vocabulary, 128-dimensional embedding and hidden state, and exactly **264,192 trainable parameters** before quantization.
-- **No remote AI API:** each APK build trains model weights from random initialization and embeds an int8-quantized model into the app.
+- **Historical mobile model retained:** the inherited browser/Android LSTM still has 264,192 trainable parameters; it is not the new Python Transformer and its APK build is not run by this branch.
+- **No remote inference API:** the new Python training and chat CLI run locally or on a chosen runner; there is no built-in hosted-model dependency.
 - **Conversation history:** threads are stored in local browser/app storage.
 
 ## AI training and experiment queue 0.5.0
@@ -68,11 +68,13 @@ The root `AGENTS.md` records the product's persistent operating rules for compat
 
 ## Important limits
 
-The 264,192 figure is the actual trainable parameter count, not a count of biological neurons. In standard language-model terms, this is a **tiny/compact model**, not a medium-scale or frontier model.
+The Python Transformer is configured for **2,002,048 trainable parameters** at vocabulary size 1,024. "Parameters" are learned numerical weights, not literal or biological neurons. It is a small experimental language model, not an equivalent of Codex or Copilot.
 
-The training data at `training/data/mobile_dialogue.jsonl` contains 90 curated, mostly Portuguese conversation and programming examples. The default APK workflow runs 500 training steps from random initialization. This proves that model training, quantization, bundling, and on-device inference are connected; it does not prove broad language understanding or reliable coding ability. The model can make mistakes, repeat phrases, or return poor answers. The chat filters some obviously invalid outputs and uses explicit fallback responses for common greetings and very short messages. The separate workspace is a file editor, not evidence of stronger model intelligence.
+The corpus currently has 90 curated, mostly Portuguese examples (81 training and 9 validation examples in the CI run). CI actually trained this Transformer for **two optimizer steps** to verify forward/backward passes, loss calculation, and checkpoint creation. That smoke test proves the training implementation works; it does not make the checkpoint a useful or capable assistant. The longer 1,000–5,000-step training workflow is optional and has not been run by default. Even longer training on only 90 examples can overfit badly; a larger, licensed, deduplicated corpus and a held-out evaluation suite are necessary for meaningful quality.
 
-Chat Build mode still drafts a brief and checklist; it does not edit the repository or run commands. The new separate workspace edits only the files created or imported into its local storage. Repository context displayed in chat is descriptive; source files are not automatically read.
+Millions of experiments can be queued in SQLite, but a queue entry is not a running training process. Active concurrency is limited by worker count, CPU/GPU, RAM, disk, and the runner's quotas. A DDP setup synchronizes gradients across a finite number of processes; it cannot turn one machine into millions of machines or establish "years of equivalent learning."
+
+The browser terminal operates only on Kodex's local project files and **does not execute the phone's OS shell or PyTorch**. The Python CLI is a real terminal but runs only on an environment where Python and the dependencies are installed. Build-mode chat still produces a proposal; it does not autonomously edit the GitHub repository. This branch has no APK build or release job.
 
 ## Open the project
 
@@ -87,36 +89,11 @@ Chat Build mode still drafts a brief and checklist; it does not edit the reposit
 
 The old APK workflow and the 264,192-parameter browser/mobile LSTM remain in the repository for the prior application branch. This new branch's training CLI is separate from the in-app LSTM and does not build, update, sign, or release an APK. Its optional workflow produces PyTorch checkpoint files only.
 
-## Model architecture and parameter count
+## CI, checkpoints, and release policy
 
-The compact network is trained for autoregressive next-token prediction:
+The [AI Lab workflow](https://github.com/japaguimarassi-create/Security-lab/actions/workflows/ai-lab.yml) runs syntax checks, regression tests, and a real two-step smoke training run using the 2,002,048-parameter configuration. It does not ship that smoke checkpoint as a model release. For a longer training run, open **Actions → Kodex AI Lab validation and training → Run workflow**, choose the `kodex-ai-lab-v0.5.0` branch, enable `train_checkpoint`, and choose 1–5,000 optimizer steps. The output is a PyTorch checkpoint/config/metrics artifact, not an APK. No Android build, signing, or APK upload is performed by this branch.
 
-- Byte-level BPE tokenizer: 256 byte tokens plus 256 learned merges = vocabulary size 512.
-- Token embedding: 512 × 128 = 65,536 parameters.
-- Input LayerNorm: 128 weights + 128 biases = 256 parameters.
-- One LSTM layer: 132,096 parameters.
-- Output LayerNorm: 256 parameters.
-- Language-model head: 128 × 512 weights + 512 biases = 66,048 parameters.
-
-**Total: 65,536 + 256 + 132,096 + 256 + 66,048 = 264,192 parameters.**
-
-Weights are quantized per tensor to signed 8-bit values for app delivery. The app reconstructs the small network and computes predictions locally in JavaScript. The weights are generated by the APK workflow and are not kept as a source-controlled model checkpoint.
-
-## Reproduce the mobile model build
-
-Use Python 3.12 and PyTorch:
-
-```sh
-python -m pip install torch
-python -m unittest training.tests.test_mobile_mlm -v
-python training/build_mobile_mlm.py --data training/data/mobile_dialogue.jsonl --output kodex-model.js --steps 500 --batch-size 8 --seed 42
-```
-
-The generated `kodex-model.js` contains tokenizer merges, quantized tensors, the exact parameter count, and basic training metrics. The GitHub Actions APK workflow performs the same steps before Gradle packages the app assets.
-
-## APK
-
-This branch uses a separate AI-lab workflow for tests and optional model training. It does not invoke Android packaging. The existing 0.4.0 branch's APK notes are historical. This 0.5.0 AI-lab branch does not build an APK. Its optional model-training workflow artifact is a PyTorch checkpoint, not an Android application. It is a debug APK signed with the debug key; it is not a Google Play-certified release.
+The optional full training job starts from random initialization and is CPU-based on the standard hosted runner. It is intended as a reproducible experiment, not proof of model intelligence or of years of equivalent training.
 
 ## Privacy and safety
 
