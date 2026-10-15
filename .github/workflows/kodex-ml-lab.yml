@@ -1,0 +1,192 @@
+name: Kodex ML Lab (no APK build)
+
+on:
+  push:
+    branches:
+      - kodex-ai-lab
+    paths:
+      - "training/**"
+      - "tests/**"
+      - "src/terminal/**"
+      - "terminal.html"
+      - "terminal.css"
+      - "package.json"
+      - ".github/workflows/kodex-ml-lab.yml"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "plan = queue only; smoke = 2-step test; train = one real model; sweep = parallel independent experiments"
+        required: true
+        type: choice
+        default: plan
+        options:
+          - plan
+          - smoke
+          - train
+          - sweep
+      total_trials:
+        description: "Total candidate experiments represented by the deterministic queue"
+        required: true
+        default: "1000000"
+        type: number
+      shards:
+        description: "Parallel shards (1-256; actual concurrency depends on GitHub runner quotas)"
+        required: true
+        default: "8"
+        type: number
+      trials_per_shard:
+        description: "Actual models to train on each shard in this run (1-100)"
+        required: true
+        default: "1"
+        type: number
+      steps:
+        description: "Optimization steps per real model, for train/sweep"
+        required: true
+        default: "100"
+        type: number
+      batch_size:
+        description: "Training batch size"
+        required: true
+        default: "8"
+        type: number
+      base_seed:
+        description: "Base seed for deterministic experiment configurations"
+        required: true
+        default: "42"
+        type: number
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kodex-ml-lab-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - name: Build a bounded shard matrix
+        id: matrix
+        env:
+          MODE: ${{ inputs.mode || 'smoke' }}
+          SHARDS: ${{ inputs.shards || 8 }}
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import os
+
+          mode = os.environ.get("MODE", "smoke")
+          requested = int(os.environ.get("SHARDS", "8"))
+          workers = requested if mode == "sweep" else 1
+          if requested < 1 or requested > 256:
+              raise SystemExit("shards must be between 1 and GitHub Actions' 256-job matrix limit")
+          print("value=" + json.dumps(list(range(workers))))
+          PY
+
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate JavaScript and terminal boundaries
+        run: |
+          npm run check
+          npm test
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install CPU PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Compile Python sources
+        run: |
+          python -m py_compile training/model.py training/train_language_model.py training/experiment_swarm.py
+          python -m py_compile training/tests/test_transformer_model.py training/tests/test_experiment_swarm.py
+
+      - name: Run language-model and scheduler regression tests
+        run: python -m unittest discover -s training/tests -p "test_*.py" -v
+
+      - name: Verify parameter count and architecture
+        run: python training/model.py
+
+      - name: Verify million-trial sharding without training a million models
+        run: |
+          python training/experiment_swarm.py --mode plan --total-trials 1000000 --shard-id 0 --shard-count 16 --out-dir artifacts/kodex-ai-lab/validation-plan
+
+  train:
+    needs: [prepare, validate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 256
+      matrix:
+        shard: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    env:
+      MODE: ${{ inputs.mode || 'smoke' }}
+      TOTAL_TRIALS: ${{ inputs.total_trials || 1000000 }}
+      SHARDS: ${{ inputs.shards || 8 }}
+      TRIALS_PER_SHARD: ${{ inputs.trials_per_shard || 1 }}
+      STEPS: ${{ inputs.steps || 2 }}
+      BATCH_SIZE: ${{ inputs.batch_size || 8 }}
+      BASE_SEED: ${{ inputs.base_seed || 42 }}
+      SHARD_ID: ${{ matrix.shard }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install CPU PyTorch
+        if: env.MODE != 'plan'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Plan one million or more trial candidates
+        if: env.MODE == 'plan'
+        run: |
+          python training/experiment_swarm.py             --mode plan             --total-trials "$TOTAL_TRIALS"             --shard-id 0             --shard-count "$SHARDS"             --base-seed "$BASE_SEED"             --out-dir artifacts/kodex-ai-lab/plan
+
+      - name: Run a small end-to-end training smoke test
+        if: env.MODE == 'smoke'
+        run: |
+          python training/experiment_swarm.py             --mode execute             --total-trials 1             --shard-id 0             --shard-count 1             --max-executions 1             --steps 2             --batch-size 2             --base-seed "$BASE_SEED"             --out-dir artifacts/kodex-ai-lab/smoke
+
+      - name: Train one larger model from scratch
+        if: env.MODE == 'train'
+        run: |
+          python training/train_language_model.py             --steps "$STEPS"             --batch-size "$BATCH_SIZE"             --seed "$BASE_SEED"             --out-dir artifacts/kodex-ai-lab/single-model
+
+      - name: Execute bounded parallel sweep shards
+        if: env.MODE == 'sweep'
+        run: |
+          python training/experiment_swarm.py             --mode execute             --total-trials "$TOTAL_TRIALS"             --shard-id "$SHARD_ID"             --shard-count "$SHARDS"             --max-executions "$TRIALS_PER_SHARD"             --steps "$STEPS"             --batch-size "$BATCH_SIZE"             --base-seed "$BASE_SEED"             --out-dir "artifacts/kodex-ai-lab/shard-$SHARD_ID"
+
+      - name: Upload training metrics and selected checkpoints (never an APK)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kodex-ml-lab-${{ env.MODE }}-${{ env.SHARD_ID }}
+          path: artifacts/kodex-ai-lab
+          if-no-files-found: warn
+          retention-days: 14
