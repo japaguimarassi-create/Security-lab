@@ -283,12 +283,22 @@ function conversationalFallback(prompt) {
   return "Entendi. Posso explorar isso com você sem transformar automaticamente a mensagem em uma tarefa. Meu modelo local é pequeno e experimental; se a resposta não ficar boa, me dê um pouco mais de contexto.";
 }
 
-function makeResponse(prompt, mode) {
+function makeResponse(prompt, mode, history = []) {
+  const shortReply = /^(oi|olá|ola|hey|hello|hi|eai|e aí|opa|bom dia|boa tarde|boa noite|tudo bem\??|como vai\??|ok|okay|certo|entendi|sim|não|nao|obrigado|obrigada|valeu|thanks|thank you)[!.? ]*$/i.test(prompt.trim());
   const modelReady = window.KodexMobileMLM?.ready === true;
+  if (mode !== "build" && shortReply) {
+    return {
+      kind: "chat",
+      text: conversationalFallback(prompt),
+      modelGenerated: false,
+      modelVersion: modelReady ? "MLM local · 264.192 parâmetros" : "resposta local de contingência"
+    };
+  }
+
   let modelReply = "";
   if (modelReady && typeof window.KodexMobileMLM.generate === "function") {
     try {
-      modelReply = normalizeModelReply(window.KodexMobileMLM.generate(prompt, mode));
+      modelReply = normalizeModelReply(window.KodexMobileMLM.generate(prompt, mode, { history }));
     } catch {
       modelReply = "";
     }
@@ -305,16 +315,13 @@ function makeResponse(prompt, mode) {
     return brief;
   }
 
-  const shortReply = /^(oi|olá|ola|hey|hello|hi|eai|e aí|opa|bom dia|boa tarde|boa noite|tudo bem\??|como vai\??|ok|okay|certo|entendi|sim|não|nao|obrigado|obrigada|valeu|thanks|thank you)[!.? ]*$/i.test(prompt.trim());
-  const reply = shortReply ? conversationalFallback(prompt) : (modelReply || conversationalFallback(prompt));
   return {
     kind: "chat",
-    text: reply,
-    modelGenerated: Boolean(modelReply) && !shortReply,
+    text: modelReply || conversationalFallback(prompt),
+    modelGenerated: Boolean(modelReply),
     modelVersion: modelReady ? "MLM local · 264.192 parâmetros" : "resposta local de contingência"
   };
 }
-
 function appendMessage(thread, message) {
   thread.messages.push(message);
   if (thread.messages.length === 1 && message.role === "user") {
@@ -521,8 +528,12 @@ function sendMessage(event) {
   const prompt = includeProjectContext
     ? text + "\n\nContexto disponível nesta versão: projeto Security-lab, branch kodex-programming-ai. O conteúdo real dos arquivos não foi carregado pelo chat."
     : text;
+  const history = thread.messages.slice(-4).map(message => ({
+    role: message.role === "assistant" ? "assistant" : "user",
+    text: message.role === "user" ? message.text : (message.kind ? buildPlainText(message) : (message.text || ""))
+  }));
   appendMessage(thread, { role: "user", text, createdAt: new Date().toISOString(), mode: activeMode });
-  const response = makeResponse(prompt, activeMode);
+  const response = makeResponse(prompt, activeMode, history);
   response.role = "assistant";
   response.sourcePrompt = text;
   response.createdAt = new Date().toISOString();
