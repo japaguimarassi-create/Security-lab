@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from model import ByteTokenizer, KodexGPT, ModelConfig
+from training.model import ByteTokenizer, KodexGPT, ModelConfig
 
 
 class TransformerModelTests(unittest.TestCase):
