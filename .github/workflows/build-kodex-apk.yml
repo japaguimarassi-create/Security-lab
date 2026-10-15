@@ -9,6 +9,8 @@ on:
       - "index.html"
       - "styles.css"
       - "app.js"
+      - "package.json"
+      - "README.md"
       - "src/ai/mobile-mlm.js"
       - "src/ai/neuron-profile.json"
       - "training/build_mobile_mlm.py"
@@ -61,6 +63,21 @@ jobs:
           print("Training metrics:", model["training"])
           print("Export size:", Path("kodex-model.js").stat().st_size, "bytes")
           PY
+
+      - name: Smoke-test on-device inference
+        run: |
+          node - <<'JS'
+          global.window = {};
+          require("./kodex-model.js");
+          require("./src/ai/mobile-mlm.js");
+          const runtime = window.KodexMobileMLM;
+          if (!runtime || !runtime.ready || runtime.metadata.parameterCount !== 264192) {
+            throw new Error("Local language model did not initialize correctly");
+          }
+          const reply = runtime.generate("me explique uma variável", "chat", { maxNewTokens: 24 });
+          if (typeof reply !== "string") throw new Error("Inference did not return text");
+          console.log("Local inference smoke result:", JSON.stringify(reply));
+          JS
 
       - name: Set up Java
         uses: actions/setup-java@v4
