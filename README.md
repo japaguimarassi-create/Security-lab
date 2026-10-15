@@ -13,7 +13,7 @@ Kodex is an experimental, mobile-first programming assistant with a locally exec
 - **Local neural chat:** `python -m kodex_ai.chat --checkpoint ...` loads a trained checkpoint and answers without a remote inference API.
 - **No APK workflow:** the added workflow runs tests and, when explicitly requested, trains and uploads a model checkpoint artifact; it does not package Android applications.
 - **Local project workspace:** create, edit, rename, delete, import and download text files; preview HTML in a restricted iframe; run basic static checks; export the project as a ZIP.
-- **No runtime package downloads:** workspace functionality uses browser/platform features and is packaged with the Android app.
+- **No runtime package downloads:** workspace functionality uses browser/platform features; the AI-lab branch adds no Android packaging workflow.
 - **Explicit Build mode:** prepare an implementation brief and optional model-generated draft; the chat mode stays conversational.
 - **Local neural model:** one-layer LSTM, 512-token byte-level BPE vocabulary, 128-dimensional embedding and hidden state, and exactly **264,192 trainable parameters** before quantization.
 - **No remote AI API:** each APK build trains model weights from random initialization and embeds an int8-quantized model into the app.
@@ -76,12 +76,16 @@ Chat Build mode still drafts a brief and checklist; it does not edit the reposit
 
 ## Open the project
 
-- [Kodex branch](https://github.com/japaguimarassi-create/Security-lab/tree/kodex-programming-ai)
-- [APK build workflow](https://github.com/japaguimarassi-create/Security-lab/actions/workflows/build-kodex-apk.yml)
-- [Local MLM profile](src/ai/neuron-profile.json)
-- [Training corpus](training/data/mobile_dialogue.jsonl)
-- [Model training and quantization](training/build_mobile_mlm.py)
-- [On-device inference runtime](src/ai/mobile-mlm.js)
+- [Kodex AI Lab v0.5.0 branch](https://github.com/japaguimarassi-create/Security-lab/tree/kodex-ai-lab-v0.5.0)
+- [AI Lab validation and optional checkpoint-training workflow](https://github.com/japaguimarassi-create/Security-lab/actions/workflows/ai-lab.yml)
+- [Terminal CLI](kodex_ai/terminal.py)
+- [Transformer model](kodex_ai/model.py)
+- [Training pipeline](kodex_ai/train.py)
+- [Experiment queue](kodex_ai/sweep.py)
+- [Local chat CLI](kodex_ai/chat.py)
+- [Agent workflow research notes](docs/ai-training-architecture.md)
+
+The old APK workflow and the 264,192-parameter browser/mobile LSTM remain in the repository for the prior application branch. This new branch's training CLI is separate from the in-app LSTM and does not build, update, sign, or release an APK. Its optional workflow produces PyTorch checkpoint files only.
 
 ## Model architecture and parameter count
 
