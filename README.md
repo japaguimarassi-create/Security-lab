@@ -14,7 +14,7 @@ Kodex is an experimental, mobile-first programming assistant with a locally exec
 
 The 264,192 figure is the actual trainable parameter count, not a count of biological neurons. In standard language-model terms, this is a **tiny/compact model**, not a medium-scale or frontier model.
 
-The training data at `training/data/mobile_dialogue.jsonl` contains 90 manually curated Portuguese conversation and programming examples. The default APK workflow runs 500 training steps from random initialization. This proves that model training, quantization, bundling, and on-device inference are connected; it does not prove broad language understanding or reliable coding ability. The model can make mistakes, repeat phrases, or return poor answers. The app filters some obviously invalid outputs and uses explicit fallback responses for common greetings and very short messages.
+The training data at `training/data/mobile_dialogue.jsonl` contains 90 curated, mostly Portuguese conversation and programming examples. The default APK workflow runs 500 training steps from random initialization. This proves that model training, quantization, bundling, and on-device inference are connected; it does not prove broad language understanding or reliable coding ability. The model can make mistakes, repeat phrases, or return poor answers. The app filters some obviously invalid outputs and uses explicit fallback responses for common greetings and very short messages.
 
 Build mode currently drafts text and a checklist. It does **not** modify real repository files, run terminal commands, compile user code, or provide an OS-enforced sandbox. Repository context displayed in the interface is descriptive; source files are not automatically read.
 
