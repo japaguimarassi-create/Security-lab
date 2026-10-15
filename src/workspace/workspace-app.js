@@ -40,7 +40,11 @@
         }
       }
     } catch {
-      localStorage.removeItem(STORAGE_KEY);
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch {
+        return { name: "Meu projeto", files: engine.collectEntries(engine.createStarterProject()), activePath: "index.html" };
+      }
     }
     return { name: "Meu projeto", files: engine.collectEntries(engine.createStarterProject()), activePath: "index.html" };
   }
@@ -417,6 +421,8 @@
   });
   window.addEventListener("beforeunload", saveCurrentFile);
 
-  if (!localStorage.getItem(STORAGE_KEY)) persistWorkspace();
+  let hasSavedWorkspace = false;
+  try { hasSavedWorkspace = Boolean(localStorage.getItem(STORAGE_KEY)); } catch {}
+  if (!hasSavedWorkspace) persistWorkspace();
   renderEditor();
 })();
