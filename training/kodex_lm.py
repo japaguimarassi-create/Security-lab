@@ -16,6 +16,8 @@ class ModelConfig:
     n_experts: int = 4
     experts_per_token: int = 2
     router_aux_loss_coef: float = 0.01
+    mtp_heads: int = 2
+    mtp_loss_weight: float = 0.1
     dropout: float = 0.0
     rope_theta: float = 10000.0
     initializer_range: float = 0.02
@@ -175,12 +177,20 @@ class KodexLanguageModel(nn.Module):
             raise ValueError("experts_per_token must be between 1 and n_experts")
         if config.router_aux_loss_coef < 0:
             raise ValueError("router_aux_loss_coef must be non-negative")
+        if config.mtp_heads < 0 or config.mtp_heads >= config.block_size:
+            raise ValueError("mtp_heads must be between 0 and block_size - 1")
+        if config.mtp_loss_weight < 0:
+            raise ValueError("mtp_loss_weight must be non-negative")
         self.config = config
         self.token_embedding = nn.Embedding(config.vocab_size, config.n_embd)
         self.embedding_dropout = nn.Dropout(config.dropout)
         self.blocks = nn.ModuleList(TransformerBlock(config) for _ in range(config.n_layer))
         self.final_norm = RMSNorm(config.n_embd)
         self.last_aux_loss = torch.tensor(0.0)
+        self.last_mtp_loss = torch.tensor(0.0)
+        self.mtp_projections = nn.ModuleList(
+            nn.Linear(config.n_embd, config.n_embd, bias=False) for _ in range(config.mtp_heads)
+        )
         self.language_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         self.apply(self._initialize_weights)
         self.language_head.weight = self.token_embedding.weight
@@ -215,13 +225,26 @@ class KodexLanguageModel(nn.Module):
             self.last_aux_loss = torch.stack(auxiliary_losses).mean()
         else:
             self.last_aux_loss = x.new_zeros(())
-        x = self.final_norm(x)
+        hidden = x
+        x = self.final_norm(hidden)
         logits = self.language_head(x)
         loss = None
+        self.last_mtp_loss = logits.new_zeros(())
         if targets is not None:
             if targets.shape != input_ids.shape:
                 raise ValueError("targets must have the same shape as input_ids")
-            loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), targets.reshape(-1))
+            loss = masked_cross_entropy(logits, targets)
+            mtp_losses = []
+            for offset, projection in enumerate(self.mtp_projections, start=1):
+                if offset >= targets.shape[1]:
+                    break
+                future_hidden = projection(hidden[:, :-offset, :])
+                future_logits = self.language_head(self.final_norm(future_hidden))
+                future_targets = targets[:, offset:]
+                mtp_losses.append(masked_cross_entropy(future_logits, future_targets))
+            if mtp_losses:
+                self.last_mtp_loss = torch.stack(mtp_losses).mean()
+                loss = loss + self.config.mtp_loss_weight * self.last_mtp_loss
             if self.training:
                 loss = loss + self.config.router_aux_loss_coef * self.last_aux_loss
         return logits, loss
@@ -231,6 +254,20 @@ class KodexLanguageModel(nn.Module):
 
     def config_dict(self):
         return asdict(self.config)
+
+
+def masked_cross_entropy(logits, targets):
+    if logits.shape[:-1] != targets.shape:
+        raise ValueError("target shape must match the logits sequence dimensions")
+    flat_targets = targets.reshape(-1)
+    loss_sum = F.cross_entropy(
+        logits.reshape(-1, logits.size(-1)),
+        flat_targets,
+        ignore_index=-100,
+        reduction="sum",
+    )
+    valid_count = (flat_targets != -100).sum().clamp_min(1)
+    return loss_sum / valid_count
 
 
 def encode_bytes(text):
