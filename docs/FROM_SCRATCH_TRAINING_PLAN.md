@@ -31,7 +31,9 @@ Exit: a run can be tied to a precise commit, data manifest, config, and software
 - [x] Use a transparent UTF-8 byte tokenizer (256 token values) for the first baseline, avoiding dependency on pretrained tokenizer/model assets.
 - [x] Train on a small, intentionally limited smoke corpus.
 - [x] Save and reload checkpoints; generate bytes after training.
-- [ ] Record actual train/validation loss, tokens processed, elapsed time, peak memory, and checkpoint hash for a smoke run.
+- [x] Record train/validation loss, corpus bytes, parameter count, elapsed time, and checkpoint/generation success for a CPU smoke run.
+
+Verified smoke run (GitHub Actions, CPU, commit `21b2bcdd7a167dba96b11a951b097ae2c7ac05b9`): 9,762 corpus bytes; 35,456 trainable parameters; 5 optimization steps; train loss fell from 5.5444 to 5.4717; sampled validation loss fell from 5.5443 to 5.4763; training loop completed in about 0.06 seconds; checkpoint reload and generation passed. This is only proof that the pipeline runs. Five steps on a tiny corpus do not establish useful coding skill, and the ephemeral smoke checkpoint was not published. See https://github.com/japaguimarassi-create/Security-lab/actions/runs/38780216908.
 
 Exit: the complete loop runs on CPU or a supported GPU and decreases training loss on a tiny test set. Loss reduction alone is not evidence of useful coding ability.
 
@@ -87,7 +89,7 @@ If the requirement remains exactly more than 264,000 active logical units, that 
 
 ## Compute constraints
 
-GitHub is suitable for versioning, CI, tiny CPU smoke tests, data-manifest validation, and reproducibility. A standard GitHub Actions runner is not a free large-scale GPU-training cluster. Large model pretraining needs dedicated GPU compute, high-throughput storage, checkpoints, monitoring, and a budget.
+GitHub is suitable for versioning, CI, tiny CPU smoke tests, data-manifest validation, and reproducibility. Standard runners can test this tiny model but are not a practical large-scale pretraining cluster; GPU larger runners have separate billing and plan restrictions. For experiments, hosted notebooks such as Google Colab or Kaggle may provide limited GPU access, but availability and quotas are not guaranteed. Large pretraining needs dedicated GPU compute, high-throughput storage, checkpoints, monitoring, and a budget. See https://research.google.com/colaboratory/intl/pt-BR/faq.html, https://www.kaggle.com/docs/efficient-gpu-usage, and https://docs.github.com/en/billing/reference/actions-runner-pricing.
 
 For order-of-magnitude planning, dense Transformer pretraining compute is often approximated as proportional to 6 × parameters × training tokens. This is a planning heuristic, not a hardware-time guarantee. Published compute-optimal research also shows that parameter count must be considered together with the number of training tokens; larger is not automatically better.
 
