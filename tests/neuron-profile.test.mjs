@@ -4,20 +4,18 @@ import { readFile } from "node:fs/promises";
 
 const profileUrl = new URL("../src/ai/neuron-profile.json", import.meta.url);
 
-test("profile totals more than 264000 logical units", async () => {
+test("profile reports exactly 264192 trainable parameters", async () => {
   const profile = JSON.parse(await readFile(profileUrl, "utf8"));
-  const computedTotal = profile.layerSizes.reduce((sum, size) => sum + size, 0);
-
-  assert.ok(profile.layerSizes.length > 1);
-  assert.ok(profile.layerSizes.every((size) => Number.isInteger(size) && size > 0));
-  assert.equal(computedTotal, profile.totalLogicalUnits);
-  assert.ok(computedTotal > profile.requiredMinimumExclusive);
-  assert.equal(computedTotal, 264192);
+  assert.equal(profile.totalTrainableParameters, 264192);
+  assert.equal(profile.unitType, "trainable_parameter");
+  assert.equal(profile.architecture.type, "single-layer LSTM autoregressive language model");
 });
 
-test("profile does not falsely claim trained weights or implemented inference", async () => {
+test("profile describes local inference and the training limitations accurately", async () => {
   const profile = JSON.parse(await readFile(profileUrl, "utf8"));
-  assert.equal(profile.trainingStatus, "not-trained");
-  assert.equal(profile.inferenceStatus, "not-implemented");
-  assert.equal(profile.weightsIncluded, false);
+  assert.equal(profile.trainingStatus, "trained-from-random-initialization-during-apk-build");
+  assert.equal(profile.inferenceStatus, "local-javascript-lstm");
+  assert.equal(profile.weightsIncludedInApk, true);
+  assert.equal(profile.pretrainedWeightsUsed, false);
+  assert.ok(profile.notes.some(note => note.includes("not a count of biological")));
 });
