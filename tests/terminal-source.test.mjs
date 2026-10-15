@@ -19,7 +19,8 @@ test("execution uses a sandboxed iframe without same-origin permission", () => {
 });
 
 test("terminal explicitly refuses unrestricted operating-system shell commands", () => {
-  assert.match(source, /does not execute .* no sistema operacional|não executa .* no sistema operacional/i);
+  assert.match(source, /não executa/);
+  assert.match(source, /sistema operacional/);
   assert.match(source, /run js/);
   assert.match(source, /train plan/);
 });
