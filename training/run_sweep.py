@@ -18,6 +18,26 @@ MAX_TRIALS = 1_000_000
 MAX_WORKERS = 32
 
 
+def dataset_digest(path):
+    path = Path(path)
+    import hashlib
+    digest = hashlib.sha256()
+    if path.is_dir():
+        corpus_files = sorted(path.glob("*.jsonl")) + sorted(path.glob("*.txt"))
+        if not corpus_files:
+            raise FileNotFoundError(f"No .jsonl or .txt training corpus found in: {path}")
+        for corpus_file in corpus_files:
+            digest.update(corpus_file.name.encode("utf-8"))
+            digest.update(b"\\0")
+            digest.update(corpus_file.read_bytes())
+            digest.update(b"\\0")
+    elif path.is_file():
+        digest.update(path.read_bytes())
+    else:
+        raise FileNotFoundError(f"Training data was not found: {path}")
+    return digest.hexdigest()
+
+
 def trial_config(index, seed):
     rng = random.Random(seed + index * 104729)
     return {
@@ -132,7 +152,7 @@ def main():
         },
         "scheduling": "Trials are generated lazily from their index; only --execute starts training processes. Concurrency is bounded by --workers.",
         "calendar_equivalence": "Not claimed. Number of trials or steps is not equivalent to years of learning.",
-        "data_sha256": __import__("hashlib").sha256(args.data.read_bytes()).hexdigest()
+        "data_sha256": dataset_digest(args.data)
     }
     (output_root / "manifest.json").write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(plan, ensure_ascii=False), flush=True)
