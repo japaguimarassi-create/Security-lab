@@ -42,7 +42,7 @@ class ProjectTerminalTests(unittest.TestCase):
         result = terminal.execute_external("python --version") if terminal.unsafe_shell else None
         self.assertIsNone(result)
         output, _ = terminal.execute("run npm run check")
-        self.assertIn("bloqueado por padrão", output) if not (self.root / "package.json").exists() else None
+        self.assertNotIn("bloqueado por padrão", output)\n        self.assertIn("[exit code:", output)
 
     def test_cd_cannot_escape_project_root(self):
         output, _ = self.terminal.execute("cd ..")
