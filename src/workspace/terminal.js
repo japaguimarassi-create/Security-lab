@@ -293,6 +293,16 @@
     }
     if (command === "pwd") return writeLine("/project" + (cwd ? "/" + cwd : ""));
     if (command === "date") return writeLine(new Date().toString());
+    if (tokens.includes(">")) {
+      const redirectAt = tokens.indexOf(">");
+      if (redirectAt === tokens.length - 1 || redirectAt > tokens.length - 2) throw new Error("Uso do redirecionamento: echo texto > arquivo");
+      const target = resolvePath(tokens[redirectAt + 1]);
+      const sourceTokens = tokens.slice(0, redirectAt);
+      if (sourceTokens[0] !== "echo") throw new Error("Redirecionamento suportado apenas com echo: echo texto > arquivo");
+      const text = sourceTokens.slice(1).join(" ") + "\n";
+      const result = api().write(target, text);
+      return writeLine("Redirecionado para " + target + " (" + result.bytes + " bytes)", "success");
+    }
     if (command === "echo") return writeLine(args.join(" "));
     if (command === "history") {
       history.slice(-30).forEach((line, index) => writeLine(String(history.length - Math.min(30, history.length) + index + 1) + "  " + line, "muted"));
