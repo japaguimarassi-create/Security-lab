@@ -89,6 +89,34 @@ jobs:
           test -s artifacts/ci-smoke/checkpoint_last.pt
           test -s artifacts/ci-smoke/training_summary.json
 
+      - name: Validate and briefly train the >780k-parameter model configuration
+        run: |
+          python -m kodex_ai.train --dry-run --data training/data/mobile_dialogue.jsonl --device cpu
+          python -m kodex_ai.train \
+            --data training/data/mobile_dialogue.jsonl \
+            --output-dir artifacts/target-model-smoke \
+            --steps 2 \
+            --batch-size 1 \
+            --block-size 128 \
+            --vocab-size 1024 \
+            --layers 4 \
+            --heads 6 \
+            --embedding-size 192 \
+            --feed-forward-size 768 \
+            --eval-interval 1 \
+            --eval-batches 1 \
+            --checkpoint-interval 2 \
+            --device cpu
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          summary = json.loads(Path("artifacts/target-model-smoke/training_summary.json").read_text(encoding="utf-8"))
+          assert summary["steps_completed"] == 2, summary
+          assert summary["parameter_count"] > 780000, summary
+          assert Path("artifacts/target-model-smoke/checkpoint_last.pt").is_file()
+          print("Target-model training smoke passed:", summary["parameter_count"], "parameters; 2 actual optimizer steps")
+          PY
+
   train-model:
     name: Optional real model training (checkpoint artifact only)
     if: github.event_name == 'workflow_dispatch' && inputs.train_checkpoint
