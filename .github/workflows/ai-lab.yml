@@ -1,0 +1,151 @@
+name: Kodex AI Lab validation and training
+
+on:
+  push:
+    branches:
+      - kodex-ai-lab-v0.5.0
+    paths:
+      - "kodex_ai/**"
+      - "tests/test_kodex_ai.py"
+      - "tests/test_terminal.py"
+      - "tests/workspace.test.mjs"
+      - "tests/chat-routing.test.mjs"
+      - "training/data/mobile_dialogue.jsonl"
+      - "package.json"
+      - "terminal.js"
+      - "terminal.html"
+      - "terminal.css"
+      - "requirements-ai.txt"
+      - ".github/workflows/ai-lab.yml"
+  workflow_dispatch:
+    inputs:
+      train_checkpoint:
+        description: "Run a real PyTorch training job and upload its checkpoint (not an APK)"
+        required: true
+        default: false
+        type: boolean
+      training_steps:
+        description: "Optimizer steps for the optional training job (1-5000)"
+        required: true
+        default: 1000
+        type: number
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Validate sources and training pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install CPU PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-ai.txt --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Check JavaScript and run Node regression tests
+        run: |
+          npm run check
+          npm test
+
+      - name: Run existing mobile-model tests
+        run: python -m unittest training.tests.test_mobile_mlm -v
+
+      - name: Run AI and terminal tests
+        run: python -m unittest tests.test_kodex_ai tests.test_terminal -v
+
+      - name: Smoke-test an actual model training run
+        run: |
+          python -m kodex_ai.train \
+            --data training/data/mobile_dialogue.jsonl \
+            --output-dir artifacts/ci-smoke \
+            --steps 2 \
+            --batch-size 1 \
+            --block-size 16 \
+            --vocab-size 320 \
+            --layers 1 \
+            --heads 2 \
+            --embedding-size 16 \
+            --feed-forward-size 32 \
+            --dropout 0 \
+            --eval-interval 1 \
+            --eval-batches 1 \
+            --checkpoint-interval 2 \
+            --device cpu
+          test -s artifacts/ci-smoke/checkpoint_last.pt
+          test -s artifacts/ci-smoke/training_summary.json
+
+  train-model:
+    name: Optional real model training (checkpoint artifact only)
+    if: github.event_name == 'workflow_dispatch' && inputs.train_checkpoint
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Validate training step count
+        env:
+          TRAINING_STEPS: ${{ inputs.training_steps }}
+        run: |
+          if ! [[ "$TRAINING_STEPS" =~ ^[0-9]+$ ]] || (( TRAINING_STEPS < 1 || TRAINING_STEPS > 5000 )); then
+            echo "training_steps must be between 1 and 5000"
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install CPU PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-ai.txt --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Train from random initialization
+        env:
+          TRAINING_STEPS: ${{ inputs.training_steps }}
+        run: |
+          python -m kodex_ai.prepare_data --input training/data/mobile_dialogue.jsonl
+          python -m kodex_ai.train \
+            --data training/data/mobile_dialogue.jsonl \
+            --output-dir artifacts/kodex-ai-run \
+            --steps "$TRAINING_STEPS" \
+            --batch-size 4 \
+            --block-size 128 \
+            --vocab-size 1024 \
+            --layers 4 \
+            --heads 6 \
+            --embedding-size 192 \
+            --feed-forward-size 768 \
+            --device cpu
+
+      - name: Upload trained model checkpoint, not an APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kodex-AI-Checkpoint-v0.5.0
+          path: |
+            artifacts/kodex-ai-run/checkpoint_best.pt
+            artifacts/kodex-ai-run/checkpoint_last.pt
+            artifacts/kodex-ai-run/config.json
+            artifacts/kodex-ai-run/tokenizer.json
+            artifacts/kodex-ai-run/metrics.jsonl
+            artifacts/kodex-ai-run/training_summary.json
+          if-no-files-found: error
+          retention-days: 14
