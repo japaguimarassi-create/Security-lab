@@ -4,13 +4,14 @@ This document describes the **actual code in this branch**, separates queued exp
 
 ## Executive overview
 
-The lab has three complementary pieces:
+The lab has two model architectures, with the advanced one wired to the current training workflow:
 
-1. A causal decoder-only Transformer baseline in `training/model.py`, with 1,678,592 trainable parameters.
-2. An experimental architecture in `training/kodex_lm.py` that adds rotary positional embeddings, grouped-query attention, SwiGLU feed-forward experts, sparse top-k mixture-of-experts routing, router load-balancing loss, and multi-token prediction heads. Its unit tests currently validate shapes, gradients, causal behavior, and invalid configuration handling.
-3. A candidate experiment scheduler in `training/experiment_swarm.py`, plus tokenizer training utilities in `training/train_tokenizer.py` and corpus safeguards in `training/prepare_corpus.py`.
+1. A causal decoder-only Transformer baseline in `training/model.py`, with exactly 1,678,592 trainable parameters.
+2. The active experimental architecture in `training/kodex_lm.py`, which adds rotary positional embeddings, grouped-query attention, SwiGLU expert feed-forward layers, sparse top-k mixture-of-experts routing, router load-balancing loss, and multi-token prediction heads. The default `ModelConfig()` has **2,378,880 trainable parameters** as verified in GitHub Actions. The training run adjusts vocabulary size to its BPE tokenizer, so the exact count is recorded in each run and may be larger.
+3. The active trainer in `training/train_kodex_model.py`, which fits the byte-level BPE tokenizer only on the training split, optimizes the causal language objective, selects the best checkpoint by held-out validation loss, evaluates the test split after selection, and stores tokenizer/corpus hashes, optimizer state, and metrics.
+4. A candidate experiment scheduler in `training/experiment_swarm.py`, plus tokenizer training utilities in `training/train_tokenizer.py` and corpus safeguards in `training/prepare_corpus.py`.
 
-The currently wired default training workflow is CPU-first, with separate jobs for model validation and actual training. Before claiming a model is useful, use held-out examples, generated answer inspection, and records of the real run. A parameter count is not an intelligence measurement.
+The current training workflow is CPU-first, with separate jobs for model validation and actual training. Before claiming a model is useful, use held-out examples, generated answer inspection, and records of the real run. A parameter count is not an intelligence measurement.
 
 ## What “a language model trained from scratch” involves
 
@@ -34,7 +35,11 @@ Validation and test splits are kept out of gradient updates. Do not repeatedly t
 
 `training/experiment_swarm.py` can deterministically represent up to 1,000,000,000 candidate trial IDs without materializing a billion-entry queue. Each shard derives its trial IDs from a stable formula, and each candidate gets a deterministic seed and hyperparameter configuration. With `--mode plan`, the system only creates a plan. With `--mode execute`, it trains only the bounded number of trials specified by `--max-executions`.
 
-The GitHub Actions workflow limits each matrix to 256 jobs. Actual simultaneous execution can be lower because of runner availability, concurrency quotas, queueing, and account/org settings. A million planned candidate configurations are not a million trained models. A sweep is not a single model receiving a million times more learning, and it cannot be described as “years of learning” without measured training tokens, steps, hardware throughput, and runtime.
+The queue supports `--batch-index` so later runs continue to new candidate IDs rather than repeating the first batch. Keep `--shard-count` and `--max-executions` constant across batches: batch \(b\) starts at candidate ID \(shard\_id + b \times max\_executions \times shard\_count\). This partitions each shard's ordered candidate IDs into non-overlapping batches. Regression tests verify the batches cover every test candidate exactly once with no overlap.
+
+The GitHub Actions workflow limits each matrix to 256 jobs. Actual simultaneous execution can be lower because of runner availability, concurrency quotas, queueing, and account/org settings. With 256 shards and 100 sequential trials per shard, the theoretical batch maximum is 25,600 candidate attempts; at that cap, one million attempts take at least 40 batches if all jobs complete. Each job has a six-hour cap, and each trial has its own timeout, so adjust training steps and batch size to the actual runner throughput.
+
+A million planned candidate configurations are not a million trained models. A sweep is not a single model receiving a million times more learning, and it cannot be described as “years of learning” without measured training tokens, steps, FLOPs or hardware throughput, and runtime.
 
 The public repository's standard `ubuntu-latest` hosted runner is documented as a fresh Linux VM with 4 CPUs and 16 GB RAM; public-repository standard runners are free under GitHub's documented policy, but capacity and matrix limits still apply. These CPU runners are practical for tests and small experiments. Serious scale-up needs a larger dataset and compute, measurement of tokens/second and GPU utilization, a suitable hardware pool, and a deliberate distributed-training setup.
 
