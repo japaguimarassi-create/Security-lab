@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import json
 import random
 import time
@@ -69,8 +70,10 @@ def main():
     if not data_path.is_file():
         raise SystemExit(f"Training data file not found: {data_path}")
     raw_text = data_path.read_text(encoding="utf-8")
-    if len(raw_text.encode("utf-8")) < 512:
+    raw_bytes = raw_text.encode("utf-8")
+    if len(raw_bytes) < 512:
         raise SystemExit("Training corpus is too small; expected at least 512 UTF-8 bytes")
+    corpus_sha256 = hashlib.sha256(raw_bytes).hexdigest()
 
     tokenizer_json = None
     if args.tokenizer is not None:
@@ -113,7 +116,8 @@ def main():
     print(json.dumps({
         "status": "training_started",
         "device": str(device),
-        "corpus_bytes": len(raw_text.encode("utf-8")),
+        "corpus_bytes": len(raw_bytes),
+        "corpus_sha256": corpus_sha256,
         "training_tokens": int(train_data.numel()),
         "validation_tokens": int(val_data.numel()),
         "tokenizer_kind": tokenizer_kind,
@@ -157,7 +161,8 @@ def main():
             "seed": args.seed,
             "device": str(device),
             "data_file": str(data_path),
-            "corpus_bytes": len(raw_text.encode("utf-8")),
+            "corpus_bytes": len(raw_bytes),
+            "corpus_sha256": corpus_sha256,
             "training_tokens": int(train_data.numel()),
             "validation_tokens": int(val_data.numel()),
             "tokenizer_kind": tokenizer_kind,
