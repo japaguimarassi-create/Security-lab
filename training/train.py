@@ -26,7 +26,10 @@ def parse_args():
     parser.add_argument("--block-size", type=int, default=256)
     parser.add_argument("--layers", type=int, default=6)
     parser.add_argument("--heads", type=int, default=6)
-    parser.add_argument("--kv-heads", type=int, default=2)
+    parser.add_argument("--kv-heads", type=int, default=None)
+    parser.add_argument("--experts", type=int, default=4)
+    parser.add_argument("--experts-per-token", type=int, default=2)
+    parser.add_argument("--router-aux-loss-coef", type=float, default=0.01)
     parser.add_argument("--embedding-size", type=int, default=192)
     parser.add_argument("--learning-rate", type=float, default=3e-4)
     parser.add_argument("--min-learning-rate", type=float, default=3e-5)
@@ -146,6 +149,12 @@ def main():
         raise SystemExit("Values must be positive: " + ", ".join(invalid))
     if args.save_every < 0:
         raise SystemExit("save-every must be zero or positive")
+    if args.kv_heads is not None and args.kv_heads < 1:
+        raise SystemExit("kv-heads must be positive")
+    if args.experts < 1 or not 1 <= args.experts_per_token <= args.experts:
+        raise SystemExit("experts-per-token must be between 1 and experts")
+    if args.router_aux_loss_coef < 0:
+        raise SystemExit("router-aux-loss-coef must be non-negative")
     if args.learning_rate <= 0 or args.min_learning_rate < 0 or args.min_learning_rate > args.learning_rate:
         raise SystemExit("Learning rates must satisfy 0 <= min-learning-rate <= learning-rate")
     if args.weight_decay < 0 or not 0.0 <= args.decay_ratio <= 1.0:
@@ -245,13 +254,19 @@ def main():
         if resume_payload.get("training", {}).get("tokenizer_kind") != tokenizer_kind:
             raise SystemExit("Checkpoint tokenizer kind does not match the current data pipeline")
     else:
+        kv_heads = args.kv_heads
+        if kv_heads is None:
+            kv_heads = 2 if args.heads % 2 == 0 else 1
         config = ModelConfig(
             vocab_size=vocab_size,
             block_size=args.block_size,
             n_layer=args.layers,
             n_head=args.heads,
             n_embd=args.embedding_size,
-            n_kv_head=args.kv_heads,
+            n_kv_head=kv_heads,
+            n_experts=args.experts,
+            experts_per_token=args.experts_per_token,
+            router_aux_loss_coef=args.router_aux_loss_coef,
         )
 
     if args.block_size > config.block_size and resume_payload is not None:
@@ -310,6 +325,9 @@ def main():
         "batch_size": args.batch_size,
         "gradient_accumulation_steps": args.gradient_accumulation_steps,
         "effective_batch_tokens": args.batch_size * config.block_size * args.gradient_accumulation_steps,
+        "expert_count": config.n_experts,
+        "experts_per_token": config.experts_per_token,
+        "router_aux_loss_coef": config.router_aux_loss_coef,
     }
 
     print(json.dumps({
@@ -330,6 +348,9 @@ def main():
         "warmup_steps": warmup_steps,
         "decay_ratio": args.decay_ratio,
         "gradient_accumulation_steps": args.gradient_accumulation_steps,
+        "experts": config.n_experts,
+        "experts_per_token": config.experts_per_token,
+        "router_aux_loss_coef": config.router_aux_loss_coef,
         "resumed_from_step": global_step,
         "pretrained_weights": False,
         "seed": args.seed,
