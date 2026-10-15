@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101215">
+  <meta name="description" content="Terminal local de projeto do Kodex para arquivos e treinamento de IA.">
+  <title>Kodex — Terminal</title>
+  <link rel="stylesheet" href="./terminal.css">
+  <script src="./src/workspace/workspace-engine.js" defer></script>
+  <script src="./terminal.js" defer></script>
+</head>
+<body>
+  <main class="terminal-shell">
+    <header class="terminal-topbar">
+      <div class="terminal-brand">
+        <a href="./index.html" class="back-link" aria-label="Voltar ao chat">← Chat</a>
+        <span class="brand-divider"></span>
+        <span class="brand-mark">K</span>
+        <div><strong>Kodex Terminal</strong><small>WORKSPACE DE PROJETO · 0.5.0</small></div>
+      </div>
+      <div class="terminal-actions">
+        <a class="header-action" href="./workspace.html">Arquivos</a>
+        <button id="import-files" class="header-action" type="button">Importar</button>
+        <input id="import-input" type="file" multiple hidden>
+        <button id="export-project" class="header-action accent" type="button">Exportar ZIP</button>
+      </div>
+    </header>
+
+    <section class="terminal-intro">
+      <div>
+        <p class="eyebrow">TERMINAL DO PROJETO</p>
+        <h1>Comandos, arquivos e treinamento.</h1>
+        <p>Os comandos de arquivo atuam no workspace local compartilhado com o editor. O treinamento neural real é executado pelo Python/PyTorch; o navegador não finge executar processos do sistema.</p>
+      </div>
+      <div class="runtime-chip"><span class="live-dot"></span><span id="project-status">Carregando projeto…</span></div>
+    </section>
+
+    <section class="terminal-panel">
+      <div class="panel-topline">
+        <div class="window-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+        <span class="panel-title">kodex://project-terminal</span>
+        <button id="clear-terminal" class="clear-button" type="button">Limpar saída</button>
+      </div>
+      <div class="quick-commands" aria-label="Comandos rápidos">
+        <button type="button" data-command="help">help</button>
+        <button type="button" data-command="pwd">pwd</button>
+        <button type="button" data-command="ls">ls</button>
+        <button type="button" data-command="tree">tree</button>
+        <button type="button" data-command="check">check</button>
+        <button type="button" data-command="train architecture">train architecture</button>
+      </div>
+      <div id="terminal-output" class="terminal-output" role="log" aria-live="polite" aria-relevant="additions text"></div>
+      <form id="terminal-form" class="terminal-form" autocomplete="off">
+        <label for="terminal-input" class="prompt-label"><span id="current-directory">/project</span><span aria-hidden="true">›</span></label>
+        <input id="terminal-input" name="command" type="text" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="Digite help para ver os comandos…" maxlength="4000">
+        <button type="submit" aria-label="Executar comando">↵</button>
+      </form>
+      <div class="terminal-footer">
+        <span><span class="tiny-dot"></span> Arquivos locais</span>
+        <span>Sem acesso ao shell do Android ou ao GitHub por esta página.</span>
+      </div>
+    </section>
+
+    <section class="terminal-notes">
+      <article><span class="note-index">01</span><div><strong>Terminal de projeto</strong><p>Cria e modifica arquivos de texto no workspace do Kodex, não arquivos arbitrários do aparelho.</p></div></article>
+      <article><span class="note-index">02</span><div><strong>Treinamento real</strong><p>O Transformer causal de 2.002.048 parâmetros é treinado pelo CLI Python. Os planos do navegador só guardam a configuração.</p></div></article>
+      <article><span class="note-index">03</span><div><strong>Paralelismo honesto</strong><p>Até milhões de experimentos podem ser agendados. Apenas a quantidade de workers suportada pelo hardware roda em paralelo.</p></div></article>
+    </section>
+  </main>
+
+  <section id="preview-shell" class="preview-shell" hidden aria-label="Pré-visualização de projeto">
+    <header><div><p class="eyebrow">EXECUÇÃO ISOLADA</p><h2>Pré-visualização HTML</h2></div><button id="close-preview" type="button">Fechar</button></header>
+    <p class="preview-warning">A prévia não tem acesso a rede, APIs nativas ou arquivos do projeto fora dos recursos incorporados.</p>
+    <iframe id="preview-frame" title="Pré-visualização do projeto" sandbox="allow-scripts"></iframe>
+  </section>
+  <div id="toast" class="terminal-toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
