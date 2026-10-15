@@ -36,6 +36,7 @@ def parse_args():
     parser.add_argument("--n-experts", type=int, default=4)
     parser.add_argument("--experts-per-token", type=int, default=2)
     parser.add_argument("--router-aux-loss-coef", type=float, default=0.01)
+    parser.add_argument("--router-aux-loss-coef", type=float, default=0.01)
     parser.add_argument("--mtp-heads", type=int, default=2)
     parser.add_argument("--mtp-loss-weight", type=float, default=0.1)
     parser.add_argument("--vocab-size", type=int, default=512)
@@ -260,7 +261,7 @@ def main():
         n_kv_head=args.n_kv_head,
         n_experts=args.n_experts,
         experts_per_token=args.experts_per_token,
-        router_aux_loss_coef=0.01,
+        router_aux_loss_coef=args.router_aux_loss_coef,
         mtp_heads=args.mtp_heads,
         mtp_loss_weight=args.mtp_loss_weight,
         dropout=args.dropout,
