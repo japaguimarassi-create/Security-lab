@@ -10,11 +10,11 @@
     if (typeof value !== "string") throw new Error("O caminho do arquivo precisa ser texto.");
     let path = value.trim().replace(/\\/g, "/");
     while (path.startsWith("./")) path = path.slice(2);
-    if (!path || path.startsWith("/") || /^[a-z]:/i.test(path) || /[\u0000-\u001f\u007f]/.test(path)) {
+    if (!path || path.startsWith("/") || /^[a-z]:/i.test(path) || /[\u0000-\u001f\u007f<>:"|?*]/.test(path)) {
       throw new Error("Use um caminho relativo, como src/app.js.");
     }
     const parts = path.split("/");
-    if (parts.some(part => !part || part === "." || part === ".." || part.length > 120)) {
+    if (parts.some(part => !part || part === "." || part === ".." || part.length > 120 || /[. ]$/.test(part) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part))) {
       throw new Error("O caminho tem uma parte vazia ou inválida. Caminhos com .. não são aceitos.");
     }
     if (path.length > 240) throw new Error("O caminho é longo demais (máximo: 240 caracteres).");
