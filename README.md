@@ -9,7 +9,7 @@ Kodex is an experimental, mobile-first programming assistant with a locally exec
 - **No runtime package downloads:** the local editor and terminal use browser/platform features; this branch's ML workflow does not package an Android app.
 - **Explicit Build mode:** prepare an implementation brief and optional model-generated draft; the chat mode stays conversational.
 - **Legacy chat runtime:** source still contains the original 264,192-parameter LSTM chat path. That older model is not the model trained by the new ML workflow.
-- **No remote AI API:** each APK build trains model weights from random initialization and embeds an int8-quantized model into the app.
+- **No unapproved AI API:** this branch's training workflow uses a local PyTorch model and does not invoke a remote AI inference API. It does not build or package an APK.
 - **Conversation history:** threads are stored in local browser/app storage.
 
 ## Kodex Project Terminal 0.5.0
@@ -22,7 +22,7 @@ This is a **project terminal**, not a general Android/Linux shell. It does not r
 
 The **active workflow** trains the experimental model in `training/kodex_lm.py` from random initialization, using a tokenizer trained from the training split. The architecture includes rotary positional embeddings, grouped-query attention, sparse top-k mixture-of-experts routing (four experts, two selected per token), and auxiliary multi-token prediction heads.
 
-The default `ModelConfig()` tested in CI has **2,378,880 trainable parameters**. That is a parameter count, not a biological neuron count. During a real run, the BPE tokenizer's vocabulary becomes part of the model config, so the exact count may be higher; the trainer prints and records the actual count and config. The simpler comparison baseline in `training/model.py` has **1,678,592 parameters**.
+The default `ModelConfig()` tested in CI has **2,378,880 trainable parameters**. With the BPE tokenizer fitted during the successful smoke run, the actual model had **2,411,648 trainable parameters**. These are parameter counts, not biological neuron counts. The trainer records the actual model configuration and count. The simpler comparison baseline in `training/model.py` has **1,678,592 parameters**.
 
 The real training path is `training/train_kodex_model.py`; `training/train_tokenizer.py` trains a byte-level BPE tokenizer on the training split only. The trainer uses cross-entropy, AdamW, warmup plus cosine decay, gradient clipping, train/validation/test splits, a best-validation checkpoint, resumable last-step checkpoint, corpus/tokenizer hashes, perplexity diagnostics, and checkpoint cards. `training/evaluate_kodex_model.py` samples held-out prompts and writes its exact-match and word-overlap diagnostics. Those metrics are not complete quality measures and require human review.
 
@@ -47,6 +47,12 @@ This is not the same as one model receiving a million simultaneous gradient upda
 Open [Kodex ML Lab workflow](https://github.com/japaguimarassi-create/Security-lab/actions/workflows/kodex-ml-lab.yml) on branch `kodex-ai-lab`. Pushes to this branch run syntax checks, regression tests, a parameter-count assertion, and the default smoke training test. Once the workflow is available in the repository's default branch, the **Actions → Kodex ML Lab → Run workflow** form exposes the `plan`, `smoke`, `train`, and `sweep` modes and their batch controls.
 
 Artifacts include metrics, checkpoints, tokenizer, model card, sample generations, and batch summaries; they are retained for 14 days. **The workflow does not build an APK.**
+
+### Measured smoke test — actual run
+
+The first successful end-to-end run is [GitHub Actions run #38799754537](https://github.com/japaguimarassi-create/Security-lab/actions/runs/38799754537). It executed one model trial with **2 optimization steps** in **6.94 seconds**, produced checkpoints and metrics, and recorded **2,411,648 parameters**. Its cross-entropy was approximately **6.257 on train, 6.252 on validation, and 6.259 on test**.
+
+This confirms that corpus normalization, BPE tokenizer training, model forward/backpropagation, optimizer steps, checkpoint creation, held-out loss calculation, and artifact upload work together. Two steps are only a smoke test: the losses are still high and this run does **not** show that the model is already good at conversation or coding. No APK was built.
 
 ## Local file workspace 0.4.0
 
@@ -116,7 +122,7 @@ These commands reproduce the older local inference model, not the new AI Lab tra
 
 ## APK
 
-Push changes to `kodex-programming-ai` that touch the Android app, model runtime, or model training files to trigger the GitHub Actions build. This `kodex-ai-lab` branch does not compile an APK. The ML workflow publishes training metrics and checkpoints as artifacts; these are not Android installation packages.
+The `kodex-ai-lab` branch intentionally does **not** compile or package an APK. The separate legacy APK workflow is associated with the `kodex-programming-ai` branch. The ML workflow on this branch publishes model checkpoints, tokenizer files, metrics, and logs as artifacts—not Android installation packages.
 
 ## Privacy and safety
 
