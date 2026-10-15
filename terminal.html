@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111214">
+  <meta name="description" content="Terminal local do Kodex para comandos de arquivos, verificações e execução JavaScript isolada.">
+  <title>Kodex — Terminal do projeto</title>
+  <link rel="stylesheet" href="./terminal.css">
+  <script src="./src/workspace/workspace-engine.js" defer></script>
+  <script src="./src/terminal/terminal.js" defer></script>
+</head>
+<body>
+  <main class="terminal-app">
+    <header class="terminal-topbar">
+      <div class="brand-cluster">
+        <a class="back-link" href="./index.html" aria-label="Voltar para o chat">← <span>Chat</span></a>
+        <span class="divider"></span>
+        <span class="brand-mark">K</span>
+        <div class="brand-copy"><strong>Kodex</strong><small>PROJECT TERMINAL</small></div>
+      </div>
+      <div class="terminal-location">
+        <span class="live-dot"></span>
+        <span id="terminal-path">/project</span>
+      </div>
+      <div class="top-actions">
+        <a class="toolbar-link" href="./workspace.html">Editor</a>
+        <button id="clear-terminal" class="icon-button" type="button" title="Limpar terminal" aria-label="Limpar terminal">⌫</button>
+      </div>
+    </header>
+
+    <section class="notice-strip">
+      <div><strong>Terminal de projeto local</strong><span>Arquivos do workspace + executor JavaScript isolado</span></div>
+      <a id="open-workflow" class="workflow-button" href="https://github.com/japaguimarassi-create/Security-lab/actions/workflows/kodex-ml-lab.yml" target="_blank" rel="noreferrer">Treinar no GitHub Actions ↗</a>
+    </section>
+
+    <section class="terminal-window" aria-label="Terminal">
+      <div class="terminal-window-bar">
+        <div class="window-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+        <span>kodex-shell · sem privilégios do sistema operacional</span>
+        <button id="interrupt-run" type="button" class="interrupt-button">Interromper JS</button>
+      </div>
+      <div id="terminal-output" class="terminal-output" role="log" aria-live="polite" aria-relevant="additions text"></div>
+      <form id="terminal-form" class="terminal-form" autocomplete="off">
+        <label class="prompt-mark" for="terminal-input">›</label>
+        <input id="terminal-input" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" placeholder="Digite help para ver os comandos…" aria-label="Comando" maxlength="4000">
+        <button type="submit" class="run-button" aria-label="Executar comando">Executar</button>
+      </form>
+    </section>
+
+    <section class="terminal-footnotes">
+      <article><span class="footnote-index">01</span><div><strong>Sem shell irrestrito</strong><p>Este terminal manipula o workspace local, não executa bash/apt/npm no Android e não consegue ler o telefone inteiro.</p></div></article>
+      <article><span class="footnote-index">02</span><div><strong>Execução limitada</strong><p>JavaScript roda em um iframe isolado com tempo limite e política de conteúdo restritiva. Não é Node.js nem um sandbox de segurança profissional.</p></div></article>
+      <article><span class="footnote-index">03</span><div><strong>Treino e compilação reais</strong><p>O workflow do GitHub recebe o código de treinamento e produz logs, métricas e checkpoints. Abrir o link não significa que um treino já começou.</p></div></article>
+    </section>
+  </main>
+  <iframe id="terminal-runner" title="Executor JavaScript isolado" sandbox="allow-scripts" hidden></iframe>
+  <div id="terminal-toast" class="terminal-toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
