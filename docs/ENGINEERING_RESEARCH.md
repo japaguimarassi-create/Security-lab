@@ -44,6 +44,17 @@ Research snapshot: 15 October 2026. The linked official sources are primary refe
 5. **Extensible tools matter.** GitHub's context documentation covers Model Context Protocol (MCP) integration. Kodex should eventually use a permissioned tool registry rather than letting model text invoke arbitrary integrations.
    - https://docs.github.com/en/copilot/concepts/context
 
+
+6. **Inline completions and multi-file task agents are different capabilities.** Copilot's inline suggestions provide ghost text while typing and can suggest next edits; agent mode handles broader tasks by inspecting and editing multiple files and invoking tools. Kodex should keep low-latency completion as a separate interface from the slower plan/implement/verify agent loop.
+   - https://docs.github.com/en/copilot/concepts/completions/code-suggestions
+   - https://docs.github.com/en/copilot/responsible-use/inline-suggestions
+
+7. **Prompt quality depends on relevant context and task structure.** GitHub's guidance recommends clear goals, concrete constraints, explicit relevant code, examples, smaller subtasks, and iterative refinement. Kodex should construct structured task briefs and include only code context relevant to the task, rather than sending the entire repository on every request.
+   - https://docs.github.com/en/copilot/concepts/prompting/prompt-engineering
+
+8. **Code provenance and license checks deserve a dedicated feature.** GitHub documents code-reference indications when Copilot Chat outputs code matching public repositories, while noting that matching and indexing have limitations. Kodex should eventually provide provenance and license review where feasible rather than claiming every generated fragment is original or fully cleared.
+   - https://docs.github.com/en/copilot/concepts/completions/code-referencing
+
 ## Product implications for Kodex
 
 - **Workbench, not chat-only:** editor, explorer, task queue, run/test status, diff review, and explanation/review actions should remain visible alongside conversation.
