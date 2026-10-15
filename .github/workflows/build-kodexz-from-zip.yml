@@ -49,7 +49,8 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Kodexz_Android_v6 Kodexz_Kit_v3
+          if [ -d Kodexz_Android_v6 ]; then git add -A -- Kodexz_Android_v6; fi
+          if [ -d Kodexz_Kit_v3 ]; then git add -A -- Kodexz_Kit_v3; fi
           if git diff --cached --quiet; then
             echo "No source changes to commit."
           else
