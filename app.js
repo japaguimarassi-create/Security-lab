@@ -240,7 +240,11 @@ function makeBuildBrief(prompt) {
   };
 }
 
-function normalizeModelReply(reply) {
+function normalizeForMatching(value) {
+  return String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+}
+
+function normalizeModelReply(reply, prompt = "") {
   const value = String(reply ?? "").replace(/<fim>/g, "").trim();
   if (value.length < 8 || value.length > 2400) return "";
   if (/[\uFFFD]/u.test(value)) return "";
@@ -249,8 +253,29 @@ function normalizeModelReply(reply) {
   if (letters < 5) return "";
   const unique = new Set(value.toLocaleLowerCase("pt-BR").replace(/\s/g, "")).size;
   if (value.length > 60 && unique < 8) return "";
-  const words = value.toLocaleLowerCase("pt-BR").match(/[\p{L}\p{N}]+/gu) || [];
+  const words = normalizeForMatching(value).match(/[\p{L}\p{N}]+/gu) || [];
   if (words.length >= 12 && new Set(words).size / words.length < 0.22) return "";
+
+  const stopWords = new Set([
+    "a", "as", "o", "os", "um", "uma", "uns", "umas", "de", "da", "do", "das", "dos",
+    "e", "em", "no", "na", "nos", "nas", "ao", "aos", "por", "para", "pra", "com", "sem",
+    "que", "qual", "quais", "quem", "como", "quando", "onde", "porque", "isso", "isto",
+    "este", "esta", "esse", "essa", "me", "minha", "meu", "minhas", "meus", "voce",
+    "eu", "seu", "sua", "seus", "suas", "estou", "sou", "ser", "foi", "tem", "ter",
+    "explique", "explica", "explicar", "defina", "definir", "fale", "falar", "conte",
+    "diga", "ajude", "ajuda", "quero", "queria", "pode", "poderia", "crie", "criar",
+    "faca", "fazer", "implemente", "implementar", "construa", "construir", "planeje",
+    "planejar", "analise", "analisar", "revise", "revisar", "porfavor"
+  ]);
+  const rawPrompt = normalizeForMatching(prompt).split("\n\ncontexto disponivel nesta versao:")[0];
+  const topicWords = [...new Set((rawPrompt.match(/[\p{L}\p{N}]+/gu) || [])
+    .filter(word => word.length > 2 && !stopWords.has(word)))];
+  if (topicWords.length) {
+    const answerWords = new Set(words);
+    const overlap = topicWords.filter(word => answerWords.has(word)).length;
+    const required = topicWords.length >= 5 ? 2 : 1;
+    if (overlap < required) return "";
+  }
   return value;
 }
 
@@ -283,13 +308,83 @@ function conversationalFallback(prompt) {
   return "Entendi. Posso explorar isso com você sem transformar automaticamente a mensagem em uma tarefa. Meu modelo local é pequeno e experimental; se a resposta não ficar boa, me dê um pouco mais de contexto.";
 }
 
+function localKnowledgeAnswer(prompt) {
+  const normalized = normalizeForMatching(prompt).trim();
+  const compact = normalized.replace(/[?!.,:;]+/g, " ").replace(/\s+/g, " ").trim();
+  const oneWord = /^[\p{L}\p{N}_+#.-]+$/u.test(compact);
+  const isQuestion = /^(o que e|o que significa|explique|me explique|explica|me explica|defina|como funciona|para que serve|pra que serve|me fale sobre|fale sobre|qual a diferenca entre)\b/.test(compact);
+  const isSimpleKnowledgePrompt = oneWord || isQuestion;
+
+  if (/\bvariavel\b/.test(compact) && isSimpleKnowledgePrompt) {
+    return "Uma variável é um nome associado a um valor que um programa pode consultar ou alterar. Exemplo em JavaScript: let pontos = 10; guarda o valor 10 na variável pontos.";
+  }
+  if (/\b(loop|laco|repeticao|for|while)\b/.test(compact) && isSimpleKnowledgePrompt) {
+    return "Um loop repete instruções. Um for costuma ser útil quando você percorre uma sequência ou controla um contador; while repete enquanto uma condição for verdadeira. É importante garantir que o loop possa terminar.";
+  }
+  if (/\b(funcao|function)\b/.test(compact) && isSimpleKnowledgePrompt) {
+    return "Uma função agrupa instruções em uma unidade reutilizável. Ela pode receber parâmetros e retornar um resultado. Exemplo: function somar(a, b) { return a + b; }.";
+  }
+  if (/\b(array|lista|vetor)\b/.test(compact) && isSimpleKnowledgePrompt) {
+    return "Um array é uma coleção ordenada de valores, acessados por índice. Em JavaScript: const cores = [\"azul\", \"verde\"]; e cores[0] vale \"azul\".";
+  }
+  if (/\b(python)\b/.test(compact) && isSimpleKnowledgePrompt) {
+    return "Python é uma linguagem de programação conhecida por sua sintaxe legível e usada em automação, ciência de dados, web e protótipos de IA. Exemplo: print(\"Olá\").";
+  }
+  if (/\b(javascript|js)\b/.test(compact) && isSimpleKnowledgePrompt) {
+    return "JavaScript é uma linguagem usada para criar interatividade na web e também pode rodar no servidor com Node.js. Ela trabalha com funções, objetos, módulos e eventos.";
+  }
+  if (/\b(api)\b/.test(compact) && isSimpleKnowledgePrompt) {
+    return "Uma API define uma forma de sistemas ou componentes se comunicarem. A documentação deve explicar as operações, os dados aceitos, as respostas, os erros e as permissões necessárias.";
+  }
+  if (/\b(ia|inteligencia artificial|modelo de linguagem|mlm|lstm)\b/.test(compact) && isSimpleKnowledgePrompt) {
+    return "Um modelo de linguagem aprende padrões de texto durante o treinamento e usa o contexto para prever tokens seguintes. O MLM local do Kodex tem 264.192 parâmetros, é muito pequeno e pode errar ou repetir exemplos.";
+  }
+  if (/\b(capital do brasil)\b/.test(compact)) {
+    return "A capital do Brasil é Brasília.";
+  }
+  const arithmetic = compact
+    .replace(/^(quanto e|calcule|resolva)\s+/, "")
+    .match(/^(-?\d+(?:[.,]\d+)?)\s*(\+|-|\*|x|\/|×|÷)\s*(-?\d+(?:[.,]\d+)?)$/);
+  if (arithmetic) {
+    const left = Number(arithmetic[1].replace(",", "."));
+    const right = Number(arithmetic[3].replace(",", "."));
+    const operator = arithmetic[2];
+    let result;
+    if (operator === "+") result = left + right;
+    else if (operator === "-") result = left - right;
+    else if (operator === "*") result = left * right;
+    else if (operator === "x" || operator === "×") result = left * right;
+    else if ((operator === "/" || operator === "÷") && right !== 0) result = left / right;
+    else return "";
+    return Number.isFinite(result) ? String(left) + " " + operator + " " + String(right) + " = " + String(result) + "." : "";
+  }
+  return "";
+}
+
+function isSingleWordMessage(prompt) {
+  const clean = String(prompt ?? "").trim();
+  if (!clean || /\s/.test(clean) || clean.includes("```")) return false;
+  return /^[\p{L}\p{N}_+#.-]+[?!.,;:]*$/u.test(clean);
+}
+
 function makeResponse(prompt, mode, history = []) {
-  const shortReply = /^(oi|olá|ola|hey|hello|hi|eai|e aí|opa|bom dia|boa tarde|boa noite|tudo bem\??|como vai\??|ok|okay|certo|entendi|sim|não|nao|obrigado|obrigada|valeu|thanks|thank you)[!.? ]*$/i.test(prompt.trim());
+  const cleanPrompt = String(prompt ?? "").trim();
+  const shortReply = /^(oi|olá|ola|hey|hello|hi|eai|e aí|opa|bom dia|boa tarde|boa noite|tudo bem\??|como vai\??|ok|okay|certo|entendi|sim|não|nao|obrigado|obrigada|valeu|thanks|thank you)[!.? ]*$/i.test(cleanPrompt);
+  const wordOnly = isSingleWordMessage(cleanPrompt);
   const modelReady = window.KodexMobileMLM?.ready === true;
-  if (mode !== "build" && shortReply) {
+  const localReply = localKnowledgeAnswer(cleanPrompt);
+  if (localReply) {
     return {
       kind: "chat",
-      text: conversationalFallback(prompt),
+      text: localReply,
+      modelGenerated: false,
+      modelVersion: modelReady ? "resposta local validada · MLM 264K disponível" : "resposta local de contingência"
+    };
+  }
+  if (shortReply || wordOnly) {
+    return {
+      kind: "chat",
+      text: conversationalFallback(cleanPrompt),
       modelGenerated: false,
       modelVersion: modelReady ? "MLM local · 264.192 parâmetros" : "resposta local de contingência"
     };
@@ -298,18 +393,18 @@ function makeResponse(prompt, mode, history = []) {
   let modelReply = "";
   if (modelReady && typeof window.KodexMobileMLM.generate === "function") {
     try {
-      modelReply = normalizeModelReply(window.KodexMobileMLM.generate(prompt, mode, { history }));
+      modelReply = normalizeModelReply(window.KodexMobileMLM.generate(cleanPrompt, mode, { history }), cleanPrompt);
     } catch {
       modelReply = "";
     }
   }
 
   if (mode === "build") {
-    const brief = makeBuildBrief(prompt);
+    const brief = makeBuildBrief(cleanPrompt);
     if (modelReply) {
       brief.sections.splice(1, 0, { title: "Rascunho do modelo neural local", items: [modelReply] });
     } else {
-      brief.intro += " A saída gerada não passou pela validação básica, então mantive o brief estruturado como alternativa.";
+      brief.intro += " A resposta neural foi descartada porque não passou pela validação básica ou não parecia relacionada ao pedido; mantive o brief estruturado como alternativa.";
     }
     brief.modelVersion = modelReady ? "MLM local · 264.192 parâmetros" : "modelo neural indisponível";
     return brief;
@@ -317,9 +412,9 @@ function makeResponse(prompt, mode, history = []) {
 
   return {
     kind: "chat",
-    text: modelReply || conversationalFallback(prompt),
+    text: modelReply || conversationalFallback(cleanPrompt),
     modelGenerated: Boolean(modelReply),
-    modelVersion: modelReady ? "MLM local · 264.192 parâmetros" : "resposta local de contingência"
+    modelVersion: modelReady && modelReply ? "MLM local · 264.192 parâmetros" : "resposta local de contingência"
   };
 }
 function appendMessage(thread, message) {
