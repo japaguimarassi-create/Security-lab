@@ -62,6 +62,7 @@ def connect_db(path: str | Path) -> sqlite3.Connection:
     if "validation_loss" not in columns:
         connection.execute("ALTER TABLE trials ADD COLUMN validation_loss REAL")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_trials_status ON trials(status, trial_index)")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_trials_validation_loss ON trials(status, validation_loss)")
     connection.commit()
     return connection
 
@@ -124,6 +125,9 @@ def enqueue_trials(
                 rows,
             )
             inserted += cursor.rowcount
+        total_trials = connection.execute("SELECT COUNT(*) FROM trials").fetchone()[0]
+        if total_trials > MAX_PLANNABLE_TRIALS:
+            raise ValueError(f"Queue would exceed the {MAX_PLANNABLE_TRIALS:,}-trial limit")
         connection.commit()
     except Exception:
         connection.rollback()
