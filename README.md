@@ -2,13 +2,13 @@
 
 Kodex is an experimental, mobile-first programming assistant with a locally executed neural language model. Version 0.5.0 adds a project terminal and a from-scratch causal Transformer training lab while retaining the existing local file workspace. This branch does not build an APK.
 
-## What changed in 0.4.0
+## Existing application behavior retained
 
 - **Chat-first behavior remains:** greetings, short replies, and normal questions do not turn into build tasks automatically.
 - **Local project workspace:** create, edit, rename, delete, import and download text files; preview HTML in a restricted iframe; run basic static checks; export the project as a ZIP.
-- **No runtime package downloads:** workspace functionality uses browser/platform features and is packaged with the Android app.
+- **No runtime package downloads:** the local editor and terminal use browser/platform features; this branch's ML workflow does not package an Android app.
 - **Explicit Build mode:** prepare an implementation brief and optional model-generated draft; the chat mode stays conversational.
-- **Local neural model:** one-layer LSTM, 512-token byte-level BPE vocabulary, 128-dimensional embedding and hidden state, and exactly **264,192 trainable parameters** before quantization.
+- **Legacy chat runtime:** source still contains the original 264,192-parameter LSTM chat path. That older model is not the model trained by the new ML workflow.
 - **No remote AI API:** each APK build trains model weights from random initialization and embeds an int8-quantized model into the app.
 - **Conversation history:** threads are stored in local browser/app storage.
 
@@ -20,30 +20,39 @@ This is a **project terminal**, not a general Android/Linux shell. It does not r
 
 ## AI training lab 0.5.0
 
-The new model in `training/model.py` is a decoder-only causal Transformer, trained from random initialization:
-- UTF-8 byte tokenizer with 257 IDs (256 possible bytes and EOS).
-- Embedding width 256, two Transformer blocks, four attention heads, feed-forward width 1,024, and context length 128.
-- **1,678,592 trainable parameters** with tied input/output token embeddings (about 2.13 times 780,000). This is a parameter count, not a count of biological neurons.
-- AdamW optimization, warmup plus cosine learning-rate decay, gradient clipping, train/validation/test splits, loss/perplexity metrics, corpus hashes, and resumable checkpoints.
-- A deterministic experiment scheduler can represent up to 1,000,000,000 candidate trial IDs without writing a billion-row queue file. Each shard derives its candidates by index and can run a bounded number of actual experiments. Completed shards select the checkpoint with the lowest held-out validation loss and retain the test loss separately.
+The **active workflow** trains the experimental model in `training/kodex_lm.py` from random initialization, using a tokenizer trained from the training split. The architecture includes rotary positional embeddings, grouped-query attention, sparse top-k mixture-of-experts routing (four experts, two selected per token), and auxiliary multi-token prediction heads.
 
-The model is still small and trained from a tiny current corpus of around 90 conversation/programming examples. Increasing parameter count does not create useful knowledge by itself; the project needs a much larger, licensed, high-quality, deduplicated corpus, carefully controlled validation/test sets, and human review of generated answers.
+The default `ModelConfig()` tested in CI has **2,378,880 trainable parameters**. That is a parameter count, not a biological neuron count. During a real run, the BPE tokenizer's vocabulary becomes part of the model config, so the exact count may be higher; the trainer prints and records the actual count and config. The simpler comparison baseline in `training/model.py` has **1,678,592 parameters**.
+
+The real training path is `training/train_kodex_model.py`; `training/train_tokenizer.py` trains a byte-level BPE tokenizer on the training split only. The trainer uses cross-entropy, AdamW, warmup plus cosine decay, gradient clipping, train/validation/test splits, a best-validation checkpoint, resumable last-step checkpoint, corpus/tokenizer hashes, perplexity diagnostics, and checkpoint cards. `training/evaluate_kodex_model.py` samples held-out prompts and writes its exact-match and word-overlap diagnostics. Those metrics are not complete quality measures and require human review.
+
+The starter dialogue corpus remains small (about 90 curated examples). It is enough for a mechanical smoke test, not for a capable general chat/coding assistant. Larger training needs many more high-quality, licensed, deduplicated tokens and rigorous held-out evaluations. The project includes `training/prepare_corpus.py` to filter a source manifest using an explicit license allowlist, source commit, training permission flag, path checks, duplicate removal, and heuristic secret scanning. The scanner is not a guarantee that data is safe or license-compliant; contributors still need to review every source.
+
+### Million-scale candidate queue
+
+`training/experiment_swarm.py` can represent up to **1,000,000,000 candidate trial IDs** without materializing a billion-row file. The IDs are split deterministically across shards and hyperparameters are derived from a stable seed formula. This makes a queue of candidates possible; it does not claim that every candidate was trained.
+
+The workflow supports:
+- `plan`: report a candidate batch without executing models.
+- `smoke`: run a two-step end-to-end test.
+- `train`: train one model and evaluate held-out generations.
+- `sweep`: execute a bounded batch of independent model trials in parallel shards.
+
+A GitHub Actions matrix is limited to 256 jobs per workflow run. Actual concurrent runners may be fewer due to availability and account limits. With 256 shards and 100 sequential trials per shard, the theoretical upper batch size is 25,600 trial attempts; one million attempted trials would therefore need at least 40 batches, assuming all runners start and all trials complete successfully. Keep `shards` and `trials_per_shard` the same while increasing `batch_index` from 0 to continue the queue without repeating completed candidate IDs. For example, at 256 shards × 100 trials/shard, run batch indices 0 through 39. Each Actions job has a six-hour limit, and each individual trial has a timeout, so reduce work per batch or steps if a job cannot finish within its time budget.
+
+This is not the same as one model receiving a million simultaneous gradient updates and cannot honestly be equated to “years of training” without actual measurements of training tokens, steps, throughput, compute, and elapsed time. A large list of planned runs is only a plan until logs and metrics prove execution.
 
 ### Run the remote training workflow
 
-Open [Kodex ML Lab workflow](https://github.com/japaguimarassi-create/Security-lab/actions/workflows/kodex-ml-lab.yml) on branch `kodex-ai-lab`. The workflow supports:
-- `plan`: schedule and shard the candidate queue without training models.
-- `smoke`: run a two-step end-to-end test.
-- `train`: train one model and create checkpoints/metrics.
-- `sweep`: run bounded independent training trials across shards.
+Open [Kodex ML Lab workflow](https://github.com/japaguimarassi-create/Security-lab/actions/workflows/kodex-ml-lab.yml) on branch `kodex-ai-lab`. Pushes to this branch run syntax checks, regression tests, a parameter-count assertion, and the default smoke training test. Once the workflow is available in the repository's default branch, the **Actions → Kodex ML Lab → Run workflow** form exposes the `plan`, `smoke`, `train`, and `sweep` modes and their batch controls.
 
-The sweep does **not** secretly train a million models just because the queue contains a million candidate IDs. GitHub Actions caps each job matrix at 256 jobs, and the actual number of simultaneous runners depends on plan quotas and runner capacity. Use the `trials_per_shard` limit to control the real compute budget. Run outputs are artifacts retained for 14 days.
+Artifacts include metrics, checkpoints, tokenizer, model card, sample generations, and batch summaries; they are retained for 14 days. **The workflow does not build an APK.**
 
 ## Local file workspace 0.4.0
 
 Open `workspace.html` from the chat screen using **Arquivos**. The workspace starts with an editable HTML/CSS/JavaScript example. It supports creating files and relative folders, editing content, renaming and deleting files, importing multiple text files, downloading one file, exporting all project text files as a ZIP, basic JSON/classic-JavaScript/HTML checks, and sandboxed HTML preview.
 
-The workspace and project terminal are **local to Kodex's WebView/browser storage**. It does not automatically read other Android files, write to the GitHub repository, authenticate to GitHub, run shell commands, install dependencies, or compile arbitrary projects. Import files explicitly with the picker and export a ZIP to move your work elsewhere. Binary files and ZIP import are not supported by this version.
+The workspace and project terminal are **local to Kodex's WebView/browser storage**. They do not automatically read other Android files or write to GitHub. The project terminal is not a general-purpose OS shell; the Python training process and any build run inside GitHub Actions. Import files explicitly with the picker and export a ZIP to move your work elsewhere. Binary files and ZIP import are not supported by this version.
 
 Safety limits: up to 200 project files, 512 KiB per file, and 1,500 KiB of total text for local project storage. The preview runs in a sandboxed iframe with a restrictive Content Security Policy; it is a convenience preview, not a security-grade sandbox. Static checks are not a replacement for compiler or test execution.
 
@@ -53,19 +62,24 @@ The root `AGENTS.md` records the product's persistent operating rules for compat
 
 ## Important limits
 
-The 264,192 figure is the actual trainable parameter count, not a count of biological neurons. In standard language-model terms, this is a **tiny/compact model**, not a medium-scale or frontier model.
+The legacy 264,192-parameter chat model remains very small and is not the active training target in this branch. The new 2.38M+ parameter sparse Transformer is still an experimental small model—not GPT-6 Astra, GPT-6.1 Sol, Codex, or Copilot.
 
-The training data at `training/data/mobile_dialogue.jsonl` contains 90 curated, mostly Portuguese conversation and programming examples. The default APK workflow runs 500 training steps from random initialization. This proves that model training, quantization, bundling, and on-device inference are connected; it does not prove broad language understanding or reliable coding ability. The model can make mistakes, repeat phrases, or return poor answers. The chat filters some obviously invalid outputs and uses explicit fallback responses for common greetings and very short messages. The separate workspace is a file editor, not evidence of stronger model intelligence.
+The starter data at `training/data/mobile_dialogue.jsonl` contains around 90 curated, mostly Portuguese conversation/programming examples. A successful two-step smoke run verifies that tokenizer training, model forward/backward, checkpointing, and evaluation connect; it does not prove broad language understanding or reliable coding ability. The model can repeat text, produce invalid output, and fail coding tasks.
 
 Chat Build mode still drafts a brief and checklist; it does not edit the repository or run commands. The new separate workspace edits only the files created or imported into its local storage. Repository context displayed in chat is descriptive; source files are not automatically read.
 
 ## Open the project
 
-- [Kodex branch](https://github.com/japaguimarassi-create/Security-lab/tree/kodex-programming-ai)
+- [Kodex AI Lab branch](https://github.com/japaguimarassi-create/Security-lab/tree/kodex-ai-lab)
 - [Kodex ML Lab workflow (no APK build)](https://github.com/japaguimarassi-create/Security-lab/actions/workflows/kodex-ml-lab.yml)
 - [Terminal](terminal.html)
-- [Transformer architecture](training/model.py)
-- [Training script](training/train_language_model.py)
+- [Active sparse Transformer architecture](training/kodex_lm.py)
+- [Active training script](training/train_kodex_model.py)
+- [Trainable byte-level BPE tokenizer](training/train_tokenizer.py)
+- [Held-out generation evaluator](training/evaluate_kodex_model.py)
+- [Simple Transformer baseline](training/model.py)
+- [Dialogue normalizer](training/normalize_dialogue_corpus.py)
+- [Licensed code-corpus preparer](training/prepare_corpus.py)
 - [Million-scale trial scheduler](training/experiment_swarm.py)
 - [Research and limits](docs/ml-training-system.md)
 - [Local MLM profile](src/ai/neuron-profile.json)
@@ -73,9 +87,9 @@ Chat Build mode still drafts a brief and checklist; it does not edit the reposit
 - [Model training and quantization](training/build_mobile_mlm.py)
 - [On-device inference runtime](src/ai/mobile-mlm.js)
 
-## Model architecture and parameter count
+## Legacy chat model profile (not the active training target)
 
-The compact network is trained for autoregressive next-token prediction:
+The older in-app model profile (kept in the repository from the previous branch) was trained for autoregressive next-token prediction:
 
 - Byte-level BPE tokenizer: 256 byte tokens plus 256 learned merges = vocabulary size 512.
 - Token embedding: 512 × 128 = 65,536 parameters.
@@ -88,7 +102,7 @@ The compact network is trained for autoregressive next-token prediction:
 
 Weights are quantized per tensor to signed 8-bit values for app delivery. The app reconstructs the small network and computes predictions locally in JavaScript. The weights are generated by the APK workflow and are not kept as a source-controlled model checkpoint.
 
-## Reproduce the mobile model build
+## Legacy model build (not used by this branch's workflow)
 
 Use Python 3.12 and PyTorch:
 
@@ -98,7 +112,7 @@ python -m unittest training.tests.test_mobile_mlm -v
 python training/build_mobile_mlm.py --data training/data/mobile_dialogue.jsonl --output kodex-model.js --steps 500 --batch-size 8 --seed 42
 ```
 
-The generated `kodex-model.js` contains tokenizer merges, quantized tensors, the exact parameter count, and basic training metrics. The GitHub Actions APK workflow performs the same steps before Gradle packages the app assets.
+These commands reproduce the older local inference model, not the new AI Lab trainer. The current `kodex-ml-lab.yml` workflow uses `training/train_kodex_model.py` and intentionally does not invoke Gradle or package an APK.
 
 ## APK
 
