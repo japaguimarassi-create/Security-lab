@@ -244,3 +244,8 @@ kbd { margin-left: auto; border: 1px solid #414349; border-radius: 4px; padding:
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; }
 }
+
+.workspace-shortcut { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 0 9px; border: 1px solid #36383d; border-radius: 7px; background: #202124; color: #d5d7dc; font-size: 10px; white-space: nowrap; }
+.workspace-shortcut:hover { border-color: #55585f; background: #292b30; color: #fff; }
+.workspace-shortcut span:first-child { color: #c6f28a; font-size: 13px; }
+@media (max-width: 380px) { .workspace-shortcut { width: 30px; padding: 0; } .workspace-shortcut span:last-child { display: none; } }
