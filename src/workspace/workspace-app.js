@@ -32,9 +32,15 @@
         const parsed = JSON.parse(raw);
         const files = engine.collectEntries(parsed.files || []);
         if (files.length <= engine.MAX_FILES && engine.measureEntries(files) <= engine.MAX_PROJECT_BYTES) {
+          const directories = Array.isArray(parsed.directories)
+            ? parsed.directories.map(value => {
+                try { return engine.normalizeProjectPath(value); } catch { return ""; }
+              }).filter(Boolean)
+            : [];
           return {
             name: typeof parsed.name === "string" ? parsed.name.slice(0, 80) : "Meu projeto",
             files,
+            directories,
             activePath: parsed.activePath || null
           };
         }
@@ -43,7 +49,7 @@
       try {
         localStorage.removeItem(STORAGE_KEY);
       } catch {
-        return { name: "Meu projeto", files: engine.collectEntries(engine.createStarterProject()), activePath: "index.html" };
+        return { name: "Meu projeto", files: engine.collectEntries(engine.createStarterProject()), directories: [], activePath: "index.html" };
       }
     }
     return { name: "Meu projeto", files: engine.collectEntries(engine.createStarterProject()), activePath: "index.html" };
@@ -61,6 +67,7 @@
         schemaVersion: 1,
         name: state.name,
         activePath,
+        directories: Array.from(new Set(state.directories || [])).sort(),
         files: entries
       }));
       setStatus("Salvo neste dispositivo · " + engine.formatBytes(bytes), "saved");
@@ -220,9 +227,176 @@
     if (!window.confirm("Criar um novo projeto de exemplo? O workspace local atual será substituído.")) return;
     state.name = "Meu projeto";
     state.files = engine.collectEntries(engine.createStarterProject());
+    state.directories = [];
     activePath = "index.html";
     state.activePath = activePath;
-    elements.projectName.value = state.name;
+    function normalizeDirectoryPath(rawPath) {
+    const clean = String(rawPath ?? "").trim().replace(/\/+$/, "");
+    if (!clean) throw new Error("Informe um diretório relativo.");
+    return engine.normalizeProjectPath(clean);
+  }
+
+  function ensureParentDirectories(path) {
+    const parts = path.split("/");
+    const directories = new Set(state.directories || []);
+    for (let index = 1; index < parts.length; index += 1) directories.add(parts.slice(0, index).join("/"));
+    state.directories = Array.from(directories).sort();
+  }
+
+  function workspaceDirectories() {
+    const directories = new Set(state.directories || []);
+    for (const entry of state.files) {
+      const parts = entry.path.split("/");
+      for (let index = 1; index < parts.length; index += 1) directories.add(parts.slice(0, index).join("/"));
+    }
+    return Array.from(directories).sort();
+  }
+
+  function workspaceWrite(path, content, append = false) {
+    const safePath = engine.normalizeProjectPath(path);
+    if (typeof content !== "string") throw new Error("O conteúdo do arquivo precisa ser texto.");
+    const existing = state.files.find(file => file.path === safePath);
+    const nextContent = append && existing ? existing.content + content : content;
+    const size = new TextEncoder().encode(nextContent).byteLength;
+    if (size > engine.MAX_FILE_BYTES) throw new Error("O arquivo ultrapassa 512 KiB.");
+    const nextFiles = state.files.filter(file => file.path !== safePath).concat([{ path: safePath, content: nextContent }]);
+    if (nextFiles.length > engine.MAX_FILES) throw new Error("O projeto atingiu o limite de 200 arquivos.");
+    if (engine.measureEntries(nextFiles) > engine.MAX_PROJECT_BYTES) throw new Error("O projeto atingiu o limite de 1.500 KiB.");
+    const file = existing || { path: safePath, content: "" };
+    file.content = nextContent;
+    if (!existing) state.files.push(file);
+    ensureParentDirectories(safePath);
+    activePath = safePath;
+    state.activePath = activePath;
+    persistWorkspace();
+    renderEditor();
+    return { path: safePath, bytes: size, created: !existing };
+  }
+
+  window.KodexWorkspaceAPI = Object.freeze({
+    getName() {
+      return state.name;
+    },
+    setName(name) {
+      state.name = String(name ?? "").trim().slice(0, 80) || "Meu projeto";
+      elements.projectName.value = state.name;
+      persistWorkspace();
+      return state.name;
+    },
+    getFiles() {
+      if (activeFile() && elements.editor.value !== activeFile().content) activeFile().content = elements.editor.value;
+      return engine.collectEntries(state.files).map(file => ({ ...file }));
+    },
+    getDirectories() {
+      return workspaceDirectories();
+    },
+    list(path = "") {
+      const base = String(path ?? "").replace(/\/+$/, "");
+      const files = this.getFiles();
+      const directories = workspaceDirectories();
+      const prefix = base ? normalizeDirectoryPath(base) + "/" : "";
+      const nodes = new Map();
+      for (const directory of directories) {
+        if (!directory.startsWith(prefix)) continue;
+        const remainder = directory.slice(prefix.length);
+        if (!remainder) continue;
+        const name = remainder.split("/")[0];
+        if (!nodes.has(name)) nodes.set(name, { name, type: "directory" });
+      }
+      for (const file of files) {
+        if (!file.path.startsWith(prefix)) continue;
+        const remainder = file.path.slice(prefix.length);
+        if (!remainder) continue;
+        const parts = remainder.split("/");
+        if (parts.length > 1) {
+          if (!nodes.has(parts[0])) nodes.set(parts[0], { name: parts[0], type: "directory" });
+        } else {
+          nodes.set(parts[0], { name: parts[0], type: "file", path: file.path, bytes: new TextEncoder().encode(file.content).byteLength });
+        }
+      }
+      return Array.from(nodes.values()).sort((a, b) => a.type === b.type ? a.name.localeCompare(b.name) : a.type === "directory" ? -1 : 1);
+    },
+    read(path) {
+      const safePath = engine.normalizeProjectPath(path);
+      const file = state.files.find(entry => entry.path === safePath);
+      if (!file) throw new Error("Arquivo não encontrado: " + safePath);
+      return file.content;
+    },
+    write(path, content) {
+      return workspaceWrite(path, content, false);
+    },
+    append(path, content) {
+      return workspaceWrite(path, content, true);
+    },
+    touch(path) {
+      const safePath = engine.normalizeProjectPath(path);
+      const existing = state.files.find(file => file.path === safePath);
+      if (existing) return { path: safePath, bytes: new TextEncoder().encode(existing.content).byteLength, created: false };
+      return workspaceWrite(safePath, "", false);
+    },
+    mkdir(path) {
+      const safePath = normalizeDirectoryPath(path);
+      if (state.files.some(file => file.path === safePath)) throw new Error("Já existe um arquivo com esse caminho.");
+      const directories = new Set(workspaceDirectories());
+      directories.add(safePath);
+      const parts = safePath.split("/");
+      for (let index = 1; index < parts.length; index += 1) directories.add(parts.slice(0, index).join("/"));
+      state.directories = Array.from(directories).sort();
+      persistWorkspace();
+      return safePath;
+    },
+    remove(path) {
+      const safePath = engine.normalizeProjectPath(path);
+      if (!state.files.some(file => file.path === safePath)) throw new Error("Arquivo não encontrado: " + safePath);
+      state.files = state.files.filter(file => file.path !== safePath);
+      if (activePath === safePath) activePath = state.files[0]?.path || null;
+      state.activePath = activePath;
+      persistWorkspace();
+      renderEditor();
+      return safePath;
+    },
+    rename(oldPath, newPath) {
+      const safeOldPath = engine.normalizeProjectPath(oldPath);
+      const safeNewPath = engine.normalizeProjectPath(newPath);
+      const file = state.files.find(entry => entry.path === safeOldPath);
+      if (!file) throw new Error("Arquivo não encontrado: " + safeOldPath);
+      if (state.files.some(entry => entry.path === safeNewPath)) throw new Error("Já existe um arquivo com esse caminho.");
+      file.path = safeNewPath;
+      ensureParentDirectories(safeNewPath);
+      activePath = safeNewPath;
+      state.activePath = activePath;
+      persistWorkspace();
+      renderEditor();
+      return { from: safeOldPath, to: safeNewPath };
+    },
+    rmdir(path) {
+      const safePath = normalizeDirectoryPath(path);
+      const directoryPrefix = safePath + "/";
+      if (!workspaceDirectories().includes(safePath)) throw new Error("Diretório não encontrado: " + safePath);
+      if (state.files.some(file => file.path.startsWith(directoryPrefix)) || workspaceDirectories().some(dir => dir.startsWith(directoryPrefix))) {
+        throw new Error("O diretório não está vazio.");
+      }
+      state.directories = (state.directories || []).filter(dir => dir !== safePath);
+      persistWorkspace();
+      return safePath;
+    },
+    check() {
+      return engine.validateProject(this.getFiles());
+    },
+    previewHtml() {
+      return engine.buildPreviewHtml(this.getFiles());
+    },
+    exportZip() {
+      return engine.buildProjectZip(this.getFiles());
+    },
+    limits: Object.freeze({
+      maxFiles: engine.MAX_FILES,
+      maxFileBytes: engine.MAX_FILE_BYTES,
+      maxProjectBytes: engine.MAX_PROJECT_BYTES
+    })
+  });
+
+  elements.projectName.value = state.name;
     persistWorkspace();
     renderEditor();
     elements.checks.hidden = true;
