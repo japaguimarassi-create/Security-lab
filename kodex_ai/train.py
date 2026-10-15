@@ -131,7 +131,7 @@ def main() -> int:
     distributed_run = world_size > 1
     device = choose_device(args.device, local_rank)
     if distributed_run:
-        if args.device == "mps":
+        if device.type == "mps":
             raise RuntimeError("Distributed MPS training is not supported by this runner")
         if device.type == "cuda":
             torch.cuda.set_device(device)
