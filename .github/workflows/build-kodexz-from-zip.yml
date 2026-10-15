@@ -1,4 +1,4 @@
-name: Import Kodexz source files and build Android APK
+name: Import Kodexz Android v6 and build APK
 
 on:
   workflow_dispatch:
@@ -6,13 +6,12 @@ on:
     branches: [kodexz-android]
     paths:
       - 'Kodexz_Android_v6_Source.zip'
-      - 'Kodexz_Kit_v3.zip'
 
 permissions:
   contents: write
 
 jobs:
-  prepare:
+  import-and-build:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -21,87 +20,71 @@ jobs:
         with:
           persist-credentials: true
 
-      - name: Verify an archive was uploaded
-        run: |
-          test -f Kodexz_Android_v6_Source.zip || test -f Kodexz_Kit_v3.zip
+      - name: Verify Android v6 source archive
+        run: test -f Kodexz_Android_v6_Source.zip
 
-      - name: Extract archives into real source directories
+      - name: Extract and validate Android v6 source
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p source/android source/web
-          if [ -f Kodexz_Android_v6_Source.zip ]; then
-            unzip -q Kodexz_Android_v6_Source.zip -d source/android
-            test -f source/android/Kodexz_Android_v6/app/build.gradle
-            mkdir -p Kodexz_Android_v6
-            rsync -a --delete source/android/Kodexz_Android_v6/ Kodexz_Android_v6/
-          fi
-          if [ -f Kodexz_Kit_v3.zip ]; then
-            unzip -q Kodexz_Kit_v3.zip -d source/web
-            test -f source/web/Kodexz_Kit_v3/index.html
-            mkdir -p Kodexz_Kit_v3
-            rsync -a --delete source/web/Kodexz_Kit_v3/ Kodexz_Kit_v3/
-          fi
+          unzip -q Kodexz_Android_v6_Source.zip -d source
+          PROJECT="source/Kodexz_Android_v6"
+          test -f "$PROJECT/app/build.gradle"
+          test -f "$PROJECT/app/src/main/java/com/kodexz/app/MainActivity.java"
+          test -f "$PROJECT/app/src/main/assets/public/index.html"
+          test -f "$PROJECT/app/src/main/assets/public/model.js"
+          grep -Eq "versionCode[[:space:]]+6" "$PROJECT/app/build.gradle"
+          grep -Eq "versionName[[:space:]]+'6\\.0\\.0'" "$PROJECT/app/build.gradle"
+          test "$(wc -c < "$PROJECT/app/src/main/assets/public/model.js")" -gt 100000
+          mkdir -p Kodexz_Android_v6
+          rsync -a --delete "$PROJECT/" Kodexz_Android_v6/
+          printf 'Validated Kodexz Android version: '
+          grep -E "version(Name|Code)" Kodexz_Android_v6/app/build.gradle | tr '\n' ' '
+          echo
 
-      - name: Commit extracted source files to this branch
+      - name: Validate JavaScript and Android project structure
+        working-directory: Kodexz_Android_v6
+        run: bash tools-check.sh
+
+      - name: Commit the actual source files to the branch
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if [ -d Kodexz_Android_v6 ]; then git add -A -- Kodexz_Android_v6; fi
-          if [ -d Kodexz_Kit_v3 ]; then git add -A -- Kodexz_Kit_v3; fi
+          git add -A -- Kodexz_Android_v6
           if git diff --cached --quiet; then
-            echo "No source changes to commit."
+            echo "Android v6 source directory is already up to date."
           else
-            git commit -m "Import actual Kodexz source files"
+            git commit -m "Import Kodexz Android v6 source"
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
 
       - name: Set up Java 17
-        if: hashFiles('Kodexz_Android_v6_Source.zip') != ''
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Android SDK
-        if: hashFiles('Kodexz_Android_v6_Source.zip') != ''
         uses: android-actions/setup-android@v3
 
       - name: Install Android platform and build tools
-        if: hashFiles('Kodexz_Android_v6_Source.zip') != ''
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Set up Gradle
-        if: hashFiles('Kodexz_Android_v6_Source.zip') != ''
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
 
-      - name: Build debug APK
-        if: hashFiles('Kodexz_Android_v6_Source.zip') != ''
+      - name: Compile Kodexz Android v6
         working-directory: Kodexz_Android_v6
         run: gradle --no-daemon assembleDebug
 
-      - name: Upload installable APK
-        if: hashFiles('Kodexz_Android_v6_Source.zip') != ''
+      - name: Upload installable debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Kodexz-Android-debug-APK
+          name: Kodexz-Android-v6-debug-APK
           path: Kodexz_Android_v6/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Package web app source
-        if: hashFiles('Kodexz_Kit_v3.zip') != ''
-        run: zip -qr Kodexz-Web-App-Source.zip Kodexz_Kit_v3
-
-      - name: Upload web app source
-        if: hashFiles('Kodexz_Kit_v3.zip') != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: Kodexz-Web-App-Source
-          path: Kodexz-Web-App-Source.zip
           if-no-files-found: error
           retention-days: 14
