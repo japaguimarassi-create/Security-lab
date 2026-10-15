@@ -116,3 +116,6 @@ a { color: inherit; text-decoration: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; }
 }
+
+.back-link + .back-link { padding-left: 9px; border-left: 1px solid var(--line-strong); }
+@media (max-width: 760px) { .back-link + .back-link { padding-left: 6px; } }
