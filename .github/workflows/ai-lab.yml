@@ -30,6 +30,10 @@ on:
         default: 1000
         type: number
 
+concurrency:
+  group: kodex-ai-lab-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -116,6 +120,19 @@ jobs:
           assert Path("artifacts/target-model-smoke/checkpoint_last.pt").is_file()
           print("Target-model training smoke passed:", summary["parameter_count"], "parameters; 2 actual optimizer steps")
           PY
+
+      - name: Package project source (no APK)
+        run: |
+          mkdir -p artifacts/source
+          git archive --format=zip --output=artifacts/source/Kodex-AI-Lab-v0.5.0-source.zip HEAD
+
+      - name: Upload project source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kodex-AI-Lab-Source-v0.5.0
+          path: artifacts/source/Kodex-AI-Lab-v0.5.0-source.zip
+          if-no-files-found: error
+          retention-days: 14
 
   train-model:
     name: Optional real model training (checkpoint artifact only)
