@@ -1,22 +1,36 @@
-# Kodex 0.3.0 — Local Language Model Workbench
+# Kodex 0.4.0 — Local Language Model and Project Workspace
 
-Kodex is an experimental, mobile-first programming assistant with a locally executed neural language model. Version 0.3.0 separates ordinary conversation from implementation planning and bundles trained model weights into the Android APK.
+Kodex is an experimental, mobile-first programming assistant with a locally executed neural language model. Version 0.4.0 keeps conversation separate from implementation planning, bundles trained model weights into the Android APK, and adds a usable local file workspace.
 
-## What changed in 0.3.0
+## What changed in 0.4.0
 
-- **Conversation is the default:** greetings, short replies, and normal questions no longer turn into build tasks automatically.
+- **Chat-first behavior remains:** greetings, short replies, and normal questions do not turn into build tasks automatically.
+- **Local project workspace:** create, edit, rename, delete, import and download text files; preview HTML in a restricted iframe; run basic static checks; export the project as a ZIP.
+- **No runtime package downloads:** workspace functionality uses browser/platform features and is packaged with the Android app.
 - **Explicit Build mode:** prepare an implementation brief and optional model-generated draft; the chat mode stays conversational.
 - **Local neural model:** one-layer LSTM, 512-token byte-level BPE vocabulary, 128-dimensional embedding and hidden state, and exactly **264,192 trainable parameters** before quantization.
 - **No remote AI API:** each APK build trains model weights from random initialization and embeds an int8-quantized model into the app.
 - **Conversation history:** threads are stored in local browser/app storage.
 
+## Local file workspace 0.4.0
+
+Open `workspace.html` from the chat screen using **Arquivos**. The workspace starts with an editable HTML/CSS/JavaScript example. It supports creating files and relative folders, editing content, renaming and deleting files, importing multiple text files, downloading one file, exporting all project text files as a ZIP, basic JSON/classic-JavaScript/HTML checks, and sandboxed HTML preview.
+
+The workspace is **local to Kodex's WebView/browser storage**. It does not automatically read other Android files, write to the GitHub repository, authenticate to GitHub, run shell commands, install dependencies, or compile arbitrary projects. Import files explicitly with the picker and export a ZIP to move your work elsewhere. Binary files and ZIP import are not supported by this version.
+
+Safety limits: up to 200 project files, 512 KiB per file, and 1,500 KiB of total text for local project storage. The preview runs in a sandboxed iframe with a restrictive Content Security Policy; it is a convenience preview, not a security-grade sandbox. Static checks are not a replacement for compiler or test execution.
+
+## Agent instruction conventions
+
+The root `AGENTS.md` records the product's persistent operating rules for compatible coding agents, and `.github/copilot-instructions.md` carries repository-specific guidance for GitHub Copilot. Their purpose is to preserve the project direction: conversation by default, mobile/offline-first, no unapproved AI API, truthful execution reports, incremental changes, and validation.
+
 ## Important limits
 
 The 264,192 figure is the actual trainable parameter count, not a count of biological neurons. In standard language-model terms, this is a **tiny/compact model**, not a medium-scale or frontier model.
 
-The training data at `training/data/mobile_dialogue.jsonl` contains 90 curated, mostly Portuguese conversation and programming examples. The default APK workflow runs 500 training steps from random initialization. This proves that model training, quantization, bundling, and on-device inference are connected; it does not prove broad language understanding or reliable coding ability. The model can make mistakes, repeat phrases, or return poor answers. The app filters some obviously invalid outputs and uses explicit fallback responses for common greetings and very short messages.
+The training data at `training/data/mobile_dialogue.jsonl` contains 90 curated, mostly Portuguese conversation and programming examples. The default APK workflow runs 500 training steps from random initialization. This proves that model training, quantization, bundling, and on-device inference are connected; it does not prove broad language understanding or reliable coding ability. The model can make mistakes, repeat phrases, or return poor answers. The chat filters some obviously invalid outputs and uses explicit fallback responses for common greetings and very short messages. The separate workspace is a file editor, not evidence of stronger model intelligence.
 
-Build mode currently drafts text and a checklist. It does **not** modify real repository files, run terminal commands, compile user code, or provide an OS-enforced sandbox. Repository context displayed in the interface is descriptive; source files are not automatically read.
+Chat Build mode still drafts a brief and checklist; it does not edit the repository or run commands. The new separate workspace edits only the files created or imported into its local storage. Repository context displayed in chat is descriptive; source files are not automatically read.
 
 ## Open the project
 
@@ -56,7 +70,7 @@ The generated `kodex-model.js` contains tokenizer merges, quantized tensors, the
 
 ## APK
 
-Push changes to `kodex-programming-ai` that touch the Android app, model runtime, or model training files to trigger the GitHub Actions build. The artifact is named `Kodex-Android-APK-v0.3.0` and remains available for 14 days. It is a debug APK signed with the debug key; it is not a Google Play-certified release.
+Push changes to `kodex-programming-ai` that touch the Android app, model runtime, or model training files to trigger the GitHub Actions build. The artifact is named `Kodex-Android-APK-v0.4.0` and remains available for 14 days. It is a debug APK signed with the debug key; it is not a Google Play-certified release.
 
 ## Privacy and safety
 
