@@ -20,10 +20,22 @@ jobs:
         with:
           persist-credentials: true
 
-      - name: Verify Android v6 source archive
-        run: test -f Kodexz_Android_v6_Source.zip
+      - name: Detect source archive or existing source tree
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f Kodexz_Android_v6_Source.zip ]; then
+            echo "archive_present=true" >> "$GITHUB_OUTPUT"
+          elif [ -f Kodexz_Android_v6/app/build.gradle ]; then
+            echo "archive_present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Missing Kodexz_Android_v6_Source.zip and Kodexz_Android_v6 project tree." >&2
+            exit 1
+          fi
 
-      - name: Extract and validate Android v6 source
+      - name: Extract, verify and stage Android v6 source
+        if: steps.detect.outputs.archive_present == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -34,7 +46,7 @@ jobs:
           test -f "$PROJECT/app/src/main/assets/public/index.html"
           test -f "$PROJECT/app/src/main/assets/public/model.js"
           grep -Eq "versionCode[[:space:]]+6" "$PROJECT/app/build.gradle"
-          grep -Eq "versionName[[:space:]]+'6\\.0\\.0'" "$PROJECT/app/build.gradle"
+          grep -Eq "versionName[[:space:]]+'6\.0\.0'" "$PROJECT/app/build.gradle"
           test "$(wc -c < "$PROJECT/app/src/main/assets/public/model.js")" -gt 100000
           mkdir -p Kodexz_Android_v6
           rsync -a --delete "$PROJECT/" Kodexz_Android_v6/
@@ -42,21 +54,23 @@ jobs:
           grep -E "version(Name|Code)" Kodexz_Android_v6/app/build.gradle | tr '\n' ' '
           echo
 
-      - name: Validate JavaScript and Android project structure
+      - name: Run source checks
         working-directory: Kodexz_Android_v6
         run: bash tools-check.sh
 
-      - name: Commit the actual source files to the branch
+      - name: Commit individual source files and remove the upload ZIP
+        if: steps.detect.outputs.archive_present == 'true'
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A -- Kodexz_Android_v6
+          git rm --ignore-unmatch Kodexz_Android_v6_Source.zip
           if git diff --cached --quiet; then
-            echo "Android v6 source directory is already up to date."
+            echo "No new source files to commit."
           else
-            git commit -m "Import Kodexz Android v6 source"
+            git commit -m "Import Kodexz Android v6.0.0 source"
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
 
@@ -77,7 +91,7 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
-      - name: Compile Kodexz Android v6
+      - name: Compile Kodexz Android v6.0.0
         working-directory: Kodexz_Android_v6
         run: gradle --no-daemon assembleDebug
 
