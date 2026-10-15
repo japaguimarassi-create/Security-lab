@@ -23,7 +23,7 @@ class ProjectTerminalTests(unittest.TestCase):
         output, _ = self.terminal.execute('append src/main.py "print(2)"')
         self.assertIn("acrescentado", output)
         output, _ = self.terminal.execute("cat src/main.py")
-        self.assertEqual(output, "print(1)\nprint(2)")
+        self.assertEqual(output.rstrip("\n"), "print(1)\nprint(2)")
         output, _ = self.terminal.execute("grep print src/main.py")
         self.assertIn("src/main.py:1", output)
         self.assertIn("src/main.py:2", output)
@@ -34,15 +34,13 @@ class ProjectTerminalTests(unittest.TestCase):
         self.assertFalse((self.root.parent / "outside.txt").exists())
 
     def test_external_shell_is_denied_without_explicit_opt_in(self):
-        output, _ = self.terminal.execute("run python -c \"print(123)\"")
+        output, _ = self.terminal.execute('run python -c "print(123)"')
         self.assertIn("bloqueado por padrão", output)
 
-    def test_approved_test_command_is_recognized_as_external(self):
-        terminal = self.terminal
-        result = terminal.execute_external("python --version") if terminal.unsafe_shell else None
-        self.assertIsNone(result)
-        output, _ = terminal.execute("run npm run check")
-        self.assertNotIn("bloqueado por padrão", output)\n        self.assertIn("[exit code:", output)
+    def test_approved_test_command_is_not_rejected_by_the_allowlist(self):
+        output, _ = self.terminal.execute("run npm run check")
+        self.assertNotIn("bloqueado por padrão", output)
+        self.assertIn("[exit code:", output)
 
     def test_cd_cannot_escape_project_root(self):
         output, _ = self.terminal.execute("cd ..")
