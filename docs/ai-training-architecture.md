@@ -37,7 +37,7 @@ The workflow doesn't convert wall-clock training into fictional "years equivalen
 
 ## Why GitHub Actions is not a million-worker cluster
 
-The standard GitHub-hosted runner concurrency quotas documented by GitHub vary by plan. The current documentation lists 20 concurrent standard jobs for Free, 40 for Pro, and up to 500 for Enterprise. Standard GitHub-hosted runners do not provide GPU concurrency. The workflow in this branch runs tests and an extremely short CPU smoke-training run on every relevant push; a full checkpoint training run is opt-in through workflow_dispatch and uploads model artifacts rather than an APK.
+GitHub Actions concurrency is bounded by plan and runner type, and the quotas change. The current documentation lists 20/40/60/500 concurrent standard jobs for Free/Pro/Team/Enterprise; larger runners have different limits (documented up to 1,000 total jobs, with GPU limits on eligible plans). Standard hosted runners do not provide GPU jobs. The workflow in this branch runs tests and a two-step CPU smoke-training run on relevant pushes; a longer checkpoint training run is opt-in through workflow_dispatch and uploads model artifacts rather than an APK. These repository-level queue settings do not bypass GitHub account concurrency limits.
 
 Sources:
 - [GPT-6 Astra](https://developers.openai.com/api/docs/models/gpt-6-astra)
