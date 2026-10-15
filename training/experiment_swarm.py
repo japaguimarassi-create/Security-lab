@@ -33,8 +33,12 @@ def shard_trial_count(total_trials, shard_id, shard_count):
     return (total_trials - 1 - shard_id) // shard_count + 1
 
 
-def trial_ids_for_shard(total_trials, shard_id, shard_count, limit=None):
-    ids = range(shard_id, total_trials, shard_count)
+def trial_ids_for_shard(total_trials, shard_id, shard_count, limit=None, batch_index=0):
+    if batch_index < 0:
+        raise ValueError("batch_index must be non-negative.")
+    width = max(1, int(limit or 1))
+    start = shard_id + batch_index * width * shard_count
+    ids = range(start, total_trials, shard_count)
     if limit is None:
         return ids
     return list(value for _, value in zip(range(limit), ids))
@@ -47,6 +51,7 @@ def create_parser():
     parser.add_argument("--mode", choices=["plan", "execute"], default="plan")
     parser.add_argument("--total-trials", type=int, default=1000000)
     parser.add_argument("--shard-id", type=int, default=0)
+    parser.add_argument("--batch-index", type=int, default=0)
     parser.add_argument("--shard-count", type=int, default=16)
     parser.add_argument("--max-executions", type=int, default=1)
     parser.add_argument("--steps", type=int, default=100)
@@ -74,6 +79,8 @@ def main():
         raise ValueError("shard-count must be between 1 and 256; GitHub Actions also caps a matrix at 256 jobs.")
     if args.shard_id < 0 or args.shard_id >= args.shard_count:
         raise ValueError("shard-id must be within [0, shard-count).")
+    if args.batch_index < 0 or args.batch_index > 10000000:
+        raise ValueError("batch-index must be between 0 and 10,000,000.")
     if args.max_executions < 0 or args.max_executions > 100:
         raise ValueError("max-executions must be between 0 and 100 per shard.")
     if args.steps < 1 or args.steps > 10000000:
@@ -84,19 +91,28 @@ def main():
         raise ValueError("trial-timeout must be between 1 second and 6 hours.")
 
     trials_in_shard = shard_trial_count(args.total_trials, args.shard_id, args.shard_count)
+    batch_width = max(1, args.max_executions)
+    already_scheduled = min(trials_in_shard, args.batch_index * batch_width)
+    trials_remaining_before_batch = max(0, trials_in_shard - already_scheduled)
     if args.mode == "plan":
-        sample_ids = sorted(set([args.shard_id, args.shard_id + args.shard_count, max(0, args.total_trials - 1)]))
-        sample_ids = [trial_id for trial_id in sample_ids if trial_id < args.total_trials][:5]
+        sample_ids = trial_ids_for_shard(
+            args.total_trials, args.shard_id, args.shard_count, limit=min(batch_width, max(1, trials_remaining_before_batch)),
+            batch_index=args.batch_index,
+        )
         plan = {
             "status": "planned_not_executed",
             "total_trials": args.total_trials,
             "shard_count": args.shard_count,
             "max_parallel_jobs_per_github_actions_matrix": 256,
             "requested_shard": args.shard_id,
+            "batch_index": args.batch_index,
             "trials_assigned_to_shard": trials_in_shard,
+            "trials_already_scheduled_by_prior_batches": already_scheduled,
+            "trials_remaining_before_batch": trials_remaining_before_batch,
+            "trials_available_in_this_batch": len(sample_ids) if trials_remaining_before_batch else 0,
             "sample_configurations": [config_for_trial(trial_id, args.base_seed) for trial_id in sample_ids],
             "training_steps_per_trial_if_executed": args.steps,
-            "note": "Planning creates candidate configurations, not trained models. Real concurrency is limited by available runner quotas and hardware.",
+            "note": "Planning creates candidate configurations, not trained models. Use the same shard-count and max-executions across successive batch-index values to avoid overlap. Real concurrency is limited by runner quotas and hardware.",
         }
         write_json(Path(args.out_dir) / "plan.json", plan)
         print(json.dumps(plan, ensure_ascii=False, indent=2))
@@ -106,7 +122,7 @@ def main():
         raise ValueError("execute mode requires max-executions >= 1.")
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    candidates = trial_ids_for_shard(args.total_trials, args.shard_id, args.shard_count, args.max_executions)
+    candidates = trial_ids_for_shard(args.total_trials, args.shard_id, args.shard_count, args.max_executions, batch_index=args.batch_index)
     results = []
     started = time.time()
     for trial_id in candidates:
@@ -175,15 +191,17 @@ def main():
         key=lambda item: (item["metrics"].get("validation_loss", float("inf")), item["trial_id"]),
     )
     summary = {
-        "status": "execution_finished_with_queue_remaining" if len(candidates) < trials_in_shard else "shard_finished",
+        "status": "execution_finished_with_queue_remaining" if already_scheduled + len(candidates) < trials_in_shard else "shard_finished",
         "total_candidate_trials": args.total_trials,
         "shard_count": args.shard_count,
         "shard_id": args.shard_id,
+        "batch_index": args.batch_index,
         "assigned_to_shard": trials_in_shard,
+        "trials_already_scheduled_by_prior_batches": already_scheduled,
         "attempted_in_this_run": len(candidates),
         "completed": len(completed),
         "failed_or_timed_out": len(results) - len(completed),
-        "not_executed_in_this_run": max(0, trials_in_shard - len(candidates)),
+        "not_executed_in_this_run": max(0, trials_in_shard - already_scheduled - len(candidates)),
         "steps_per_trial": args.steps,
         "elapsed_seconds": round(time.time() - started, 2),
         "best_validation_trial": ranked[0] if ranked else None,
