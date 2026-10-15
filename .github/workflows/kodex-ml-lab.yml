@@ -39,6 +39,11 @@ on:
         required: true
         default: 1
         type: number
+      batch_index:
+        description: "Queue batch number, starting at 0. Keep shard-count and trials-per-shard unchanged between batches."
+        required: true
+        default: 0
+        type: number
       steps:
         description: "Optimization steps per real model, for train/sweep"
         required: true
@@ -154,6 +159,7 @@ jobs:
       TOTAL_TRIALS: ${{ inputs.total_trials || 1000000 }}
       SHARDS: ${{ inputs.shards || 8 }}
       TRIALS_PER_SHARD: ${{ inputs.trials_per_shard || 1 }}
+      BATCH_INDEX: ${{ inputs.batch_index || 0 }}
       STEPS: ${{ inputs.steps || 2 }}
       BATCH_SIZE: ${{ inputs.batch_size || 8 }}
       BASE_SEED: ${{ inputs.base_seed || 42 }}
@@ -182,7 +188,7 @@ jobs:
 
       - name: Plan one million or more trial candidates
         if: env.MODE == 'plan'
-        run: python training/experiment_swarm.py --mode plan --total-trials "$TOTAL_TRIALS" --shard-id 0 --shard-count "$SHARDS" --base-seed "$BASE_SEED" --out-dir artifacts/kodex-ai-lab/plan
+        run: python training/experiment_swarm.py --mode plan --total-trials "$TOTAL_TRIALS" --shard-id 0 --shard-count "$SHARDS" --max-executions "$TRIALS_PER_SHARD" --batch-index "$BATCH_INDEX" --base-seed "$BASE_SEED" --out-dir artifacts/kodex-ai-lab/plan
 
       - name: Run a small end-to-end training smoke test
         if: env.MODE == 'smoke'
@@ -198,7 +204,7 @@ jobs:
 
       - name: Execute bounded parallel sweep shards
         if: env.MODE == 'sweep'
-        run: python training/experiment_swarm.py --mode execute --total-trials "$TOTAL_TRIALS" --shard-id "$SHARD_ID" --shard-count "$SHARDS" --max-executions "$TRIALS_PER_SHARD" --steps "$STEPS" --batch-size "$BATCH_SIZE" --base-seed "$BASE_SEED" --data /tmp/kodex-dialogue-clean.jsonl --out-dir "artifacts/kodex-ai-lab/shard-$SHARD_ID"
+        run: python training/experiment_swarm.py --mode execute --total-trials "$TOTAL_TRIALS" --shard-id "$SHARD_ID" --shard-count "$SHARDS" --batch-index "$BATCH_INDEX" --max-executions "$TRIALS_PER_SHARD" --steps "$STEPS" --batch-size "$BATCH_SIZE" --base-seed "$BASE_SEED" --data /tmp/kodex-dialogue-clean.jsonl --out-dir "artifacts/kodex-ai-lab/shard-$SHARD_ID"
 
       - name: Evaluate the best checkpoint from this shard
         if: env.MODE == 'sweep'
