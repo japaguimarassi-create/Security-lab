@@ -162,7 +162,7 @@ def claim_trial(db_path: str | Path):
 
 
 def finish_trial(db_path: str | Path, trial_id: str, return_code: int, error: str | None = None) -> None:
-    connection = connect_db(db_path)
+    connection = connect_db(db_path, initialize=False)
     try:
         validation_loss = None
         row = connection.execute("SELECT output_dir FROM trials WHERE trial_id=?", (trial_id,)).fetchone()
