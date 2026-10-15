@@ -116,6 +116,8 @@ def save_checkpoint(path, model, optimizer, scaler, config, training, step, best
         "model_name": "KodexScratchLM",
         "config": config,
         "model_state_dict": model.state_dict(),
+        "tokenizer_kind": training.get("tokenizer_kind"),
+        "tokenizer_json": training.get("tokenizer_json"),
         "optimizer_state_dict": optimizer.state_dict(),
         "scaler_state_dict": scaler.state_dict(),
         "training": training,
