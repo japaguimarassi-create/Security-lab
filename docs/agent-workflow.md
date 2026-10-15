@@ -10,7 +10,7 @@ This document turns the project's requested behavior into a repeatable workflow.
 - GitHub's [Copilot coding-agent best practices](https://docs.github.com/en/copilot/using-github-copilot/using-copilot-coding-agent-to-work-on-tasks/best-practices-for-using-copilot-to-work-on-tasks) describe repository research, planning, iterative changes, tests, and review before merging.
 - GitHub's [custom instructions documentation](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/add-custom-instructions/add-repository-instructions) documents repository-wide, path-specific, and agent instructions.
 
-These are references for workflow design, not evidence that Kodex's 264,192-parameter local LSTM has equivalent capabilities.
+These are references for workflow design, not evidence that either of Kodex's small local models has equivalent capabilities. The chat LSTM has 264,192 trainable parameters; the separate Transformer training experiment has 1,958,977.
 
 ## Required task lifecycle
 
@@ -47,6 +47,18 @@ Inspect the final diff, paths, dependencies, generated files, permissions, and f
 The workspace in 0.4.0 is local project storage inside Kodex's WebView/browser. The user may create files or explicitly import text files. Saving affects this local workspace; downloading and ZIP export move copies out of it. It does not read arbitrary phone files, connect to GitHub, run a shell, install project dependencies, or compile native applications.
 
 Project paths must be relative and cannot escape the project using absolute paths or parent-directory segments. Limits are 200 files, 512 KiB per file and 1,500 KiB total text. Imported data is untrusted. HTML preview runs inside a sandboxed iframe without same-origin permission and with a restrictive Content Security Policy. Static checks are explicitly not full compilation or test execution.
+
+## AI training lab in Kodex 0.5.0
+
+The dedicated training lab in `training/train_transformer.py` trains a decoder-only causal Transformer from random initialization. It uses 257 byte/EOS tokens, 160-dimensional embeddings, 5 attention heads, 6 layers, a 640-dimensional feed-forward layer and context length 128. The checked trainable parameter count is 1,958,977. The model uses a deterministic record-level train/validation split, AdamW, gradient clipping, scheduled learning rate, validation metrics, atomic latest/best checkpoints and resume support.
+
+The corpus is small, consisting of the existing conversational examples plus a separate curated programming curriculum. A higher parameter count does not guarantee better generalization; measure validation and code-task quality using data that was not used for training.
+
+`training/run_sweep.py` generates experiment configurations deterministically from an index and seed. It can describe up to 1,000,000 logical trials, but `--execute` controls the number actually trained and `--workers` limits the process pool. A job queue is not the same as simultaneous execution. There is no valid conversion from trial counts or training steps to years of learning.
+
+GitHub Actions uses CPU PyTorch, checks the source/tests, runs a short real training smoke test and uploads logs/checkpoints as an artifact. The separate workflow intentionally contains no Gradle task and no APK packaging. Runner, concurrency, quota and wall-clock limits remain applicable.
+
+The project terminal is a scoped mini-shell for workspace files; it does not expose an Android system shell. Its check command performs static checks, not full compilation. Its AI queue command only writes a local plan and does not claim a training job has started.
 
 ## Local model limits
 
