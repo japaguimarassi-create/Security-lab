@@ -1,20 +1,37 @@
 {
-  "schemaVersion": 1,
-  "modelId": "kodex-sparse-routing-research-001",
-  "label": "Kodex logical-unit research profile",
-  "unitType": "logical_neuron",
-  "layerSizes": [4096, 8192, 16384, 32768, 65536, 65536, 65536, 4096, 2048],
-  "totalLogicalUnits": 264192,
-  "requiredMinimumExclusive": 264000,
-  "routingProposal": "sparse expert routing",
-  "trainingStatus": "not-trained",
-  "inferenceStatus": "not-implemented",
-  "weightsIncluded": false,
-  "denseConnectivityImplemented": false,
+  "schemaVersion": 2,
+  "modelId": "kodex-mobile-mlm-0.3.0",
+  "label": "Kodex compact on-device language model",
+  "unitType": "trainable_parameter",
+  "architecture": {
+    "type": "single-layer LSTM autoregressive language model",
+    "vocabularySize": 512,
+    "tokenizer": "learned byte-level BPE",
+    "embeddingSize": 128,
+    "hiddenSize": 128,
+    "layers": 1,
+    "normalization": [
+      "input LayerNorm",
+      "output LayerNorm"
+    ],
+    "output": "next-token prediction",
+    "quantization": "per-tensor int8 weights for mobile inference"
+  },
+  "totalTrainableParameters": 264192,
+  "trainingStatus": "trained-from-random-initialization-during-apk-build",
+  "inferenceStatus": "local-javascript-lstm",
+  "weightsIncludedInSourceRepository": false,
+  "weightsIncludedInApk": true,
+  "trainingCorpus": "training/data/mobile_dialogue.jsonl",
+  "trainingExampleCount": 81,
+  "defaultTrainingSteps": 500,
+  "pretrainedWeightsUsed": false,
   "notes": [
-    "The total is an architecture budget, not a claim that 264192 trained neurons are already running.",
-    "This profile has no trained weights and cannot independently generate intelligent predictions.",
-    "A future implementation must define sparse connectivity, memory cost, tokenizer, objective, datasets, training process, checkpoints and evaluations.",
-    "Do not allocate a fully dense weight matrix from this profile: its hidden dimensions are intentionally only a planning target."
+    "The model has exactly 264192 trainable parameters before int8 quantization; this is not a count of biological or literal neurons.",
+    "The compact model is a functional language-model experiment trained from random initialization, not a capable medium-scale or frontier model.",
+    "The curated training corpus is small and Portuguese-focused; answers may be repetitive, incorrect, or nonsensical.",
+    "The APK build trains the model and embeds quantized weights as kodex-model.js for local inference without a remote model API.",
+    "The Build mode prepares a text proposal only; it does not edit the repository, run commands, or provide a sandbox.",
+    "The conversation fallback handles basic greetings and very short messages when neural output fails basic quality checks."
   ]
 }
