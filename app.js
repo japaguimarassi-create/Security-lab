@@ -1,15 +1,15 @@
 const STORAGE_KEY = "kodex:chat-threads:v2";
 const MAX_THREADS = 30;
 const MODES = {
-  plan: {
-    title: "Planejar",
-    description: "Organize a abordagem antes de alterar o projeto.",
-    hint: "Planejamento local"
+  chat: {
+    title: "Conversar",
+    description: "Converse livremente, faça perguntas e explore ideias sem abrir uma tarefa automaticamente.",
+    hint: "Conversa local"
   },
   build: {
     title: "Construir",
-    description: "Prepare uma tarefa verificável para implementação.",
-    hint: "Preparação de tarefa"
+    description: "Use o modelo local para preparar uma proposta de implementação.",
+    hint: "MLM local · experimental"
   }
 };
 
@@ -35,7 +35,7 @@ const elements = {
   toast: document.getElementById("toast")
 };
 
-let activeMode = "plan";
+let activeMode = "chat";
 let includeProjectContext = false;
 let toastTimer = null;
 let threads = loadThreads();
@@ -139,11 +139,11 @@ function renderThreadList() {
     title.textContent = thread.title;
     const mode = document.createElement("span");
     mode.className = "thread-mode";
-    mode.textContent = thread.mode === "build" ? "Construir" : "Planejar";
+    mode.textContent = thread.mode === "build" ? "Construir" : "Conversar";
     button.append(symbol, title, mode);
     button.addEventListener("click", () => {
       activeThreadId = thread.id;
-      activeMode = thread.mode || "plan";
+      activeMode = thread.mode === "build" ? "build" : "chat";
       renderAll();
       closeSidebar();
     });
@@ -220,7 +220,7 @@ function makeBuildBrief(prompt) {
   return {
     kind: "build",
     title: "Brief de implementação",
-    intro: "A solicitação foi organizada como uma tarefa revisável. Esta versão ainda não consegue alterar arquivos nem executar comandos: o modelo generativo e o executor não estão conectados.",
+    intro: "O pedido foi processado pelo modelo de linguagem local e organizado como uma proposta revisável. O app ainda não altera arquivos reais nem executa comandos.",
     sections: [
       { title: "Resultado solicitado", items: [shorten(prompt, 180)] },
       { title: "Áreas a inspecionar", items: suggestedFiles },
@@ -240,8 +240,79 @@ function makeBuildBrief(prompt) {
   };
 }
 
+function normalizeModelReply(reply) {
+  const value = String(reply ?? "").replace(/<fim>/g, "").trim();
+  if (value.length < 8 || value.length > 2400) return "";
+  if (/[\uFFFD]/u.test(value)) return "";
+  if (/\b(?:Modo:|Usuário:|Kodex:)\s*/i.test(value)) return "";
+  const letters = (value.match(/[\p{L}\p{N}]/gu) || []).length;
+  if (letters < 5) return "";
+  const unique = new Set(value.toLocaleLowerCase("pt-BR").replace(/\s/g, "")).size;
+  if (value.length > 60 && unique < 8) return "";
+  const words = value.toLocaleLowerCase("pt-BR").match(/[\p{L}\p{N}]+/gu) || [];
+  if (words.length >= 12 && new Set(words).size / words.length < 0.22) return "";
+  return value;
+}
+
+function conversationalFallback(prompt) {
+  const value = String(prompt ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
+  if (/^(oi|ola|ola\s+kodex|hey|hello|hi|eai|e ai|opa)[!.? ]*$/i.test(value)) {
+    return "Oi! Estou aqui. Podemos conversar sobre programação, ideias, estudos ou qualquer dúvida. Não precisamos construir nada se você só quiser conversar.";
+  }
+  if (/^(bom dia|boa tarde|boa noite)[!.? ]*$/i.test(value)) {
+    return "Olá! Como está seu dia? Podemos conversar normalmente ou explorar uma dúvida quando você quiser.";
+  }
+  if (/^(tudo bem|tudo bem\??|como vai|como voce esta\??)[!.? ]*$/i.test(value)) {
+    return "Tudo certo por aqui. E com você? Sobre o que você gostaria de conversar?";
+  }
+  if (/^(ok|okay|certo|entendi|sim|nao|não|hm|hmm)[!.? ]*$/i.test(value)) {
+    return value.startsWith("nao") || value === "não" ? "Tudo bem. Não vou transformar sua resposta em uma tarefa. Podemos seguir no seu ritmo." : "Certo. Pode continuar quando quiser; vou acompanhar a conversa sem criar uma tarefa automaticamente.";
+  }
+  if (/^(obrigado|obrigada|valeu|thanks|thank you)[!.? ]*$/i.test(value)) {
+    return "De nada! Pode continuar a conversa no seu ritmo.";
+  }
+  if (/^(nao quero construir|não quero construir|so quero conversar|só quero conversar)[!.? ]*$/i.test(value)) {
+    return "Tudo bem. Vamos apenas conversar. O modo Construir só deve ser usado quando você escolher trabalhar em uma implementação.";
+  }
+  if (/^(quem e voce|quem e voce\??|qual seu nome|qual e seu nome)[?.! ]*$/i.test(value)) {
+    return "Sou o Kodex, um assistente experimental com um pequeno modelo de linguagem treinado do zero. Posso conversar e ajudar com ideias de programação, mas posso errar e não tenho a capacidade de modelos grandes.";
+  }
+  if (/^(o que voce pode fazer|o que voce faz)[?.! ]*$/i.test(value)) {
+    return "Posso conversar, explicar conceitos, explorar ideias e preparar propostas de programação. Nesta versão, não leio automaticamente seu repositório nem altero arquivos ou executo código.";
+  }
+  return "Entendi. Posso explorar isso com você sem transformar automaticamente a mensagem em uma tarefa. Meu modelo local é pequeno e experimental; se a resposta não ficar boa, me dê um pouco mais de contexto.";
+}
+
 function makeResponse(prompt, mode) {
-  return mode === "build" ? makeBuildBrief(prompt) : makeLocalPlan(prompt);
+  const modelReady = window.KodexMobileMLM?.ready === true;
+  let modelReply = "";
+  if (modelReady && typeof window.KodexMobileMLM.generate === "function") {
+    try {
+      modelReply = normalizeModelReply(window.KodexMobileMLM.generate(prompt, mode));
+    } catch {
+      modelReply = "";
+    }
+  }
+
+  if (mode === "build") {
+    const brief = makeBuildBrief(prompt);
+    if (modelReply) {
+      brief.sections.splice(1, 0, { title: "Rascunho do modelo neural local", items: [modelReply] });
+    } else {
+      brief.intro += " A saída gerada não passou pela validação básica, então mantive o brief estruturado como alternativa.";
+    }
+    brief.modelVersion = modelReady ? "MLM local · 264.192 parâmetros" : "modelo neural indisponível";
+    return brief;
+  }
+
+  const shortReply = /^(oi|olá|ola|hey|hello|hi|eai|e aí|opa|bom dia|boa tarde|boa noite|tudo bem\??|como vai\??|ok|okay|certo|entendi|sim|não|nao|obrigado|obrigada|valeu|thanks|thank you)[!.? ]*$/i.test(prompt.trim());
+  const reply = shortReply ? conversationalFallback(prompt) : (modelReply || conversationalFallback(prompt));
+  return {
+    kind: "chat",
+    text: reply,
+    modelGenerated: Boolean(modelReply) && !shortReply,
+    modelVersion: modelReady ? "MLM local · 264.192 parâmetros" : "resposta local de contingência"
+  };
 }
 
 function appendMessage(thread, message) {
@@ -260,10 +331,10 @@ function renderResponseBody(message, node) {
   const disclosure = document.createElement("div");
   disclosure.className = "response-disclosure";
   const lead = document.createElement("strong");
-  lead.textContent = message.kind === "build" ? "Estado: aguardando runtime" : "Estado: plano preliminar";
+  lead.textContent = message.kind === "build" ? "Estado: proposta de implementação" : "Estado: resposta do chat";
   disclosure.append(lead, document.createTextNode(message.kind === "build"
-    ? " · Nenhum arquivo foi alterado e nenhum comando foi executado."
-    : " · Use como estrutura inicial; os arquivos do projeto não foram lidos pelo chat."));
+    ? " · O modelo local preparou um rascunho; nenhum arquivo foi alterado e nenhum comando foi executado."
+    : " · Resposta local experimental; não houve chamada a uma API."));
   node.append(disclosure);
 
   (message.sections || []).forEach(section => addSection(node, section.title, section.items, section.title === "Sequência proposta"));
@@ -401,9 +472,9 @@ function renderMode() {
   elements.modeDescription.textContent = MODES[activeMode].description;
   elements.composerHint.textContent = MODES[activeMode].hint;
   elements.panelMode.textContent = MODES[activeMode].title;
-  const placeholder = activeMode === "plan"
-    ? "Descreva o objetivo, a ideia ou o problema que quer organizar…"
-    : "Descreva a mudança que quer preparar para implementação…";
+  const placeholder = activeMode === "chat"
+    ? "Escreva uma mensagem ou faça uma pergunta…"
+    : "Descreva o que você quer construir…";
   elements.input.placeholder = placeholder;
 }
 
@@ -412,6 +483,15 @@ function renderAll() {
   renderMode();
   renderConversation();
   updateWorkPanel();
+  const runtime = window.KodexMobileMLM;
+  const runtimeLabel = document.getElementById("runtime-label");
+  if (runtimeLabel) runtimeLabel.textContent = runtime?.ready
+    ? "MLM local · 264.192 parâmetros"
+    : "Modo de conversa local";
+  const modelCapability = document.getElementById("model-capability");
+  if (modelCapability) modelCapability.textContent = runtime?.ready
+    ? "MLM neural local carregado"
+    : "Respostas locais de contingência";
 }
 
 function autoResizeInput() {
@@ -498,7 +578,7 @@ function copyCurrentThread() {
   }
   const text = thread.messages.map(message => {
     if (message.role === "user") return "Você:\n" + message.text;
-    return "Kodex:\n" + (message.kind ? buildPlainText(message) : message.text);
+    return "Kodex:\n" + (message.kind === "build" ? buildPlainText(message) : message.text);
   }).join("\n\n---\n\n");
   copyText(text, "Conversa copiada.");
 }
