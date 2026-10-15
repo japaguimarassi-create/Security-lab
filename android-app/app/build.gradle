@@ -10,8 +10,8 @@ android {
         applicationId "com.kodex.lab"
         minSdk 24
         targetSdk 34
-        versionCode 2
-        versionName "0.2.0"
+        versionCode 3
+        versionName "0.3.0"
     }
 
     compileOptions {
@@ -25,6 +25,8 @@ tasks.register("syncWorkbenchAssets", Copy) {
         include "index.html"
         include "styles.css"
         include "app.js"
+        include "kodex-model.js"
+        include "src/ai/mobile-mlm.js"
     }
     into(layout.projectDirectory.dir("src/main/assets"))
 }
