@@ -36,7 +36,6 @@ def parse_args():
     parser.add_argument("--n-experts", type=int, default=4)
     parser.add_argument("--experts-per-token", type=int, default=2)
     parser.add_argument("--router-aux-loss-coef", type=float, default=0.01)
-    parser.add_argument("--router-aux-loss-coef", type=float, default=0.01)
     parser.add_argument("--mtp-heads", type=int, default=2)
     parser.add_argument("--mtp-loss-weight", type=float, default=0.1)
     parser.add_argument("--vocab-size", type=int, default=512)
