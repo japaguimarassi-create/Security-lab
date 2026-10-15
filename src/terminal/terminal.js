@@ -212,7 +212,7 @@
     const safeSource = file.content.replace(/<\/script/gi, "<\\/script");
     const csp = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'";
     const bootstrap = "(function(){const runId=" + JSON.stringify(runId) + ";const send=function(level,values){let text;try{text=values.map(function(value){if(typeof value==='string')return value;if(value instanceof Error)return value.name+': '+value.message;try{return JSON.stringify(value)}catch{return String(value)}}).join(' ')}catch{text='[não foi possível formatar a saída]'}window.parent.postMessage({type:'kodex-terminal-log',runId:runId,level:level,text:text},'*')};console.log=function(){send('normal',Array.from(arguments))};console.info=function(){send('info',Array.from(arguments))};console.warn=function(){send('warning',Array.from(arguments))};console.error=function(){send('error',Array.from(arguments))};window.addEventListener('error',function(event){send('error',[event.message||'Erro de execução'])});window.addEventListener('unhandledrejection',function(event){send('error',[event.reason])});send('info',['Executor em iframe isolado; rede e acesso à origem foram restringidos.'])})();";
-    const userScript = "try{(async function(){\\n" + safeSource + "\\n})().catch(function(error){console.error(error)})}catch(error){console.error(error)}";
+    const userScript = "try{(async function(){\n" + safeSource + "\n})().catch(function(error){console.error(error)})}catch(error){console.error(error)}";
     elements.runner.srcdoc = "<!doctype html><html><head><meta charset='utf-8'><meta http-equiv='Content-Security-Policy' content=\"" + csp + "\"></head><body><script>" + bootstrap + "</script><script>" + userScript + "</script></body></html>";
     writeLine("$ run js " + file.path, "command");
     writeLine("Executando JavaScript no navegador isolado. Não é Node.js e não fornece acesso ao sistema de arquivos.", "info");
@@ -416,8 +416,8 @@
         const source = getFile(args[0]);
         if (!source) throw new Error("Origem não encontrada: " + args[0]);
         const targetPath = engine.normalizeProjectPath(args[1]);
-        if (getFile(targetPath) && command === "cp") throw new Error("Destino já existe: " + targetPath);
-        const result = putFile(targetPath, source.content, command === "mv");
+        if (getFile(targetPath)) throw new Error("Destino já existe: " + targetPath);
+        const result = putFile(targetPath, source.content, false);
         if (command === "mv") {
           state.files = state.files.filter(file => file.path !== source.path);
           persistProject();
