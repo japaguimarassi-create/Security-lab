@@ -206,6 +206,7 @@ def trial_worker(db_path: str, dataset: str, device: str, timeout: int, log_root
         "--dropout", str(trial["dropout"]),
         "--weight-decay", str(trial["weight_decay"]),
         "--seed", str(trial["seed"]),
+        "--split-seed", str(trial.get("split_seed", 42)),
         "--device", device,
     ]
     started = time.monotonic()
@@ -342,6 +343,8 @@ def main() -> int:
                     print(json.dumps(result, ensure_ascii=False))
             can_start_more = limit == 0 or completed + len(pending) < limit
             while can_start_more and len(pending) < args.workers:
+                if summarize(args.db)["counts"]["pending"] == 0:
+                    break
                 future = pool.submit(trial_worker, args.db, args.data, args.device, args.timeout, args.log_root, threading.Event())
                 pending.add(future)
                 if limit and completed + len(pending) >= limit:
