@@ -1,6 +1,6 @@
 import unittest
 
-from experiment_swarm import config_for_trial, shard_trial_count, trial_ids_for_shard
+from training.experiment_swarm import config_for_trial, shard_trial_count, trial_ids_for_shard
 
 
 class ExperimentSwarmTests(unittest.TestCase):
