@@ -7,6 +7,8 @@
   <meta name="description" content="Kodex — espaço de trabalho para planejar, construir e revisar software.">
   <title>Kodex — espaço de trabalho</title>
   <link rel="stylesheet" href="./styles.css">
+  <script src="./kodex-model.js" defer></script>
+  <script src="./src/ai/mobile-mlm.js" defer></script>
   <script src="./app.js" defer></script>
 </head>
 <body>
@@ -62,7 +64,7 @@
           <button class="icon-button mobile-menu" id="open-sidebar" type="button" aria-label="Abrir navegação">☰</button>
           <div class="current-thread">
             <div class="current-title" id="current-title">Novo chat</div>
-            <div class="runtime-line"><span class="offline-dot"></span><span>Kodex local</span><span class="runtime-divider">·</span><span>modelo não conectado</span></div>
+            <div class="runtime-line"><span class="offline-dot"></span><span>Kodex local</span><span class="runtime-divider">·</span><span id="runtime-label">carregando modelo local…</span></div>
           </div>
         </div>
         <div class="topbar-actions">
@@ -73,17 +75,17 @@
 
       <div class="mode-bar">
         <div class="mode-switch" role="group" aria-label="Modo de trabalho">
-          <button class="mode-option active" data-mode="plan" type="button"><span class="mode-icon">☷</span> Planejar</button>
+          <button class="mode-option active" data-mode="chat" type="button"><span class="mode-icon">◌</span> Conversar</button>
           <button class="mode-option" data-mode="build" type="button"><span class="mode-icon">⌘</span> Construir</button>
         </div>
-        <div class="mode-description" id="mode-description">Organize a abordagem antes de alterar o projeto.</div>
+        <div class="mode-description" id="mode-description">Converse livremente sem criar uma tarefa automaticamente.</div>
       </div>
 
       <section class="conversation" id="conversation" aria-label="Mensagens" aria-live="polite">
         <div class="welcome-state" id="welcome-state">
-          <div class="welcome-kicker"><span class="welcome-mark">K</span> UM ESPAÇO PARA CONSTRUIR</div>
-          <h1>O que vamos<br class="mobile-break"> <span>fazer hoje?</span></h1>
-          <p class="welcome-copy">Comece com uma ideia. Estruture o plano, defina como validar e prepare a próxima etapa do trabalho.</p>
+          <div class="welcome-kicker"><span class="welcome-mark">K</span> CONVERSA LOCAL · MODELO EXPERIMENTAL</div>
+          <h1>Oi. No que posso<br class="mobile-break"> <span>ajudar você?</span></h1>
+          <p class="welcome-copy">Converse, tire dúvidas ou explore ideias. Quando realmente quiser implementar algo, selecione Construir. Uma mensagem curta também é uma mensagem válida.</p>
           <div class="starter-grid">
             <button class="starter" type="button" data-prompt="Planeje uma nova funcionalidade para este projeto. Defina objetivo, etapas, critérios de aceite e riscos.">
               <span class="starter-symbol">↗</span><span><strong>Planejar uma funcionalidade</strong><small>Do objetivo aos critérios de aceite</small></span>
@@ -104,16 +106,16 @@
 
       <footer class="composer-area">
         <form class="composer" id="chat-form">
-          <textarea id="message-input" rows="1" maxlength="12000" placeholder="Descreva o que você quer planejar ou construir…" aria-label="Mensagem para Kodex" required></textarea>
+          <textarea id="message-input" rows="1" maxlength="12000" placeholder="Escreva uma mensagem ou faça uma pergunta…" aria-label="Mensagem para Kodex" required></textarea>
           <div class="composer-bottom">
             <div class="composer-tools">
               <button class="context-button" id="context-button" type="button" aria-pressed="false"><span aria-hidden="true">＋</span> Contexto do projeto <span class="context-chevron">⌄</span></button>
-              <span class="composer-hint" id="composer-hint">Planejamento local</span>
+              <span class="composer-hint" id="composer-hint">Conversa local</span>
             </div>
             <button class="send-button" id="send-button" type="submit" aria-label="Enviar mensagem" title="Enviar mensagem"><span>↑</span></button>
           </div>
         </form>
-        <div class="composer-disclaimer"><span class="disclaimer-lock">◈</span> As respostas desta versão são rascunhos locais. Nenhum modelo de IA ou executor de código está conectado.</div>
+        <div class="composer-disclaimer"><span class="disclaimer-lock">◈</span> Modelo neural local de 264.192 parâmetros, treinado do zero e ainda experimental. O app não executa código nem altera arquivos reais.</div>
       </footer>
     </main>
 
@@ -133,7 +135,7 @@
       <section class="panel-section">
         <div class="section-title">SESSÃO ATUAL <span class="live-label">LOCAL</span></div>
         <div class="session-stat"><span>Mensagens</span><strong id="message-count">0</strong></div>
-        <div class="session-stat"><span>Modo</span><strong id="panel-mode">Planejar</strong></div>
+        <div class="session-stat"><span>Modo</span><strong id="panel-mode">Conversar</strong></div>
         <div class="session-stat"><span>Tarefas preparadas</span><strong id="task-count">0</strong></div>
       </section>
 
@@ -144,13 +146,13 @@
 
       <section class="panel-section runtime-card">
         <div class="section-title">CAPACIDADES DISPONÍVEIS</div>
-        <div class="capability-row"><span class="capability-state available"></span><span>Histórico local de chats</span></div>
-        <div class="capability-row"><span class="capability-state available"></span><span>Rascunhos de planejamento</span></div>
-        <div class="capability-row"><span class="capability-state unavailable"></span><span>Modelo generativo</span></div>
-        <div class="capability-row"><span class="capability-state unavailable"></span><span>Executar e editar arquivos</span></div>
+        <div class="capability-row"><span class="capability-state available"></span><span>Histórico local de conversas</span></div>
+        <div class="capability-row"><span class="capability-state available"></span><span id="model-capability">Carregando modelo neural…</span></div>
+        <div class="capability-row"><span class="capability-state available"></span><span>Planos e rascunhos de implementação</span></div>
+        <div class="capability-row"><span class="capability-state unavailable"></span><span>Executar código e editar repositórios</span></div>
       </section>
 
-      <div class="panel-footer">KODEX LAB <span>0.2.0</span></div>
+      <div class="panel-footer">KODEX LAB <span>0.3.0</span></div>
     </aside>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
