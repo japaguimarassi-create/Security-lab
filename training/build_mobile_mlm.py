@@ -97,8 +97,18 @@ def read_samples(path):
         answer = item.get("answer")
         if mode not in ("chat", "build") or not isinstance(prompt, str) or not prompt.strip() or not isinstance(answer, str) or not answer.strip():
             raise ValueError(f"Invalid dialogue sample on line {line_number}")
-        prefix = f"Modo: {mode}\nUsuário: {prompt.strip()}\nKodex: "
-        suffix = answer.strip() + "\n<fim>\n"
+        history = item.get("history", [])
+        if not isinstance(history, list):
+            raise ValueError(f"Invalid history on line {line_number}")
+        history_lines = []
+        for turn in history[-4:]:
+            if not isinstance(turn, dict) or turn.get("role") not in ("user", "assistant") or not isinstance(turn.get("text"), str):
+                raise ValueError(f"Invalid history turn on line {line_number}")
+            speaker = "Usuário" if turn["role"] == "user" else "Kodex"
+            history_lines.append(f"{speaker}: {turn['text'].strip()[:360]}")
+        history_text = "".join(line + "\\n" for line in history_lines)
+        prefix = f"Modo: {mode}\\nHistórico:\\n{history_text}Usuário: {prompt.strip()}\\nKodex: "
+        suffix = answer.strip() + "\\n<fim>\\n"
         samples.append((prefix, suffix))
     if len(samples) < 20:
         raise ValueError("At least 20 curated dialogue samples are required")
