@@ -10,11 +10,15 @@ Kodex is an experimental programming workspace and from-scratch language-model r
 - [x] Official Codex and Copilot engineering research
 - [x] 264,192-unit experimental architecture budget, explicitly marked as untrained
 - [x] Bounded agent-loop contract with tool allowlist, approvals, trace events, and step limits
-- [x] Small decoder-only byte-level Transformer initialized from scratch
-- [x] Training, checkpoint reload, generation, and manifest-based corpus-preparation scripts
+- [x] Modernized decoder-only Transformer with RMSNorm, RoPE, GQA, SwiGLU and sparse top-k expert routing, initialized from scratch
+- [x] Training with AdamW, warmup/stable/decay schedule, gradient accumulation, GPU mixed precision, resumable/best checkpoints, and manifest-based corpus preparation
+- [x] Independent holdout loss/perplexity evaluation tool
+- [x] Supervised instruction fine-tuning stage with loss masked to assistant targets
 - [x] Corpus-trained byte-level BPE tokenizer implementation and round-trip test
 - [x] Node.js CI and a Python/PyTorch CPU smoke-training workflow
-- [ ] A useful model trained on a large, legally reviewed programming corpus
+- [ ] A useful model trained on a large, legally reviewed programming and general-knowledge corpus
+- [ ] Full pretraining, instruction fine-tuning, and post-training runs on representative datasets
+- [ ] Competitive, held-out coding and general capability benchmark results
 - [ ] A BPE tokenizer trained from the approved corpus
 - [ ] Real model inference connected to the workbench
 - [ ] OS-enforced sandbox for project-file editing and command execution
@@ -36,7 +40,8 @@ Requires Python 3.12, PyTorch, and (for BPE) Hugging Face Tokenizers.
 ```sh
 python -m pip install torch tokenizers
 python training/train_tokenizer.py --data training/data/smoke_corpus.txt --output training/checkpoints/kodex-tokenizer.json --vocab-size 512
-python training/train.py --data training/data/smoke_corpus.txt --tokenizer training/checkpoints/kodex-tokenizer.json --output training/checkpoints/kodex-bpe.pt --steps 100 --device cpu
+python training/train.py --data training/data/smoke_corpus.txt --validation-data training/data/smoke_validation.txt --tokenizer training/checkpoints/kodex-tokenizer.json --output training/checkpoints/kodex-bpe.pt --steps 100 --batch-size 4 --block-size 128 --layers 4 --heads 4 --embedding-size 128 --experts 4 --experts-per-token 2 --device cpu
+python training/evaluate.py --checkpoint training/checkpoints/kodex-bpe.pt --data training/data/smoke_validation.txt --device cpu
 python training/generate.py --checkpoint training/checkpoints/kodex-bpe.pt --prompt "def add(a, b):"
 ```
 
@@ -74,11 +79,14 @@ The GitHub Actions workflow `.github/workflows/kodex-training-smoke.yml` runs a 
 - `index.html`, `styles.css`, `app.js`: responsive interactive workbench.
 - `src/ai/neuron-profile.json`: proposed 264,192 logical-unit architecture budget; no trained weights.
 - `src/ai/agent-loop.mjs`: bounded model/tool orchestration contract.
-- `training/kodex_lm.py`: byte-level causal Transformer initialized from random parameters.
+- `training/kodex_lm.py`: causal decoder with RMSNorm, RoPE, grouped-query attention, SwiGLU and sparse mixture-of-experts routing. All parameters start randomly initialized.
 - `training/train_tokenizer.py`: train a byte-level BPE vocabulary from the selected corpus.
-- `training/train.py`: train/validation split, next-token objective, gradient clipping, corpus hashing, metrics and checkpoint save; supports byte or BPE tokens.
+- `training/train.py`: next-token pretraining, AdamW parameter groups, warmup/stable/decay learning-rate schedule, gradient accumulation, GPU mixed precision, periodic and best checkpoints, and resumable state. Supports byte or BPE tokens.
 - `training/notebooks/kodex_scratch_training.ipynb`: phone-friendly Colab notebook for a scratch-training run using Drive-backed inputs and checkpoints.
-- `training/generate.py`: load a trained local checkpoint and sample next bytes.
+- `training/generate.py`: local generation with top-k/top-p sampling, repetition penalty, seed control, and embedded tokenizer loading.
+- `training/evaluate.py`: score an independently supplied holdout stream with cross-entropy and perplexity.
+- `training/finetune_sft.py`: masked supervised instruction fine-tuning from a Kodex checkpoint; assistant answers contribute to the loss while the prompt is context only.
+- `training/data/smoke_validation.txt` and `training/data/smoke_instructions*.jsonl`: tiny human-authored smoke holdouts, not production training data.
 - `training/prepare_corpus.py`: manifest validation, provenance report, license allowlist and basic secret/path filters.
 - `training/data/smoke_corpus.txt`: intentionally tiny, human-authored smoke-test corpus.
 - `tests/` and `training/tests/`: Node.js and Python test suites.
@@ -87,7 +95,7 @@ The GitHub Actions workflow `.github/workflows/kodex-training-smoke.yml` runs a 
 
 ## Reality of the 264,192-unit target
 
-The logical-unit total is not the model's parameter count and does not create intelligence. The existing profile has no learned weights. The small byte-level Transformer used to verify the training pipeline is a separate prototype and does not yet match the 264,192-unit research target. Defining the large architecture requires specifying width, depth, active parameters, sparsity, token count, context length, memory, and compute.
+The logical-unit total is not the model's parameter count and does not create intelligence. The existing profile has no learned weights. The trainable model is a separate small-scale prototype and does not yet match the 264,192-unit logical-unit research target. It now includes four sparse experts with top-2 routing by default; this is an architecture experiment, not evidence of frontier capability. Defining the large architecture requires specifying width, depth, active parameters, sparsity, token count, context length, memory, and compute.
 
 ## Security boundaries
 
