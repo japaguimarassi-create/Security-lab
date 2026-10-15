@@ -112,7 +112,7 @@ def main():
         raise ValueError(f"workers must be between 1 and {MAX_WORKERS}.")
     if args.steps < 1 or args.eval_batches < 1 or args.trial_timeout_seconds < 1:
         raise ValueError("steps, eval-batches and trial-timeout-seconds must be positive.")
-    if not args.data.is_file():
+    if not args.data.exists() or not (args.data.is_file() or args.data.is_dir()):
         raise FileNotFoundError(f"Training dataset not found: {args.data}")
 
     output_root = args.out_dir.resolve()
