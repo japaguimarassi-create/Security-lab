@@ -1,480 +1,565 @@
-const sampleFiles = {
-  "src/main.js": [
-    "import { sum } from './math.js';",
-    "",
-    "export function startApp() {",
-    "  const result = sum(18, 24);",
-    "  console.log('Kodex sample:', result);",
-    "  return result;",
-    "}",
-    "",
-    "startApp();"
-  ].join("\n"),
-  "src/math.js": [
-    "export function sum(a, b) {",
-    "  if (typeof a !== 'number' || typeof b !== 'number') {",
-    "    throw new TypeError('sum expects numbers');",
-    "  }",
-    "  return a + b;",
-    "}"
-  ].join("\n"),
-  "tests/math.test.js": [
-    "import test from 'node:test';",
-    "import assert from 'node:assert/strict';",
-    "import { sum } from '../src/math.js';",
-    "",
-    "test('sum combines two numbers', () => {",
-    "  assert.equal(sum(2, 3), 5);",
-    "});"
-  ].join("\n"),
-  "README.md": [
-    "# Kodex sample workspace",
-    "",
-    "A small JavaScript project used to exercise the workbench.",
-    "",
-    "- src/main.js: application entry point",
-    "- src/math.js: arithmetic helper",
-    "- tests/math.test.js: one Node.js test example",
-    "",
-    "The browser workbench inspects source text locally. It does not run this code."
-  ].join("\n")
+const STORAGE_KEY = "kodex:chat-threads:v2";
+const MAX_THREADS = 30;
+const MODES = {
+  plan: {
+    title: "Planejar",
+    description: "Organize a abordagem antes de alterar o projeto.",
+    hint: "Planejamento local"
+  },
+  build: {
+    title: "Construir",
+    description: "Prepare uma tarefa verificável para implementação.",
+    hint: "Preparação de tarefa"
+  }
 };
 
-const editor = document.getElementById("source-editor");
-const lineNumbers = document.getElementById("line-numbers");
-const activeFileName = document.getElementById("active-file-name");
-const breadcrumbFile = document.getElementById("breadcrumb-file");
-const editorHeading = document.getElementById("editor-heading");
-const editorStatusText = document.getElementById("editor-status-text");
-const cursorStatus = document.getElementById("cursor-status");
-const unsavedDot = document.getElementById("unsaved-dot");
-const mobileFileSelect = document.getElementById("mobile-file-select");
-const responseContent = document.getElementById("response-content");
-const taskList = document.getElementById("task-list");
-const queueCount = document.getElementById("queue-count");
-const toast = document.getElementById("toast");
-const consoleBody = document.getElementById("console-body");
-const logCount = document.getElementById("log-count");
-const fileState = {};
-const taskQueue = [];
-let activeFile = "src/main.js";
-let activeMode = "ask";
-let activeView = "workspace";
-let toastHandle = null;
+const elements = {
+  sidebar: document.getElementById("sidebar"),
+  scrim: document.getElementById("drawer-scrim"),
+  threadList: document.getElementById("thread-list"),
+  threadSearch: document.getElementById("thread-search"),
+  currentTitle: document.getElementById("current-title"),
+  welcome: document.getElementById("welcome-state"),
+  messageList: document.getElementById("message-list"),
+  conversation: document.getElementById("conversation"),
+  input: document.getElementById("message-input"),
+  form: document.getElementById("chat-form"),
+  send: document.getElementById("send-button"),
+  modeDescription: document.getElementById("mode-description"),
+  composerHint: document.getElementById("composer-hint"),
+  contextButton: document.getElementById("context-button"),
+  messageCount: document.getElementById("message-count"),
+  panelMode: document.getElementById("panel-mode"),
+  taskCount: document.getElementById("task-count"),
+  nextStep: document.getElementById("next-step"),
+  toast: document.getElementById("toast")
+};
 
-function fileTitle(path) {
-  return path.split("/").pop();
-}
+let activeMode = "plan";
+let includeProjectContext = false;
+let toastTimer = null;
+let threads = loadThreads();
+let activeThreadId = threads[0]?.id ?? null;
 
-function startingContent(path) {
+function loadThreads() {
   try {
-    return localStorage.getItem("kodex-lab:file:" + path) ?? sampleFiles[path];
+    const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    if (!Array.isArray(value)) return [];
+    return value.filter(thread =>
+      thread && typeof thread.id === "string" &&
+      typeof thread.title === "string" &&
+      Array.isArray(thread.messages)
+    ).slice(0, MAX_THREADS);
   } catch {
-    return sampleFiles[path];
+    return [];
   }
 }
 
-Object.keys(sampleFiles).forEach((path) => {
-  fileState[path] = {
-    content: startingContent(path),
-    savedContent: startingContent(path)
-  };
-});
+function saveThreads() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(threads.slice(0, MAX_THREADS)));
+  } catch {
+    showToast("Não foi possível persistir o histórico neste dispositivo.");
+  }
+}
 
-function appendLog(level, message) {
-  const row = document.createElement("div");
-  row.className = "log-row" + (level === "INFO" ? " log-muted" : "");
-  const time = document.createElement("span");
-  time.className = "log-time";
-  time.textContent = level;
-  const mark = document.createElement("span");
-  mark.className = "log-mark";
-  mark.textContent = level === "PASS" ? "✓" : level === "WARN" ? "!" : "›";
-  const text = document.createElement("span");
-  text.textContent = message;
-  row.append(time, mark, text);
-  consoleBody.append(row);
-  consoleBody.scrollTop = consoleBody.scrollHeight;
-  logCount.textContent = String(consoleBody.querySelectorAll(".log-row").length).padStart(2, "0");
+function newId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+function activeThread() {
+  return threads.find(thread => thread.id === activeThreadId) || null;
+}
+
+function makeThread() {
+  const thread = {
+    id: newId(),
+    title: "Novo chat",
+    mode: activeMode,
+    createdAt: new Date().toISOString(),
+    messages: [],
+    taskCount: 0,
+    nextStep: null
+  };
+  threads.unshift(thread);
+  threads = threads.slice(0, MAX_THREADS);
+  activeThreadId = thread.id;
+  saveThreads();
+  renderAll();
+  closeSidebar();
+  elements.input.focus();
 }
 
 function showToast(message) {
-  toast.textContent = message;
-  toast.hidden = false;
-  if (toastHandle) clearTimeout(toastHandle);
-  toastHandle = setTimeout(() => {
-    toast.hidden = true;
+  elements.toast.textContent = message;
+  elements.toast.hidden = false;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    elements.toast.hidden = true;
   }, 2600);
 }
 
-function updateEditorChrome() {
-  const state = fileState[activeFile];
-  const title = fileTitle(activeFile);
-  activeFileName.textContent = title;
-  breadcrumbFile.textContent = title;
-  editorHeading.textContent = activeFile === "src/main.js"
-    ? "Application entry"
-    : activeFile === "src/math.js"
-      ? "Core utility"
-      : activeFile === "tests/math.test.js"
-        ? "Test specification"
-        : "Project documentation";
-  const ext = title.split(".").pop().toLowerCase();
-  const language = ext === "md" ? "Markdown" : ext === "ts" || ext === "tsx" ? "TypeScript" : "JavaScript";
-  document.querySelector(".editor-status > div:last-child span:nth-child(2)").textContent = language;
-  mobileFileSelect.value = activeFile;
-  document.querySelectorAll(".file-row").forEach((button) => {
-    button.classList.toggle("selected", button.dataset.file === activeFile);
-  });
-  const dirty = state.content !== state.savedContent;
-  unsavedDot.hidden = !dirty;
-  editorStatusText.textContent = dirty ? "Unsaved local changes" : "Ready for local inspection";
-  updateLineNumbers();
+function escapeText(value) {
+  return String(value ?? "");
 }
 
-function updateLineNumbers() {
-  const count = Math.max(1, editor.value.split("\n").length);
-  lineNumbers.textContent = Array.from({ length: count }, (_, index) => String(index + 1)).join("\n");
-  lineNumbers.scrollTop = editor.scrollTop;
-  updateCursorStatus();
-}
-
-function updateCursorStatus() {
-  const beforeCursor = editor.value.slice(0, editor.selectionStart);
-  const lines = beforeCursor.split("\n");
-  cursorStatus.textContent = "Ln " + lines.length + ", Col " + (lines[lines.length - 1].length + 1);
-}
-
-function openFile(path) {
-  if (!Object.prototype.hasOwnProperty.call(fileState, path)) return;
-  fileState[activeFile].content = editor.value;
-  activeFile = path;
-  editor.value = fileState[path].content;
-  updateEditorChrome();
-  editor.focus();
-  appendLog("INFO", "Opened " + path + " in local workspace.");
-}
-
-function renderResponse(flag, paragraphs) {
-  responseContent.replaceChildren();
-  const flagRow = document.createElement("div");
-  flagRow.className = "response-flag";
-  const label = document.createElement("span");
-  label.textContent = flag || "LOCAL MODE";
-  const state = document.createElement("span");
-  state.textContent = "NO MODEL";
-  flagRow.append(label, state);
-  responseContent.append(flagRow);
-  paragraphs.forEach((text) => {
-    const paragraph = document.createElement("p");
-    paragraph.textContent = text;
-    responseContent.append(paragraph);
-  });
-}
-
-function scanCode(code) {
-  const checks = [
-    {
-      id: "eval",
-      expression: /\beval\s*\(/,
-      severity: "high",
-      title: "Dynamic evaluation",
-      detail: "eval() executes text as code and can turn untrusted input into executable logic."
-    },
-    {
-      id: "function-constructor",
-      expression: /new\s+Function\s*\(/,
-      severity: "high",
-      title: "Function constructor",
-      detail: "The Function constructor creates code from strings and complicates security review."
-    },
-    {
-      id: "embedded-secret",
-      expression: /\b(?:api[_-]?key|password|secret|access[_-]?token)\s*[:=]\s*['"][^'"]{8,}['"]/i,
-      severity: "high",
-      title: "Possible hard-coded secret",
-      detail: "A string assignment resembles a credential. Confirm it is not a real secret and rotate it if exposed."
-    },
-    {
-      id: "innerhtml",
-      expression: /\.innerHTML\s*=/,
-      severity: "medium",
-      title: "HTML injection surface",
-      detail: "Check whether assigned HTML can contain untrusted input; textContent is safer for plain text."
-    },
-    {
-      id: "fetch",
-      expression: /\bfetch\s*\(/,
-      severity: "low",
-      title: "Network request",
-      detail: "Review the destination, data sent, error handling, and permission expectations."
-    }
-  ];
-  return checks.filter((check) => check.expression.test(code));
-}
-
-function actionExplain() {
-  const code = editor.value;
-  const lines = code.split("\n");
-  const imports = (code.match(/\bimport\s+(?:[^;]+\s+from\s+)?['"][^'"]+['"]/g) || []).length;
-  const exports = (code.match(/\bexport\s+/g) || []).length;
-  const functions = (code.match(/\bfunction\s+[A-Za-z_$][\w$]*\s*\(|\b(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/g) || []).length;
-  const comments = (code.match(/(^|\s)\/\//g) || []).length;
-  renderResponse("STRUCTURAL PASS", [
-    "File: " + activeFile,
-    "This local inspection counted " + lines.length + " lines, " + imports + " import statement(s), " + exports + " export keyword(s), and about " + functions + " function declaration(s).",
-    "These counts are regex-based approximations. They do not build an AST or prove what the program does.",
-    comments ? "Line-comment markers detected: " + comments + "." : "No obvious line-comment markers were detected."
-  ]);
-  appendLog("PASS", "Structural inspection completed for " + activeFile + " (no code execution).");
-}
-
-function actionReview() {
-  const findings = scanCode(editor.value);
-  responseContent.replaceChildren();
-  const flag = document.createElement("div");
-  flag.className = "response-flag";
-  const left = document.createElement("span");
-  left.textContent = "PATTERN SCAN";
-  const right = document.createElement("span");
-  right.textContent = findings.length ? findings.length + " FINDING(S)" : "NO MATCHES";
-  flag.append(left, right);
-  responseContent.append(flag);
-  const summary = document.createElement("p");
-  summary.textContent = findings.length
-    ? "Potential review points found in " + activeFile + ". Each match needs contextual validation."
-    : "No known risk patterns matched in " + activeFile + ". This does not prove the file is secure.";
-  responseContent.append(summary);
-  findings.forEach((finding) => {
-    const card = document.createElement("div");
-    card.className = "finding " + (finding.severity === "high" ? "high" : finding.severity === "low" ? "low" : "");
-    const title = document.createElement("strong");
-    title.textContent = finding.severity.toUpperCase() + " · " + finding.title;
-    const detail = document.createElement("small");
-    detail.textContent = finding.detail;
-    card.append(title, detail);
-    responseContent.append(card);
-  });
-  const note = document.createElement("p");
-  note.className = "response-hint";
-  note.textContent = "Static regex scan only: false positives and missed issues are expected. No files, network requests, or commands were executed.";
-  responseContent.append(note);
-  appendLog(findings.length ? "WARN" : "PASS", "Pattern scan found " + findings.length + " potential issue(s) in " + activeFile + ".");
-}
-
-function actionTests() {
-  const code = editor.value;
-  const hasExport = /\bexport\s+/.test(code);
-  const hasThrow = /\bthrow\s+/.test(code);
-  const hasBranches = /\bif\s*\(|\bswitch\s*\(/.test(code);
-  const hasAsync = /\basync\b|\bawait\b|\bPromise\b/.test(code);
-  const cases = [
-    hasExport ? "Test the public exported behavior through its public interface." : "Identify the intended public interface and test it directly.",
-    hasBranches ? "Cover each conditional branch, including boundary and invalid inputs." : "Add boundary, invalid-input, and typical-input cases appropriate to the function.",
-    hasThrow ? "Assert the expected error type and message for invalid inputs." : "Decide which invalid inputs should be rejected and assert the contract.",
-    hasAsync ? "Test success, rejection, timeout behavior, and cleanup for asynchronous paths." : "Add regression tests for known defects and run the suite in CI."
-  ];
-  renderResponse("TEST DESIGN", [
-    "Draft checklist for " + activeFile + ".",
-    ...cases,
-    "This is a proposed checklist, not an executed test run. No test files were changed."
-  ]);
-  appendLog("INFO", "Generated a test checklist for " + activeFile + "; tests were not executed.");
-}
-
-function runAction(action) {
-  if (action === "explain") actionExplain();
-  else if (action === "review") actionReview();
-  else if (action === "tests") actionTests();
-}
-
-function performLocalChecks() {
-  fileState[activeFile].content = editor.value;
-  const findings = scanCode(editor.value);
-  const trailingWhitespace = editor.value.split("\n").filter((line) => /\s+$/.test(line)).length;
-  const empty = editor.value.trim().length === 0;
-  const messages = [];
-  messages.push(empty ? "The editor buffer is empty." : "Buffer has " + editor.value.split("\n").length + " line(s).");
-  messages.push("Risk-pattern matches: " + findings.length + ".");
-  messages.push("Lines with trailing whitespace: " + trailingWhitespace + ".");
-  messages.push("Static check finished. No JavaScript was executed and no Node.js tests were run.");
-  renderResponse("LOCAL CHECKS", messages);
-  appendLog(findings.length ? "WARN" : "PASS", "Local checks completed: " + findings.length + " risk-pattern match(es), " + trailingWhitespace + " trailing-whitespace line(s).");
-  editorStatusText.textContent = "Local static checks completed";
-  showToast("Local inspection finished; no code was executed.");
-}
-
-function saveLocal() {
-  fileState[activeFile].content = editor.value;
+function formatTime(value) {
   try {
-    localStorage.setItem("kodex-lab:file:" + activeFile, editor.value);
-    fileState[activeFile].savedContent = editor.value;
-    updateEditorChrome();
-    appendLog("PASS", "Saved " + activeFile + " in this browser's local storage.");
-    showToast("Saved in this browser only.");
+    return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
   } catch {
-    appendLog("WARN", "Browser storage is unavailable; the edit remains in the current page session.");
-    showToast("Browser storage unavailable; edit remains in this session.");
+    return "";
   }
 }
 
-function formatCurrentBuffer() {
-  const prior = editor.value;
-  const formatted = prior.split("\n").map((line) => line.replace(/[ \t]+$/, "")).join("\n").replace(/\n*$/, "\n");
-  editor.value = formatted;
-  fileState[activeFile].content = formatted;
-  updateEditorChrome();
-  editorStatusText.textContent = "Whitespace normalization only";
-  appendLog("INFO", "Removed trailing whitespace and ensured one final newline; no language formatter is configured.");
-  showToast("Applied basic whitespace cleanup, not a language-aware format.");
+function shorten(value, limit = 39) {
+  const clean = value.replace(/\s+/g, " ").trim();
+  return clean.length > limit ? clean.slice(0, limit - 1) + "…" : clean;
 }
 
-function renderTasks() {
-  taskList.replaceChildren();
-  queueCount.textContent = String(taskQueue.length);
-  if (taskQueue.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "empty-queue";
-    empty.textContent = "No tasks in this session.";
-    taskList.append(empty);
+function renderThreadList() {
+  const query = elements.threadSearch.value.trim().toLocaleLowerCase("pt-BR");
+  const visible = threads.filter(thread => thread.title.toLocaleLowerCase("pt-BR").includes(query));
+  elements.threadList.replaceChildren();
+  if (!visible.length) {
+    const empty = document.createElement("div");
+    empty.className = "thread-empty";
+    empty.textContent = threads.length ? "Nenhuma conversa encontrada." : "Suas conversas aparecerão aqui.";
+    elements.threadList.append(empty);
     return;
   }
-  taskQueue.slice().reverse().forEach((task) => {
-    const card = document.createElement("div");
-    card.className = "queue-task";
-    card.textContent = task.text;
-    const status = document.createElement("small");
-    status.textContent = task.status;
-    card.append(status);
-    taskList.append(card);
+  visible.forEach(thread => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "thread-item" + (thread.id === activeThreadId ? " active" : "");
+    const symbol = document.createElement("span");
+    symbol.className = "thread-symbol";
+    symbol.textContent = thread.mode === "build" ? "⌘" : "☷";
+    const title = document.createElement("span");
+    title.className = "thread-name";
+    title.textContent = thread.title;
+    const mode = document.createElement("span");
+    mode.className = "thread-mode";
+    mode.textContent = thread.mode === "build" ? "Construir" : "Planejar";
+    button.append(symbol, title, mode);
+    button.addEventListener("click", () => {
+      activeThreadId = thread.id;
+      activeMode = thread.mode || "plan";
+      renderAll();
+      closeSidebar();
+    });
+    elements.threadList.append(button);
   });
 }
 
-function addTask(event) {
-  event.preventDefault();
-  const input = document.getElementById("task-input");
-  const task = input.value.trim();
-  if (!task) return;
-  taskQueue.push({ text: task, status: "QUEUED · MODEL REQUIRED" });
-  renderTasks();
-  input.value = "";
-  renderResponse("TASK QUEUED", [
-    "Added task to this browser session: " + task,
-    "The task has not been run. This branch has no trained model or connected inference endpoint.",
-    "When the runtime is implemented, the task should proceed through context gathering, planning, approved tools, tests, and a reviewable diff."
-  ]);
-  appendLog("INFO", "Queued a session-only task; no model call was made.");
-  showToast("Task added to the local queue. It has not been executed.");
+function addSection(container, title, items, ordered = false) {
+  const section = document.createElement("section");
+  section.className = "response-section";
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  const list = document.createElement(ordered ? "ol" : "ul");
+  items.forEach(item => {
+    const li = document.createElement("li");
+    li.textContent = item;
+    list.append(li);
+  });
+  section.append(heading, list);
+  container.append(section);
 }
 
-function setMode(mode) {
-  activeMode = mode;
-  document.querySelectorAll(".mode-option").forEach((button) => {
-    button.classList.toggle("active", button.dataset.mode === mode);
-  });
-  const label = mode === "build" ? "BUILD" : mode === "review" ? "REVIEW" : "ASK";
-  document.querySelector(".task-composer label").textContent = "NEW " + label + " TASK";
-  if (mode === "build") {
-    renderResponse("BUILD MODE", [
-      "Describe the intended change and expected behavior in the task box.",
-      "Kodex currently queues the task locally; it does not write files or run commands."
-    ]);
-  } else if (mode === "review") {
-    renderResponse("REVIEW MODE", [
-      "Use Inspect for risks for a pattern-based review of the open file.",
-      "Findings are candidates for review, not proof of a vulnerability or proof of safety."
-    ]);
-  } else {
-    renderResponse("ASK MODE", [
-      "Ask about the current file or use Explain this file.",
-      "This first milestone provides deterministic local tools, not generative model inference."
-    ]);
-  }
-}
-
-function setView(view) {
-  activeView = view;
-  document.querySelectorAll(".rail-item[data-view]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.view === view);
-  });
-  const labelMap = {
-    workspace: "WORKSPACE",
-    build: "BUILD",
-    review: "REVIEW",
-    knowledge: "KNOWLEDGE INDEX",
-    tests: "TEST LAB"
+function makeLocalPlan(prompt) {
+  const text = prompt.toLocaleLowerCase("pt-BR");
+  const ui = /interface|ui|tela|visual|design|layout|chat|botão|mobile/.test(text);
+  const bug = /bug|erro|falha|quebrad|corrig|crash|problema/.test(text);
+  const test = /teste|testes|cobertura|validar|qualidade/.test(text);
+  const security = /seguran|autentica|login|permiss|token|senha|malware/.test(text);
+  const data = /banco|dados|persist|histórico|salvar|armazen/.test(text);
+  const steps = [];
+  if (bug) steps.push("Reproduzir o comportamento e registrar o resultado atual antes de alterar o código.");
+  else steps.push("Definir o comportamento esperado e os limites explícitos do escopo.");
+  if (ui) steps.push("Mapear estados da interface, hierarquia visual, acessibilidade e comportamento em telas pequenas.");
+  else if (security) steps.push("Desenhar limites de confiança, permissões mínimas e tratamento seguro de entradas.");
+  else if (data) steps.push("Definir o formato dos dados, persistência, migração e tratamento de falhas.");
+  else steps.push("Identificar os módulos envolvidos e separar responsabilidades para manter a mudança localizada.");
+  steps.push("Implementar em incrementos pequenos, mantendo o comportamento existente que não faz parte da mudança.");
+  if (test || bug) steps.push("Criar casos positivos, negativos e de regressão; executar os testes relevantes.");
+  else steps.push("Definir verificações reproduzíveis para o caminho principal e os casos de borda.");
+  steps.push("Revisar o diff, documentar limitações e confirmar os critérios de aceite.");
+  const criteria = [
+    "O resultado corresponde ao comportamento descrito, sem funcionalidades extras implícitas.",
+    "Entradas inválidas e estados de erro têm tratamento definido.",
+    "As verificações são reproduzíveis e o resultado final pode ser revisado."
+  ];
+  const risks = [];
+  if (security) risks.push("Não armazenar segredos em arquivos do cliente nem ampliar permissões sem necessidade.");
+  if (data) risks.push("Evitar perda de dados existentes e prever falhas de gravação.");
+  if (ui) risks.push("Conferir teclado, contraste, texto longo e viewport móvel.");
+  if (bug) risks.push("Não mascarar o sintoma; confirmar a causa com uma reprodução mínima.");
+  if (!risks.length) risks.push("A falta de contexto real do repositório pode tornar incompleta a lista de arquivos afetados.");
+  return {
+    kind: "plan",
+    title: "Plano inicial",
+    intro: "Organizei um primeiro roteiro para este pedido. Ele é um rascunho heurístico local, não uma resposta gerada por um modelo treinado.",
+    sections: [
+      { title: "Objetivo", items: [shorten(prompt, 180)] },
+      { title: "Sequência proposta", items: steps },
+      { title: "Critérios de aceite", items: criteria },
+      { title: "Riscos a verificar", items: risks }
+    ],
+    action: "Enviar este pedido para Construir"
   };
-  document.getElementById("view-label").textContent = labelMap[view] || "WORKSPACE";
-  if (view === "workspace") {
-    setMode("ask");
-    appendLog("INFO", "Workspace view selected.");
-  } else if (view === "build") {
-    setMode("build");
-  } else if (view === "review") {
-    setMode("review");
-    actionReview();
-  } else if (view === "knowledge") {
-    renderResponse("INDEX NOT CONNECTED", [
-      "Repository-aware semantic indexing is not implemented in this milestone.",
-      "The next implementation should index permitted files, rank relevant snippets, retain file and line provenance, and protect against instructions embedded in untrusted source files."
-    ]);
-    appendLog("INFO", "Knowledge index selected; no repository index is connected.");
-  } else if (view === "tests") {
-    actionTests();
+}
+
+function makeBuildBrief(prompt) {
+  const text = prompt.toLocaleLowerCase("pt-BR");
+  const suggestedFiles = [];
+  if (/interface|ui|tela|visual|design|layout|chat|mobile/.test(text)) suggestedFiles.push("Interface e estilos da tela afetada");
+  if (/teste|testes|bug|erro|falha|corrig/.test(text)) suggestedFiles.push("Testes de regressão e cenários de erro");
+  if (/banco|dados|persist|salvar|armazen|histórico/.test(text)) suggestedFiles.push("Camada responsável pelos dados e persistência");
+  if (/seguran|autentica|login|permiss|token|senha/.test(text)) suggestedFiles.push("Autenticação, validações e regras de acesso");
+  if (!suggestedFiles.length) suggestedFiles.push("Módulo principal da funcionalidade", "Testes relacionados e documentação");
+  return {
+    kind: "build",
+    title: "Brief de implementação",
+    intro: "A solicitação foi organizada como uma tarefa revisável. Esta versão ainda não consegue alterar arquivos nem executar comandos: o modelo generativo e o executor não estão conectados.",
+    sections: [
+      { title: "Resultado solicitado", items: [shorten(prompt, 180)] },
+      { title: "Áreas a inspecionar", items: suggestedFiles },
+      { title: "Checklist de execução", items: [
+        "Ler os arquivos reais afetados e confirmar o escopo antes de editar.",
+        "Implementar a menor mudança que satisfaça os critérios.",
+        "Executar testes, revisar o diff e registrar os resultados reais."
+      ] }
+    ],
+    checklist: [
+      "Contexto e arquivos revisados",
+      "Alteração implementada",
+      "Testes executados e revisados",
+      "Diff final aprovado"
+    ],
+    action: "Copiar brief de implementação"
+  };
+}
+
+function makeResponse(prompt, mode) {
+  return mode === "build" ? makeBuildBrief(prompt) : makeLocalPlan(prompt);
+}
+
+function appendMessage(thread, message) {
+  thread.messages.push(message);
+  if (thread.messages.length === 1 && message.role === "user") {
+    thread.title = shorten(message.text, 42) || "Novo chat";
   }
 }
 
-document.querySelectorAll(".file-row").forEach((button) => {
-  button.addEventListener("click", () => openFile(button.dataset.file));
-});
-mobileFileSelect.addEventListener("change", () => openFile(mobileFileSelect.value));
-editor.addEventListener("input", () => {
-  fileState[activeFile].content = editor.value;
-  updateEditorChrome();
-});
-editor.addEventListener("click", updateCursorStatus);
-editor.addEventListener("keyup", updateCursorStatus);
-editor.addEventListener("scroll", () => {
-  lineNumbers.scrollTop = editor.scrollTop;
-});
-document.getElementById("save-local").addEventListener("click", saveLocal);
-document.getElementById("format-code").addEventListener("click", formatCurrentBuffer);
-document.getElementById("run-checks").addEventListener("click", performLocalChecks);
-document.getElementById("task-form").addEventListener("submit", addTask);
-document.querySelectorAll("[data-action]").forEach((button) => {
-  button.addEventListener("click", () => runAction(button.dataset.action));
-});
-document.querySelectorAll("[data-mode]").forEach((button) => {
-  button.addEventListener("click", () => setMode(button.dataset.mode));
-});
-document.querySelectorAll(".rail-item[data-view]").forEach((button) => {
-  button.addEventListener("click", () => setView(button.dataset.view));
-});
-document.getElementById("toggle-project").addEventListener("click", () => {
-  document.body.classList.toggle("project-collapsed");
-});
-document.getElementById("assistant-menu").addEventListener("click", () => {
-  renderResponse("RUNTIME INFORMATION", [
-    "Kodex 0.1.0 is a front-end workbench with deterministic local inspections.",
-    "No API key or remote model is configured. The neuron profile is untrained and is not used for inference.",
-    "No code execution, file-system access, or Git writes are available from the web interface."
-  ]);
-});
-document.getElementById("close-tab").addEventListener("click", () => {
-  if (activeFile !== "src/main.js") {
-    openFile("src/main.js");
+function renderResponseBody(message, node) {
+  const intro = document.createElement("p");
+  intro.className = "assistant-intro";
+  intro.textContent = message.intro;
+  node.append(intro);
+
+  const disclosure = document.createElement("div");
+  disclosure.className = "response-disclosure";
+  const lead = document.createElement("strong");
+  lead.textContent = message.kind === "build" ? "Estado: aguardando runtime" : "Estado: plano preliminar";
+  disclosure.append(lead, document.createTextNode(message.kind === "build"
+    ? " · Nenhum arquivo foi alterado e nenhum comando foi executado."
+    : " · Use como estrutura inicial; os arquivos do projeto não foram lidos pelo chat."));
+  node.append(disclosure);
+
+  (message.sections || []).forEach(section => addSection(node, section.title, section.items, section.title === "Sequência proposta"));
+  if (Array.isArray(message.checklist)) {
+    const checklist = document.createElement("div");
+    checklist.className = "task-checklist";
+    const title = document.createElement("div");
+    title.className = "task-checklist-title";
+    title.textContent = "CHECKLIST DA TAREFA";
+    checklist.append(title);
+    message.checklist.forEach((label, index) => {
+      const row = document.createElement("label");
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = Boolean(message.checkedItems?.[index]);
+      input.addEventListener("change", () => {
+        message.checkedItems = message.checkedItems || [];
+        message.checkedItems[index] = input.checked;
+        const thread = activeThread();
+        if (thread) saveThreads();
+        updateWorkPanel();
+      });
+      const text = document.createElement("span");
+      text.textContent = label;
+      row.append(input, text);
+      checklist.append(row);
+    });
+    node.append(checklist);
+  }
+}
+
+function renderMessage(message, index) {
+  const wrapper = document.createElement("article");
+  wrapper.className = "message " + (message.role === "user" ? "user" : "assistant");
+  const head = document.createElement("div");
+  head.className = "message-head";
+  const mark = document.createElement("span");
+  mark.className = "message-mark";
+  mark.textContent = message.role === "user" ? "U" : "K";
+  const author = document.createElement("span");
+  author.textContent = message.role === "user" ? "Você" : "Kodex";
+  const time = document.createElement("span");
+  time.className = "message-time";
+  time.textContent = formatTime(message.createdAt);
+  head.append(mark, author, time);
+
+  const bubble = document.createElement("div");
+  bubble.className = "message-bubble";
+  if (message.role === "user") {
+    bubble.textContent = message.text;
+  } else if (message.kind === "plan" || message.kind === "build") {
+    renderResponseBody(message, bubble);
+    const actions = document.createElement("div");
+    actions.className = "response-actions";
+    if (message.kind === "plan") {
+      const promote = document.createElement("button");
+      promote.className = "text-action primary";
+      promote.type = "button";
+      promote.textContent = "↗ " + message.action;
+      promote.addEventListener("click", () => {
+        activeMode = "build";
+        renderMode();
+        elements.input.value = message.sourcePrompt || "";
+        autoResizeInput();
+        elements.input.focus();
+      });
+      actions.append(promote);
+    }
+    const copy = document.createElement("button");
+    copy.className = "text-action";
+    copy.type = "button";
+    copy.textContent = "⧉ Copiar";
+    copy.addEventListener("click", () => copyText(buildPlainText(message), "Conteúdo copiado."));
+    actions.append(copy);
+    bubble.append(actions);
+  } else {
+    bubble.textContent = escapeText(message.text);
+  }
+  wrapper.append(head, bubble);
+  return wrapper;
+}
+
+function buildPlainText(message) {
+  const lines = [message.title || "Kodex", "", message.intro || ""];
+  (message.sections || []).forEach(section => {
+    lines.push("", section.title);
+    section.items.forEach(item => lines.push("- " + item));
+  });
+  if (message.checklist) {
+    lines.push("", "Checklist");
+    message.checklist.forEach(item => lines.push("- [ ] " + item));
+  }
+  return lines.join("\n");
+}
+
+function renderConversation() {
+  const thread = activeThread();
+  const messages = thread?.messages || [];
+  elements.welcome.hidden = messages.length > 0;
+  elements.messageList.replaceChildren();
+  messages.forEach((message, index) => elements.messageList.append(renderMessage(message, index)));
+  elements.currentTitle.textContent = thread?.title || "Novo chat";
+  elements.messageCount.textContent = String(messages.length);
+  requestAnimationFrame(() => {
+    elements.conversation.scrollTop = elements.conversation.scrollHeight;
+  });
+}
+
+function updateWorkPanel() {
+  const thread = activeThread();
+  const messages = thread?.messages || [];
+  const tasks = messages.filter(message => message.role === "assistant" && message.kind === "build");
+  elements.messageCount.textContent = String(messages.length);
+  elements.taskCount.textContent = String(tasks.length);
+  elements.panelMode.textContent = MODES[activeMode].title;
+  const latest = tasks[tasks.length - 1];
+  elements.nextStep.replaceChildren();
+  const icon = document.createElement("span");
+  icon.className = "next-step-icon";
+  icon.textContent = latest ? "◷" : "○";
+  const copy = document.createElement("span");
+  const title = document.createElement("strong");
+  title.textContent = latest ? "Aguardando executor de código" : "Nenhum trabalho preparado";
+  const detail = document.createElement("small");
+  detail.textContent = latest ? "O brief está no histórico; nada foi executado." : "Envie uma mensagem para iniciar.";
+  copy.append(title, detail);
+  elements.nextStep.append(icon, copy);
+}
+
+function renderMode() {
+  document.querySelectorAll("[data-mode]").forEach(button => {
+    button.classList.toggle("active", button.dataset.mode === activeMode);
+    button.setAttribute("aria-pressed", String(button.dataset.mode === activeMode));
+  });
+  elements.modeDescription.textContent = MODES[activeMode].description;
+  elements.composerHint.textContent = MODES[activeMode].hint;
+  elements.panelMode.textContent = MODES[activeMode].title;
+  const placeholder = activeMode === "plan"
+    ? "Descreva o objetivo, a ideia ou o problema que quer organizar…"
+    : "Descreva a mudança que quer preparar para implementação…";
+  elements.input.placeholder = placeholder;
+}
+
+function renderAll() {
+  renderThreadList();
+  renderMode();
+  renderConversation();
+  updateWorkPanel();
+}
+
+function autoResizeInput() {
+  elements.input.style.height = "auto";
+  elements.input.style.height = Math.min(elements.input.scrollHeight, window.innerWidth <= 720 ? 140 : 190) + "px";
+}
+
+function sendMessage(event) {
+  event.preventDefault();
+  const text = elements.input.value.trim();
+  if (!text) return;
+  if (!activeThread()) {
+    const thread = {
+      id: newId(),
+      title: "Novo chat",
+      mode: activeMode,
+      createdAt: new Date().toISOString(),
+      messages: [],
+      taskCount: 0,
+      nextStep: null
+    };
+    threads.unshift(thread);
+    activeThreadId = thread.id;
+  }
+  const thread = activeThread();
+  thread.mode = activeMode;
+  const prompt = includeProjectContext
+    ? text + "\n\nContexto disponível nesta versão: projeto Security-lab, branch kodex-programming-ai. O conteúdo real dos arquivos não foi carregado pelo chat."
+    : text;
+  appendMessage(thread, { role: "user", text, createdAt: new Date().toISOString(), mode: activeMode });
+  const response = makeResponse(prompt, activeMode);
+  response.role = "assistant";
+  response.sourcePrompt = text;
+  response.createdAt = new Date().toISOString();
+  response.checkedItems = [];
+  appendMessage(thread, response);
+  if (response.kind === "build") {
+    thread.taskCount = (thread.taskCount || 0) + 1;
+    thread.nextStep = "Aguardando executor";
+  }
+  thread.mode = activeMode;
+  elements.input.value = "";
+  autoResizeInput();
+  saveThreads();
+  renderAll();
+}
+
+function openSidebar() {
+  elements.sidebar.classList.add("open");
+  elements.scrim.hidden = false;
+}
+
+function closeSidebar() {
+  elements.sidebar.classList.remove("open");
+  elements.scrim.hidden = true;
+}
+
+async function copyText(text, successMessage) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const temporary = document.createElement("textarea");
+      temporary.value = text;
+      temporary.style.position = "fixed";
+      temporary.style.opacity = "0";
+      document.body.append(temporary);
+      temporary.select();
+      const ok = document.execCommand("copy");
+      temporary.remove();
+      if (!ok) throw new Error("copy unavailable");
+    }
+    showToast(successMessage);
+  } catch {
+    showToast("Cópia automática indisponível neste contexto.");
+  }
+}
+
+function copyCurrentThread() {
+  const thread = activeThread();
+  if (!thread || !thread.messages.length) {
+    showToast("Esta conversa ainda está vazia.");
     return;
   }
-  showToast("The entry tab stays open in this prototype.");
+  const text = thread.messages.map(message => {
+    if (message.role === "user") return "Você:\n" + message.text;
+    return "Kodex:\n" + (message.kind ? buildPlainText(message) : message.text);
+  }).join("\n\n---\n\n");
+  copyText(text, "Conversa copiada.");
+}
+
+function setContext() {
+  includeProjectContext = !includeProjectContext;
+  elements.contextButton.setAttribute("aria-pressed", String(includeProjectContext));
+  elements.contextButton.innerHTML = includeProjectContext
+    ? '<span aria-hidden="true">✓</span> Contexto incluído <span class="context-chevron">⌄</span>'
+    : '<span aria-hidden="true">＋</span> Contexto do projeto <span class="context-chevron">⌄</span>';
+  showToast(includeProjectContext
+    ? "Será anexado apenas o nome do projeto e da branch, não os arquivos."
+    : "Contexto do projeto removido.");
+}
+
+document.getElementById("new-chat").addEventListener("click", makeThread);
+document.getElementById("top-new-chat").addEventListener("click", makeThread);
+document.getElementById("open-sidebar").addEventListener("click", openSidebar);
+document.getElementById("close-sidebar").addEventListener("click", closeSidebar);
+elements.scrim.addEventListener("click", closeSidebar);
+elements.threadSearch.addEventListener("input", renderThreadList);
+elements.form.addEventListener("submit", sendMessage);
+elements.input.addEventListener("input", autoResizeInput);
+elements.input.addEventListener("keydown", event => {
+  if (event.key === "Enter" && !event.shiftKey && window.innerWidth > 550) {
+    event.preventDefault();
+    elements.form.requestSubmit();
+  }
 });
-document.getElementById("clear-log").addEventListener("click", () => {
-  consoleBody.replaceChildren();
-  logCount.textContent = "00";
+document.querySelectorAll("[data-mode]").forEach(button => {
+  button.addEventListener("click", () => {
+    activeMode = button.dataset.mode;
+    const thread = activeThread();
+    if (thread) thread.mode = activeMode;
+    saveThreads();
+    renderAll();
+  });
 });
-window.addEventListener("beforeunload", () => {
-  fileState[activeFile].content = editor.value;
+document.querySelectorAll("[data-prompt]").forEach(button => {
+  button.addEventListener("click", () => {
+    elements.input.value = button.dataset.prompt;
+    autoResizeInput();
+    elements.input.focus();
+  });
+});
+elements.contextButton.addEventListener("click", setContext);
+document.getElementById("copy-thread").addEventListener("click", copyCurrentThread);
+document.getElementById("copy-branch").addEventListener("click", () => copyText("kodex-programming-ai", "Branch copiada."));
+document.getElementById("close-panel").addEventListener("click", () => showToast("O painel de contexto é fixo nesta versão para desktop."));
+document.addEventListener("keydown", event => {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    makeThread();
+  }
+  if (event.key === "Escape") closeSidebar();
+});
+window.addEventListener("resize", () => {
+  if (window.innerWidth > 720) closeSidebar();
 });
 
-editor.value = fileState[activeFile].content;
-updateEditorChrome();
-renderTasks();
+if (!activeThreadId) {
+  activeThreadId = null;
+}
+renderAll();
