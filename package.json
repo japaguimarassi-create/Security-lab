@@ -1,14 +1,14 @@
 {
   "name": "kodex-programming-ai",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "Experimental programming workbench and bounded coding-agent runtime",
+  "description": "Experimental Portuguese local language model and chat-first programming workspace",
   "type": "module",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "test": "node --test",
-    "check": "node --check app.js && node --check src/ai/agent-loop.mjs && node --check src/ai/heuristic-model.mjs && node --check src/quality/quality-gate.mjs"
+    "check": "node --check app.js && node --check src/ai/mobile-mlm.js && node --check src/ai/agent-loop.mjs && node --check src/ai/heuristic-model.mjs && node --check src/quality/quality-gate.mjs"
   }
 }
