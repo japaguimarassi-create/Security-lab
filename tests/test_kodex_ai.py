@@ -50,6 +50,18 @@ class CorpusTests(unittest.TestCase):
             self.assertEqual(len(train), 1)
             self.assertEqual(len(validation), 1)
 
+    def test_source_code_indentation_is_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "corpus.jsonl"
+            path.write_text(
+                json.dumps({"text": "def first():\\n    return 1"}, ensure_ascii=False) + "\\n"
+                + json.dumps({"text": "def second():\\n  return 2"}, ensure_ascii=False) + "\\n",
+                encoding="utf-8",
+            )
+            records = load_records(path)
+            self.assertIn("def first():\\n    return 1", records)
+            self.assertIn("def second():\\n  return 2", records)
+
     def test_malformed_jsonl_is_reported_with_line_number(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "corpus.jsonl"
