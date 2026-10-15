@@ -11,4 +11,4 @@
     "test": "node --test",
     "check": "node --check app.js && node --check src/ai/mobile-mlm.js && node --check src/ai/agent-loop.mjs && node --check src/ai/heuristic-model.mjs && node --check src/quality/quality-gate.mjs && node --check src/workspace/workspace-engine.js && node --check src/workspace/workspace-app.js && node --check terminal.js"
   }
-}\n
+}
