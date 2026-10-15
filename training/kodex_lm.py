@@ -12,7 +12,41 @@ class ModelConfig:
     n_layer: int = 4
     n_head: int = 4
     n_embd: int = 128
-    dropout: float = 0.1
+    n_kv_head: int = 2
+    dropout: float = 0.0
+    rope_theta: float = 10000.0
+    initializer_range: float = 0.02
+
+
+class RMSNorm(nn.Module):
+    def __init__(self, dimension, eps=1e-6):
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(dimension))
+        self.eps = eps
+
+    def forward(self, x):
+        normalized = x.float() * torch.rsqrt(x.float().pow(2).mean(dim=-1, keepdim=True) + self.eps)
+        return normalized.to(dtype=x.dtype) * self.weight
+
+
+class RotaryEmbedding(nn.Module):
+    def __init__(self, head_dim, theta):
+        super().__init__()
+        if head_dim % 2:
+            raise ValueError("head dimension must be even for rotary embeddings")
+        inverse_frequency = 1.0 / (theta ** (torch.arange(0, head_dim, 2, dtype=torch.float32) / head_dim))
+        self.register_buffer("inverse_frequency", inverse_frequency, persistent=False)
+
+    def forward(self, x):
+        length = x.shape[-2]
+        positions = torch.arange(length, device=x.device, dtype=self.inverse_frequency.dtype)
+        angles = torch.outer(positions, self.inverse_frequency)
+        cos = angles.cos().to(dtype=x.dtype)[None, None, :, :]
+        sin = angles.sin().to(dtype=x.dtype)[None, None, :, :]
+        even = x[..., 0::2]
+        odd = x[..., 1::2]
+        rotated = torch.stack((even * cos - odd * sin, even * sin + odd * cos), dim=-1)
+        return rotated.flatten(-2)
 
 
 class CausalSelfAttention(nn.Module):
@@ -20,17 +54,35 @@ class CausalSelfAttention(nn.Module):
         super().__init__()
         if config.n_embd % config.n_head != 0:
             raise ValueError("n_embd must be divisible by n_head")
+        if config.n_kv_head < 1 or config.n_head % config.n_kv_head != 0:
+            raise ValueError("n_kv_head must be a positive divisor of n_head")
         self.n_head = config.n_head
+        self.n_kv_head = config.n_kv_head
         self.head_dim = config.n_embd // config.n_head
-        self.qkv = nn.Linear(config.n_embd, 3 * config.n_embd, bias=False)
-        self.proj = nn.Linear(config.n_embd, config.n_embd, bias=False)
+        if self.head_dim % 2:
+            raise ValueError("n_embd / n_head must be even for rotary embeddings")
+        self.q_proj = nn.Linear(config.n_embd, self.n_head * self.head_dim, bias=False)
+        self.k_proj = nn.Linear(config.n_embd, self.n_kv_head * self.head_dim, bias=False)
+        self.v_proj = nn.Linear(config.n_embd, self.n_kv_head * self.head_dim, bias=False)
+        self.o_proj = nn.Linear(config.n_embd, config.n_embd, bias=False)
+        self.rotary = RotaryEmbedding(self.head_dim, config.rope_theta)
         self.attn_dropout = config.dropout
         self.resid_dropout = nn.Dropout(config.dropout)
 
     def forward(self, x):
         batch, length, channels = x.shape
-        qkv = self.qkv(x).view(batch, length, 3, self.n_head, self.head_dim)
-        q, k, v = qkv.permute(2, 0, 3, 1, 4).unbind(0)
+        q = self.q_proj(x).view(batch, length, self.n_head, self.head_dim).transpose(1, 2)
+        k = self.k_proj(x).view(batch, length, self.n_kv_head, self.head_dim).transpose(1, 2)
+        v = self.v_proj(x).view(batch, length, self.n_kv_head, self.head_dim).transpose(1, 2)
+
+        q = self.rotary(q)
+        k = self.rotary(k)
+
+        if self.n_kv_head != self.n_head:
+            repeat_count = self.n_head // self.n_kv_head
+            k = k.repeat_interleave(repeat_count, dim=1)
+            v = v.repeat_interleave(repeat_count, dim=1)
+
         attended = F.scaled_dot_product_attention(
             q,
             k,
@@ -39,71 +91,82 @@ class CausalSelfAttention(nn.Module):
             dropout_p=self.attn_dropout if self.training else 0.0,
         )
         attended = attended.transpose(1, 2).contiguous().view(batch, length, channels)
-        return self.resid_dropout(self.proj(attended))
+        return self.resid_dropout(self.o_proj(attended))
 
 
 class FeedForward(nn.Module):
     def __init__(self, config: ModelConfig):
         super().__init__()
-        self.layers = nn.Sequential(
-            nn.Linear(config.n_embd, 4 * config.n_embd),
-            nn.GELU(),
-            nn.Linear(4 * config.n_embd, config.n_embd),
-            nn.Dropout(config.dropout),
-        )
+        hidden_size = (8 * config.n_embd + 2) // 3
+        hidden_size = ((hidden_size + 7) // 8) * 8
+        self.gate_proj = nn.Linear(config.n_embd, hidden_size, bias=False)
+        self.up_proj = nn.Linear(config.n_embd, hidden_size, bias=False)
+        self.down_proj = nn.Linear(hidden_size, config.n_embd, bias=False)
+        self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x):
-        return self.layers(x)
+        return self.dropout(self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x)))
 
 
 class TransformerBlock(nn.Module):
     def __init__(self, config: ModelConfig):
         super().__init__()
-        self.ln_1 = nn.LayerNorm(config.n_embd)
-        self.attn = CausalSelfAttention(config)
-        self.ln_2 = nn.LayerNorm(config.n_embd)
-        self.ffn = FeedForward(config)
+        self.input_norm = RMSNorm(config.n_embd)
+        self.attention = CausalSelfAttention(config)
+        self.post_attention_norm = RMSNorm(config.n_embd)
+        self.feed_forward = FeedForward(config)
 
     def forward(self, x):
-        x = x + self.attn(self.ln_1(x))
-        x = x + self.ffn(self.ln_2(x))
+        x = x + self.attention(self.input_norm(x))
+        x = x + self.feed_forward(self.post_attention_norm(x))
         return x
 
 
 class KodexLanguageModel(nn.Module):
     def __init__(self, config: ModelConfig):
         super().__init__()
+        if config.vocab_size < 2 or config.block_size < 2:
+            raise ValueError("vocab_size and block_size must be at least 2")
+        if config.n_layer < 1 or config.n_head < 1 or config.n_embd < 2:
+            raise ValueError("model dimensions must be positive")
         self.config = config
         self.token_embedding = nn.Embedding(config.vocab_size, config.n_embd)
-        self.position_embedding = nn.Embedding(config.block_size, config.n_embd)
         self.embedding_dropout = nn.Dropout(config.dropout)
         self.blocks = nn.Sequential(*(TransformerBlock(config) for _ in range(config.n_layer)))
-        self.final_norm = nn.LayerNorm(config.n_embd)
+        self.final_norm = RMSNorm(config.n_embd)
         self.language_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         self.apply(self._initialize_weights)
         self.language_head.weight = self.token_embedding.weight
 
-    @staticmethod
-    def _initialize_weights(module):
+    def _initialize_weights(self, module):
         if isinstance(module, nn.Linear):
-            nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.bias is not None:
-                nn.init.zeros_(module.bias)
+            nn.init.normal_(module.weight, mean=0.0, std=self.config.initializer_range)
         elif isinstance(module, nn.Embedding):
-            nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            nn.init.normal_(module.weight, mean=0.0, std=self.config.initializer_range)
+        if isinstance(module, (CausalSelfAttention, FeedForward)):
+            output_projection = module.o_proj if isinstance(module, CausalSelfAttention) else module.down_proj
+            nn.init.normal_(
+                output_projection.weight,
+                mean=0.0,
+                std=self.config.initializer_range / (2 * self.config.n_layer) ** 0.5,
+            )
 
     def forward(self, input_ids, targets=None):
         if input_ids.ndim != 2:
             raise ValueError("input_ids must have shape [batch, sequence]")
         if input_ids.shape[1] > self.config.block_size:
             raise ValueError("input sequence exceeds block_size")
-        positions = torch.arange(input_ids.shape[1], device=input_ids.device)
-        x = self.token_embedding(input_ids) + self.position_embedding(positions)[None, :, :]
+        if input_ids.numel() and (input_ids.min() < 0 or input_ids.max() >= self.config.vocab_size):
+            raise ValueError("input token ID is outside the configured vocabulary")
+
+        x = self.token_embedding(input_ids)
         x = self.embedding_dropout(x)
         x = self.final_norm(self.blocks(x))
         logits = self.language_head(x)
         loss = None
         if targets is not None:
+            if targets.shape != input_ids.shape:
+                raise ValueError("targets must have the same shape as input_ids")
             loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), targets.reshape(-1))
         return logits, loss
 
