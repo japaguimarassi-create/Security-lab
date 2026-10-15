@@ -209,28 +209,11 @@
     }
     const runId = String(Date.now()) + "-" + Math.random().toString(36).slice(2);
     activeRunId = runId;
-    const capture = `(() => {
-      const runId = ${JSON.stringify(runId)};
-      const send = (level, values) => {
-        let text;
-        try { text = values.map(value => {
-          if (typeof value === "string") return value;
-          if (value instanceof Error) return value.name + ": " + value.message;
-          try { return JSON.stringify(value); } catch { return String(value); }
-        }).join(" "); } catch { text = "[não foi possível formatar a saída]"; }
-        window.parent.postMessage({ type: "kodex-terminal-log", runId, level, text }, "*");
-      };
-      console.log = (...values) => send("normal", values);
-      console.info = (...values) => send("info", values);
-      console.warn = (...values) => send("warning", values);
-      console.error = (...values) => send("error", values);
-      window.addEventListener("error", event => send("error", [event.message || "Erro de execução"]));
-      window.addEventListener("unhandledrejection", event => send("error", [event.reason]));
-      send("info", ["Executando em iframe isolado; rede e acesso à origem foram restringidos."]);
-    })();
-    const bootstrap = capture;
-    const source = ${JSON.stringify(file.content)}.replace(/<\\/script/gi, "<\\\\/script");
-    elements.runner.srcdoc = '<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; img-src data: blob:; connect-src \'none\'; object-src \'none\'; base-uri \'none\'; form-action \'none\'; frame-src \'none\'"></head><body><script>' + bootstrap + '<\\/script><script>try { (new Function(' + JSON.stringify("return (async () => {\\n" + file.content.replace(/<\\/script/gi, "<\\\\/script") + "\\n})();") + '))().catch(error => console.error(error)); } catch (error) { console.error(error); }<\\/script></body></html>';
+    const safeSource = file.content.replace(/<\/script/gi, "<\\/script");
+    const csp = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'";
+    const bootstrap = "(function(){const runId=" + JSON.stringify(runId) + ";const send=function(level,values){let text;try{text=values.map(function(value){if(typeof value==='string')return value;if(value instanceof Error)return value.name+': '+value.message;try{return JSON.stringify(value)}catch{return String(value)}}).join(' ')}catch{text='[não foi possível formatar a saída]'}window.parent.postMessage({type:'kodex-terminal-log',runId:runId,level:level,text:text},'*')};console.log=function(){send('normal',Array.from(arguments))};console.info=function(){send('info',Array.from(arguments))};console.warn=function(){send('warning',Array.from(arguments))};console.error=function(){send('error',Array.from(arguments))};window.addEventListener('error',function(event){send('error',[event.message||'Erro de execução'])});window.addEventListener('unhandledrejection',function(event){send('error',[event.reason])});send('info',['Executor em iframe isolado; rede e acesso à origem foram restringidos.'])})();";
+    const userScript = "try{(async function(){\\n" + safeSource + "\\n})().catch(function(error){console.error(error)})}catch(error){console.error(error)}";
+    elements.runner.srcdoc = "<!doctype html><html><head><meta charset='utf-8'><meta http-equiv='Content-Security-Policy' content=\"" + csp + "\"></head><body><script>" + bootstrap + "</script><script>" + userScript + "</script></body></html>";
     writeLine("$ run js " + file.path, "command");
     writeLine("Executando JavaScript no navegador isolado. Não é Node.js e não fornece acesso ao sistema de arquivos.", "info");
     runTimeout = window.setTimeout(() => {
