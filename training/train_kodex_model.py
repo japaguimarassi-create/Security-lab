@@ -317,6 +317,12 @@ def main():
     best_validation_loss = float("inf")
     best_step = start_step
     last_metrics = {}
+    best_checkpoint_path = output_dir / "model-best.pt"
+    if args.resume and best_checkpoint_path.is_file():
+        saved_best = torch.load(best_checkpoint_path, map_location=device, weights_only=False)
+        saved_metrics = saved_best.get("metrics") or {}
+        best_validation_loss = float(saved_metrics.get("validation_loss", float("inf")))
+        best_step = int(saved_best.get("step", start_step))
     model.train()
     for step in range(start_step + 1, args.steps + 1):
         current_lr = learning_rate_at(step, args.steps, args.learning_rate)
