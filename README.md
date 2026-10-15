@@ -1,120 +1,63 @@
-# Kodex — Programming Intelligence Workbench
+# Kodex 0.3.0 — Local Language Model Workbench
 
-Kodex is an experimental programming workspace and from-scratch language-model research project. Its first milestone is a responsive, dependency-free workbench, a tested agent-runtime scaffold, and a small byte-level Transformer that can be trained from random initialization.
+Kodex is an experimental, mobile-first programming assistant with a locally executed neural language model. Version 0.3.0 separates ordinary conversation from implementation planning and bundles trained model weights into the Android APK.
 
-## Current status
+## What changed in 0.3.0
 
-- [x] Dedicated branch: `kodex-programming-ai`
-- [x] Responsive workbench with file explorer, editor, task queue, and engineering actions
-- [x] Standalone behavioral rules in [KODEX_DIRETRIZES.md](KODEX_DIRETRIZES.md)
-- [x] Official Codex and Copilot engineering research
-- [x] 264,192-unit experimental architecture budget, explicitly marked as untrained
-- [x] Bounded agent-loop contract with tool allowlist, approvals, trace events, and step limits
-- [x] Modernized decoder-only Transformer with RMSNorm, RoPE, GQA, SwiGLU and sparse top-k expert routing, initialized from scratch
-- [x] Training with AdamW, warmup/stable/decay schedule, gradient accumulation, GPU mixed precision, resumable/best checkpoints, and manifest-based corpus preparation
-- [x] Independent holdout loss/perplexity evaluation tool
-- [x] Supervised instruction fine-tuning stage with loss masked to assistant targets
-- [x] Corpus-trained byte-level BPE tokenizer implementation and round-trip test
-- [x] Node.js CI and a Python/PyTorch CPU smoke-training workflow
-- [ ] A useful model trained on a large, legally reviewed programming and general-knowledge corpus
-- [ ] Full pretraining, instruction fine-tuning, and post-training runs on representative datasets
-- [ ] Competitive, held-out coding and general capability benchmark results
-- [ ] A BPE tokenizer trained from the approved corpus
-- [ ] Real model inference connected to the workbench
-- [ ] OS-enforced sandbox for project-file editing and command execution
-- [ ] Semantic codebase retrieval and citation pipeline
-- [ ] Held-out coding benchmarks and adversarial safety evaluations
+- **Conversation is the default:** greetings, short replies, and normal questions no longer turn into build tasks automatically.
+- **Explicit Build mode:** prepare an implementation brief and optional model-generated draft; the chat mode stays conversational.
+- **Local neural model:** one-layer LSTM, 512-token byte-level BPE vocabulary, 128-dimensional embedding and hidden state, and exactly **264,192 trainable parameters** before quantization.
+- **No remote AI API:** each APK build trains model weights from random initialization and embeds an int8-quantized model into the app.
+- **Conversation history:** threads are stored in local browser/app storage.
 
-Unchecked items are not implemented yet. The front-end's code review and explanation tools are deterministic starter utilities, not generative AI. The included model is deliberately small and the bundled corpus is only for smoke tests.
+## Important limits
 
-## Open the workbench
+The 264,192 figure is the actual trainable parameter count, not a count of biological neurons. In standard language-model terms, this is a **tiny/compact model**, not a medium-scale or frontier model.
 
-Open [index.html](index.html) in a modern browser, or enable GitHub Pages for this branch in repository settings. The static workbench does not require a third-party runtime. No model provider or API key is connected.
+The training data at `training/data/mobile_dialogue.jsonl` contains 81 manually curated Portuguese conversation and programming examples. The default APK workflow runs 500 training steps from random initialization. This proves that model training, quantization, bundling, and on-device inference are connected; it does not prove broad language understanding or reliable coding ability. The model can make mistakes, repeat phrases, or return poor answers. The app filters some obviously invalid outputs and uses explicit fallback responses for common greetings and very short messages.
 
-To run a training experiment from a mobile browser, open the [Kodex from-scratch training notebook in Google Colab](https://colab.research.google.com/github/japaguimarassi-create/Security-lab/blob/kodex-programming-ai/training/notebooks/kodex_scratch_training.ipynb). Colab GPU availability is variable and the sample corpus only tests the pipeline.
+Build mode currently drafts text and a checklist. It does **not** modify real repository files, run terminal commands, compile user code, or provide an OS-enforced sandbox. Repository context displayed in the interface is descriptive; source files are not automatically read.
 
-## Train the small model from scratch
+## Open the project
 
-Requires Python 3.12, PyTorch, and (for BPE) Hugging Face Tokenizers.
+- [Kodex branch](https://github.com/japaguimarassi-create/Security-lab/tree/kodex-programming-ai)
+- [APK build workflow](https://github.com/japaguimarassi-create/Security-lab/actions/workflows/build-kodex-apk.yml)
+- [Local MLM profile](src/ai/neuron-profile.json)
+- [Training corpus](training/data/mobile_dialogue.jsonl)
+- [Model training and quantization](training/build_mobile_mlm.py)
+- [On-device inference runtime](src/ai/mobile-mlm.js)
 
-```sh
-python -m pip install torch tokenizers
-python training/train_tokenizer.py --data training/data/smoke_corpus.txt --output training/checkpoints/kodex-tokenizer.json --vocab-size 512
-python training/train.py --data training/data/smoke_corpus.txt --validation-data training/data/smoke_validation.txt --tokenizer training/checkpoints/kodex-tokenizer.json --output training/checkpoints/kodex-bpe.pt --steps 100 --batch-size 4 --block-size 128 --layers 4 --heads 4 --embedding-size 128 --experts 4 --experts-per-token 2 --device cpu
-python training/evaluate.py --checkpoint training/checkpoints/kodex-bpe.pt --data training/data/smoke_validation.txt --device cpu
-python training/generate.py --checkpoint training/checkpoints/kodex-bpe.pt --prompt "def add(a, b):"
-```
+## Model architecture and parameter count
 
-Both the BPE tokenizer and model weights are trained from scratch; no pretrained tokenizer or model checkpoint is loaded. You can omit `--tokenizer` to use the baseline UTF-8 byte tokenizer. The output is expected to be weak and often nonsensical because the bundled corpus is only a smoke test. This verifies the training mechanics, not useful programming intelligence. To use a GPU, install a PyTorch build appropriate for the machine and pass `--device cuda`.
+The compact network is trained for autoregressive next-token prediction:
 
-## Supervised instruction fine-tuning
+- Byte-level BPE tokenizer: 256 byte tokens plus 256 learned merges = vocabulary size 512.
+- Token embedding: 512 × 128 = 65,536 parameters.
+- Input LayerNorm: 128 weights + 128 biases = 256 parameters.
+- One LSTM layer: 132,096 parameters.
+- Output LayerNorm: 256 parameters.
+- Language-model head: 128 × 512 weights + 512 biases = 66,048 parameters.
 
-After a useful base checkpoint has been trained, prepare JSONL files with one object per conversation. Each object uses a messages array with role/content objects; roles may be system, user, assistant, or tool. Keep a separate validation JSONL file. The checked-in smoke examples demonstrate the schema and are not sufficient for real training.
+**Total: 65,536 + 256 + 132,096 + 256 + 66,048 = 264,192 parameters.**
+
+Weights are quantized per tensor to signed 8-bit values for app delivery. The app reconstructs the small network and computes predictions locally in JavaScript. The weights are generated by the APK workflow and are not kept as a source-controlled model checkpoint.
+
+## Reproduce the mobile model build
+
+Use Python 3.12 and PyTorch:
 
 ```sh
-python training/finetune_sft.py --checkpoint training/checkpoints/kodex-bpe.pt --data /path/to/instructions-train.jsonl --validation-data /path/to/instructions-validation.jsonl --output training/checkpoints/kodex-instruct.pt --steps 2000 --device cuda
+python -m pip install torch
+python -m unittest training.tests.test_mobile_mlm -v
+python training/build_mobile_mlm.py --data training/data/mobile_dialogue.jsonl --output kodex-model.js --steps 500 --batch-size 8 --seed 42
 ```
 
-This stage fine-tunes the selected base checkpoint and writes a separate instruction checkpoint. It does not make a weak smoke-trained base model into a capable assistant by itself.
+The generated `kodex-model.js` contains tokenizer merges, quantized tensors, the exact parameter count, and basic training metrics. The GitHub Actions APK workflow performs the same steps before Gradle packages the app assets.
 
-## Prepare a candidate training corpus
+## APK
 
-Do not scrape public code without checking rights. The manifest-first preparation script requires an explicit training-permission field, an allowlisted SPDX license, a source URL and a source commit. It rejects paths outside the supplied root, unsupported file types, common generated/dependency folders, exact duplicates, and certain known secret patterns.
+Push changes to `kodex-programming-ai` that touch the Android app, model runtime, or model training files to trigger the GitHub Actions build. The artifact is named `Kodex-Android-APK-v0.3.0` and remains available for 14 days. It is a debug APK signed with the debug key; it is not a Google Play-certified release.
 
-```sh
-python training/prepare_corpus.py --manifest /path/to/approved-manifest.jsonl --root /path/to/approved-sources --output training/data/approved-corpus.txt --report training/data/corpus-report.json
-```
+## Privacy and safety
 
-The secret scanner is heuristic and cannot guarantee that a corpus contains no secrets. Review sources and reports before training. Never use private repositories or evaluation solutions without explicit authorization.
-
-## Run automated checks
-
-Node.js 20 or newer:
-```sh
-npm test
-npm run check
-```
-
-Python and PyTorch:
-```sh
-python -m unittest discover -s training/tests -v
-python training/train.py --steps 5 --batch-size 2 --block-size 64 --layers 2 --heads 2 --embedding-size 32 --eval-interval 1 --output /tmp/kodex-smoke.pt --device cpu
-python training/generate.py --checkpoint /tmp/kodex-smoke.pt --max-new-tokens 12 --device cpu
-```
-
-The GitHub Actions workflow `.github/workflows/kodex-training-smoke.yml` runs a small CPU training round and validates checkpoint reload. It is not a large-scale model training job.
-
-## Architecture
-
-- `index.html`, `styles.css`, `app.js`: responsive interactive workbench.
-- `src/ai/neuron-profile.json`: proposed 264,192 logical-unit architecture budget; no trained weights.
-- `src/ai/agent-loop.mjs`: bounded model/tool orchestration contract.
-- `training/kodex_lm.py`: causal decoder with RMSNorm, RoPE, grouped-query attention, SwiGLU and sparse mixture-of-experts routing. All parameters start randomly initialized.
-- `training/train_tokenizer.py`: train a byte-level BPE vocabulary from the selected corpus.
-- `training/train.py`: next-token pretraining, AdamW parameter groups, warmup/stable/decay learning-rate schedule, gradient accumulation, GPU mixed precision, periodic and best checkpoints, and resumable state. Supports byte or BPE tokens.
-- `training/notebooks/kodex_scratch_training.ipynb`: phone-friendly Colab notebook for a scratch-training run using Drive-backed inputs and checkpoints.
-- `training/generate.py`: local generation with top-k/top-p sampling, repetition penalty, seed control, and embedded tokenizer loading.
-- `training/evaluate.py`: score an independently supplied holdout stream with cross-entropy and perplexity.
-- `training/finetune_sft.py`: masked supervised instruction fine-tuning from a Kodex checkpoint; assistant answers contribute to the loss while the prompt is context only.
-- `training/data/smoke_validation.txt` and `training/data/smoke_instructions*.jsonl`: tiny human-authored smoke holdouts, not production training data.
-- `training/prepare_corpus.py`: manifest validation, provenance report, license allowlist and basic secret/path filters.
-- `training/data/smoke_corpus.txt`: intentionally tiny, human-authored smoke-test corpus.
-- `tests/` and `training/tests/`: Node.js and Python test suites.
-- `docs/FROM_SCRATCH_TRAINING_PLAN.md`: training stages, data policy, compute constraints, verified smoke-run metrics, and sandbox integration gate.
-- `docs/ENGINEERING_RESEARCH.md`: official Codex/Copilot research notes.
-
-## Reality of the 264,192-unit target
-
-The logical-unit total is not the model's parameter count and does not create intelligence. The existing profile has no learned weights. The trainable model is a separate small-scale prototype and does not yet match the 264,192-unit logical-unit research target. It now includes four sparse experts with top-2 routing by default; this is an architecture experiment, not evidence of frontier capability. Defining the large architecture requires specifying width, depth, active parameters, sparsity, token count, context length, memory, and compute.
-
-## Security boundaries
-
-Training does not need terminal or repository-editing tools. Keep training-data ingestion separate from agent execution. Before connecting a trained model to external integrations, file writes, network access, or command execution, implement and test an OS-enforced sandbox, path confinement, independent approval policy, output limits, cancellation, and auditable traces. Never put provider secrets into static browser assets.
-
-## Research and plan
-
-- [Codex and Copilot research](docs/ENGINEERING_RESEARCH.md)
-- [From-scratch training plan](docs/FROM_SCRATCH_TRAINING_PLAN.md)
-- [Kodex model blueprint and current research roadmap](docs/KODEX_MODEL_BLUEPRINT.md)
-- [Implementation roadmap](docs/IMPLEMENTATION_ROADMAP.md)
-- [Project directives](KODEX_DIRETRIZES.md)
+The local model does not require an inference API key and does not send chat prompts to a remote model service. The chat history is kept in local app/browser storage. The Build mode only prepares a proposed response; no code is executed and no project files are changed automatically.
