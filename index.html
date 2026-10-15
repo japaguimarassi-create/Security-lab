@@ -68,6 +68,7 @@
           </div>
         </div>
         <div class="topbar-actions">
+          <a class="workspace-shortcut" href="./workspace.html" aria-label="Abrir workspace de arquivos" title="Criar e editar arquivos"><span aria-hidden="true">▤</span><span>Arquivos</span></a>
           <button class="icon-button" id="copy-thread" type="button" aria-label="Copiar conversa" title="Copiar conversa">⧉</button>
           <button class="icon-button" id="top-new-chat" type="button" aria-label="Novo chat" title="Novo chat">＋</button>
         </div>
@@ -115,7 +116,7 @@
             <button class="send-button" id="send-button" type="submit" aria-label="Enviar mensagem" title="Enviar mensagem"><span>↑</span></button>
           </div>
         </form>
-        <div class="composer-disclaimer"><span class="disclaimer-lock">◈</span> Modelo neural local de 264.192 parâmetros, treinado do zero e ainda experimental. O app não executa código nem altera arquivos reais.</div>
+        <div class="composer-disclaimer"><span class="disclaimer-lock">◈</span> Modelo local experimental de 264.192 parâmetros. O chat não altera arquivos automaticamente; abra Arquivos para editar um projeto local e exportá-lo.</div>
       </footer>
     </main>
 
@@ -129,7 +130,8 @@
         <div class="section-title">REPOSITÓRIO</div>
         <div class="project-title"><span class="project-avatar">K</span><span><strong>Security-lab</strong><small>Branch ativa</small></span></div>
         <div class="branch-row"><span>⑂</span><span>kodex-programming-ai</span><button class="copy-branch" id="copy-branch" type="button" aria-label="Copiar branch">⧉</button></div>
-        <div class="repo-note">Este APK usa a interface do projeto. Acesso de leitura/gravação ao repositório ainda não está conectado.</div>
+        <div class="repo-note">O editor local cria, edita, verifica e exporta seus arquivos. Este app ainda não está conectado para gravar no GitHub.</div>
+        <a class="repo-link" href="./workspace.html">Abrir workspace de arquivos <span aria-hidden="true">↗</span></a>
       </section>
 
       <section class="panel-section">
@@ -149,10 +151,11 @@
         <div class="capability-row"><span class="capability-state available"></span><span>Histórico local de conversas</span></div>
         <div class="capability-row"><span class="capability-state available"></span><span id="model-capability">Carregando modelo neural…</span></div>
         <div class="capability-row"><span class="capability-state available"></span><span>Planos e rascunhos de implementação</span></div>
-        <div class="capability-row"><span class="capability-state unavailable"></span><span>Executar código e editar repositórios</span></div>
+        <div class="capability-row"><span class="capability-state available"></span><span>Workspace local: criar, editar e exportar arquivos</span></div>
+        <div class="capability-row"><span class="capability-state unavailable"></span><span>Terminal real e gravação direta no GitHub</span></div>
       </section>
 
-      <div class="panel-footer">KODEX LAB <span>0.3.0</span></div>
+      <div class="panel-footer">KODEX LAB <span>0.4.0</span></div>
     </aside>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
