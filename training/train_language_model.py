@@ -21,6 +21,7 @@ def parse_args():
     parser.add_argument("--steps", type=int, default=200)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--split-seed", type=int, default=42)
     parser.add_argument("--learning-rate", type=float, default=3e-4)
     parser.add_argument("--weight-decay", type=float, default=0.1)
     parser.add_argument("--dropout", type=float, default=0.1)
@@ -114,10 +115,11 @@ def full_loss(model, tokens, sequence_length, device):
     total_tokens = 0
     with torch.no_grad():
         for start in range(0, max(1, tokens.numel() - 1), sequence_length):
-            inputs = tokens[start:start + sequence_length]
-            targets = tokens[start + 1:start + sequence_length + 1]
-            if inputs.numel() == 0 or inputs.shape != targets.shape:
+            end = min(start + sequence_length, tokens.numel() - 1)
+            if end <= start:
                 continue
+            inputs = tokens[start:end]
+            targets = tokens[start + 1:end + 1]
             _, loss = model(inputs.unsqueeze(0).to(device), targets.unsqueeze(0).to(device))
             total_loss += float(loss.item()) * targets.numel()
             total_tokens += targets.numel()
@@ -188,7 +190,7 @@ def main():
         torch.cuda.manual_seed_all(seed)
 
     records, data_digest = load_records(args.data)
-    train_records, validation_records, test_records = split_records(records, args.seed)
+    train_records, validation_records, test_records = split_records(records, args.split_seed)
     tokenizer = ByteTokenizer()
     train_tokens = encode_records(train_records, tokenizer)
     validation_tokens = encode_records(validation_records, tokenizer)
@@ -218,6 +220,8 @@ def main():
         core_model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         start_step = int(checkpoint["step"])
+        if start_step >= args.steps:
+            raise ValueError("The requested total steps must exceed the checkpoint step.")
 
     output_dir = Path(args.out_dir)
     if is_primary:
