@@ -53,10 +53,14 @@ def connect_db(path: str | Path) -> sqlite3.Connection:
             finished_at TEXT,
             exit_code INTEGER,
             output_dir TEXT NOT NULL,
-            error TEXT
+            error TEXT,
+            validation_loss REAL
         )
         """
     )
+    columns = {row["name"] for row in connection.execute("PRAGMA table_info(trials)")}
+    if "validation_loss" not in columns:
+        connection.execute("ALTER TABLE trials ADD COLUMN validation_loss REAL")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_trials_status ON trials(status, trial_index)")
     connection.commit()
     return connection
@@ -155,9 +159,22 @@ def claim_trial(db_path: str | Path):
 def finish_trial(db_path: str | Path, trial_id: str, return_code: int, error: str | None = None) -> None:
     connection = connect_db(db_path)
     try:
+        validation_loss = None
+        row = connection.execute("SELECT output_dir FROM trials WHERE trial_id=?", (trial_id,)).fetchone()
+        if return_code == 0 and row:
+            summary_path = Path(row["output_dir"]) / "training_summary.json"
+            if not summary_path.is_absolute():
+                summary_path = ROOT / summary_path
+            try:
+                summary = json.loads(summary_path.read_text(encoding="utf-8"))
+                candidate = summary.get("final_metrics", {}).get("validation_loss")
+                if candidate is not None:
+                    validation_loss = float(candidate)
+            except (OSError, ValueError, TypeError):
+                validation_loss = None
         connection.execute(
-            "UPDATE trials SET status=?, finished_at=?, exit_code=?, error=? WHERE trial_id=?",
-            ("completed" if return_code == 0 else "failed", utc_now(), return_code, error, trial_id),
+            "UPDATE trials SET status=?, finished_at=?, exit_code=?, error=?, validation_loss=? WHERE trial_id=?",
+            ("completed" if return_code == 0 else "failed", utc_now(), return_code, error, validation_loss, trial_id),
         )
         connection.commit()
     finally:
@@ -225,25 +242,16 @@ def summarize(db_path: str | Path) -> dict:
         pending = connection.execute("SELECT COUNT(*) FROM trials").fetchone()[0]
         best = connection.execute(
             """
-            SELECT trial_id, output_dir FROM trials
-            WHERE status='completed'
-            ORDER BY finished_at
-            LIMIT 100
+            SELECT trial_id, output_dir, validation_loss FROM trials
+            WHERE status='completed' AND validation_loss IS NOT NULL
+            ORDER BY validation_loss ASC
+            LIMIT 10
             """
         ).fetchall()
-        best_metrics = []
-        for row in best:
-            summary_path = Path(row["output_dir"]) / "training_summary.json"
-            if not summary_path.is_absolute():
-                summary_path = ROOT / summary_path
-            try:
-                summary = json.loads(summary_path.read_text(encoding="utf-8"))
-                final = summary.get("final_metrics", {})
-                loss = float(final.get("validation_loss", float("inf")))
-                best_metrics.append({"trial_id": row["trial_id"], "validation_loss": loss, "output_dir": row["output_dir"]})
-            except (OSError, ValueError, TypeError):
-                continue
-        best_metrics.sort(key=lambda item: item["validation_loss"])
+        best_metrics = [
+            {"trial_id": row["trial_id"], "validation_loss": row["validation_loss"], "output_dir": row["output_dir"]}
+            for row in best
+        ]
         return {
             "total_trials": pending,
             "counts": {key: counts.get(key, 0) for key in ("pending", "running", "completed", "failed")},
