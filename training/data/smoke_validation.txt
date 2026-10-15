@@ -1,0 +1,66 @@
+KODEX INDEPENDENT HOLDOUT SMOKE CORPUS
+This small hand-authored file is reserved for smoke validation and is not a representative benchmark. It contains examples that are separate from the training corpus so the pipeline can exercise an independent validation input.
+
+PYTHON EDGE CASES
+def safe_average(values):
+    if not values:
+        return None
+    if any(not isinstance(value, (int, float)) for value in values):
+        raise TypeError("values must be numeric")
+    return sum(values) / len(values)
+
+def unique_preserving_order(items):
+    seen = set()
+    result = []
+    for item in items:
+        if item not in seen:
+            seen.add(item)
+            result.append(item)
+    return result
+
+A useful test suite checks an empty input, a single element, repeated elements, invalid types, and a large input. Tests should not assume that collection iteration order is stable unless the collection promises that behavior.
+
+JAVASCRIPT ASYNC CONTROL FLOW
+async function fetchText(url, timeoutMs = 5000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error("HTTP status " + response.status);
+    }
+    return await response.text();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+A timeout should cancel or stop waiting for an operation when the API supports cancellation. A retry policy should have a finite attempt count and should avoid retrying permanent input errors.
+
+ALGORITHM CHECKS
+def is_palindrome(value):
+    left = 0
+    right = len(value) - 1
+    while left < right:
+        if value[left] != value[right]:
+            return False
+        left += 1
+        right -= 1
+    return True
+
+For palindrome checks, test the empty string, a one-character string, matching endpoints, and a mismatch in the middle. State whether spaces and letter case are significant in the contract.
+
+SQL AND DATA VALIDATION
+A parameterized query keeps user input separate from SQL syntax. Validate fields at the application boundary, use least-privilege database credentials, and do not expose internal exception text to an untrusted caller.
+
+A database transaction groups related writes into a unit of work. Commit only after the required operations succeed. Roll back when the transaction cannot preserve its invariants.
+
+REVIEW AND REPAIR
+When a bug report is incomplete, identify which assumptions are unknown before making a risky change. Prefer a small reproducer, a targeted patch, and a regression test. Report the exact command that was run and distinguish a passing test from an untested claim.
+
+An implementation is not correct merely because it produces output. Check the output against the contract, test failure cases, and use independent examples. For code generation, syntax checks and executable tests provide stronger evidence than text similarity alone.
+
+MODEL EVALUATION
+Validation loss estimates next-token prediction on a held-out stream. It cannot establish software-engineering ability on its own. A useful coding evaluation needs new tasks, hidden tests, correctness criteria, and safeguards against training-set contamination.
+
+For reproducible experiments, record the corpus hash, tokenizer, model configuration, optimizer, seed, precision, token count, checkpoint, and source revision. Compare runs on the same held-out data and keep model selection separate from final evaluation.
