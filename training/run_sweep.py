@@ -93,7 +93,7 @@ def run_trial(item):
 
 def main():
     parser = argparse.ArgumentParser(description="Plan and run bounded concurrent Kodex model experiments.")
-    parser.add_argument("--data", type=Path, default=Path("training/data/mobile_dialogue.jsonl"))
+    parser.add_argument("--data", type=Path, default=Path("training/data"))
     parser.add_argument("--out-dir", type=Path, default=Path("training/runs/sweep"))
     parser.add_argument("--trials", type=int, default=1_000_000)
     parser.add_argument("--execute", type=int, default=0)
