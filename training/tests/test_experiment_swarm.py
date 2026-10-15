@@ -23,6 +23,23 @@ class ExperimentSwarmTests(unittest.TestCase):
         self.assertEqual(shard_trial_count(2, 2, 4), 0)
         self.assertEqual(shard_trial_count(11, 3, 4), 2)
 
+    def test_batches_advance_without_overlapping_or_skipping_trial_ids(self):
+        total = 23
+        shard_count = 4
+        batch_size = 2
+        executed = []
+        for shard_id in range(shard_count):
+            for batch_index in range(10):
+                executed.extend(trial_ids_for_shard(
+                    total,
+                    shard_id,
+                    shard_count,
+                    limit=batch_size,
+                    batch_index=batch_index,
+                ))
+        self.assertEqual(sorted(executed), list(range(total)))
+        self.assertEqual(len(executed), len(set(executed)))
+
     def test_configurations_are_deterministic_and_seeds_are_unique(self):
         self.assertEqual(config_for_trial(90), config_for_trial(90))
         seeds = {config_for_trial(index)["seed"] for index in range(200)}
