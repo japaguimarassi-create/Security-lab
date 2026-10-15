@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "modelId": "kodex-sparse-routing-research-001",
+  "label": "Kodex logical-unit research profile",
+  "unitType": "logical_neuron",
+  "layerSizes": [4096, 8192, 16384, 32768, 65536, 65536, 65536, 4096, 2048],
+  "totalLogicalUnits": 264192,
+  "requiredMinimumExclusive": 264000,
+  "routingProposal": "sparse expert routing",
+  "trainingStatus": "not-trained",
+  "inferenceStatus": "not-implemented",
+  "weightsIncluded": false,
+  "denseConnectivityImplemented": false,
+  "notes": [
+    "The total is an architecture budget, not a claim that 264192 trained neurons are already running.",
+    "This profile has no trained weights and cannot independently generate intelligent predictions.",
+    "A future implementation must define sparse connectivity, memory cost, tokenizer, objective, datasets, training process, checkpoints and evaluations.",
+    "Do not allocate a fully dense weight matrix from this profile: its hidden dimensions are intentionally only a planning target."
+  ]
+}
