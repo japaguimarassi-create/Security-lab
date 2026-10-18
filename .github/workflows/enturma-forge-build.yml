@@ -1,0 +1,65 @@
+name: Enturma AI Forge 1.20.1
+
+on:
+  push:
+    branches: [enturma-ai-forge-1.20.1]
+    paths:
+      - 'enturma-ai-forge/**'
+      - '.enturma-ci/**'
+      - '.github/workflows/enturma-forge-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.8'
+      - name: Extract and patch source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/enturma"
+          tar -xzf enturma-ai-forge/source-0.3.0.tar.gz -C "$RUNNER_TEMP/enturma"
+          PROJECT="$RUNNER_TEMP/enturma/minecraft-forge"
+          test -f "$PROJECT/build.gradle"
+          python .enturma-ci/patch_enturma.py "$PROJECT"
+          grep -Fx 'mod_version=0.3.1' "$PROJECT/gradle.properties"
+      - name: Build and validate mod
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="$RUNNER_TEMP/enturma/minecraft-forge"
+          gradle -p "$PROJECT" --no-daemon clean build
+          JAR="$(find "$PROJECT/build/libs" -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' ! -name '*javadoc*' | head -n 1)"
+          test -n "$JAR"
+          unzip -t "$JAR"
+          unzip -p "$JAR" META-INF/mods.toml | grep -F 'version="0.3.1"'
+          unzip -p "$JAR" pack.mcmeta | grep -F 'pack_format'
+          jar tf "$JAR" | grep -F 'com/enturma/mod/EnturmaCommands.class'
+          jar tf "$JAR" | grep -F 'com/enturma/mod/MobConversationHandler.class'
+          unzip -p "$JAR" com/enturma/mod/EnturmaCommands.class | strings -a | grep -F 'local'
+          unzip -p "$JAR" com/enturma/mod/EnturmaCommands.class | strings -a | grep -F 'global'
+          if jar tf "$JAR" | grep -Ei 'avatar|spawn_egg|textures/entity/[^/]+\.(png|mcmeta)$'; then
+            echo 'Unexpected avatar/spawn-egg assets found in JAR' >&2
+            exit 1
+          fi
+          mkdir -p dist
+          cp "$JAR" dist/Enturma-AI-Forge-1.20.1-0.3.1.jar
+          sha256sum dist/Enturma-AI-Forge-1.20.1-0.3.1.jar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Enturma-AI-Forge-1.20.1-0.3.1
+          path: dist/Enturma-AI-Forge-1.20.1-0.3.1.jar
+          if-no-files-found: error
+          retention-days: 14
