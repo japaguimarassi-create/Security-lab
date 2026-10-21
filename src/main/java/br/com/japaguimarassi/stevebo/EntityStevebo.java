@@ -55,7 +55,7 @@ public class EntityStevebo extends EntityCreature {
             if (hostile != null) {
                 engage(hostile, 1.15D, true);
             } else {
-                follow(protectTarget);
+                moveToward(protectTarget, 1.05D, 9.0D);
             }
             return;
         }
@@ -77,6 +77,14 @@ public class EntityStevebo extends EntityCreature {
         if (attack && distance < 6.25D && attackCooldown == 0 && target instanceof EntityLivingBase) {
             ((EntityLivingBase) target).attackEntityFrom(DamageSource.causeMobDamage(this), 5.0F);
             attackCooldown = 20;
+        }
+    }
+
+    private void moveToward(Entity target, double speed, double minimumDistance) {
+        getLookHelper().setLookPositionWithEntity(target, 20.0F, 20.0F);
+        if (getDistanceSqToEntity(target) > minimumDistance && pathCooldown == 0) {
+            getNavigator().tryMoveToEntityLiving(target, speed);
+            pathCooldown = 8;
         }
     }
 
