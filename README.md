@@ -22,7 +22,7 @@ Uma página pública intitulada Stevebô foi encontrada no NovaSkin, mas não fo
 
 ## Compilação
 
-Ambiente recomendado: JDK 8, Gradle 4.5 e Python 3 com NumPy. O fluxo do GitHub instala as dependências, treina o modelo e executa Gradle. O resultado esperado é build/libs/Stevebo-0.1.0.jar.
+Ambiente recomendado: JDK 8, Gradle 4.5 e Python 3 com NumPy e Pillow. O fluxo do GitHub instala as dependências, treina o modelo e executa Gradle. O resultado esperado é build/libs/Stevebo-0.1.0.jar.
 
 Localmente, instale NumPy com pip e execute python3 scripts/train_model.py antes de gradle clean build.
 
