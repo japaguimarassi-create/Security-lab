@@ -103,7 +103,7 @@ public class EntityStevebo extends EntityCreature {
         EntityMob closest = null;
         double bestDistance = Double.MAX_VALUE;
         for (EntityMob mob : mobs) {
-            if (mob == this || mob.isDead) continue;
+            if (mob.isDead) continue;
             double distance = getDistanceSqToEntity(mob);
             if (distance < bestDistance) {
                 bestDistance = distance;
