@@ -31,6 +31,8 @@ def generate_skin(path):
     draw = ImageDraw.Draw(image)
 
     def box(x1, y1, x2, y2, color):
+        if x2 <= x1 or y2 <= y1:
+            return
         draw.rectangle((x1, y1, x2 - 1, y2 - 1), fill=color)
 
     skin = (167, 116, 83, 255)
