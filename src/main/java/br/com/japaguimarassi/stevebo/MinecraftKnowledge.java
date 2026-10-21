@@ -51,7 +51,7 @@ public final class MinecraftKnowledge {
     }
 
     public static String answerForKeywords(String text) {
-        String q = text == null ? "" : text.toLowerCase(java.util.Locale.ROOT);
+        String q = java.text.Normalizer.normalize(text == null ? "" : text.toLowerCase(java.util.Locale.ROOT), java.text.Normalizer.Form.NFD).replaceAll("\\p{M}", "");
         if (has(q, "diamante", "diamond")) return ANSWERS[0];
         if (has(q, "ferro", "iron")) return ANSWERS[1];
         if (has(q, "carvao", "tocha", "torch")) return ANSWERS[2];
