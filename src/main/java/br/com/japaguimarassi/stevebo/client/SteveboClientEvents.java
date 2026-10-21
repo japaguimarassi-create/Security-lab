@@ -18,12 +18,12 @@ public class SteveboClientEvents {
         for (Object object : event.buttonList) {
             if (object instanceof GuiButton && ((GuiButton) object).id == BUTTON_ID) return;
         }
-        event.getButtonList().add(new GuiButton(BUTTON_ID, 8, 8, 116, 20, "Stevebô"));
+        event.buttonList.add(new GuiButton(BUTTON_ID, 8, 8, 116, 20, "Stevebô"));
     }
 
     @SubscribeEvent
     public void onAction(GuiScreenEvent.ActionPerformedEvent.Pre event) {
-        GuiScreen gui = event.getGui();
+        GuiScreen gui = event.gui;
         GuiButton button = event.button;
         if (gui instanceof GuiMainMenu && button != null && button.id == BUTTON_ID) {
             event.setCanceled(true);
