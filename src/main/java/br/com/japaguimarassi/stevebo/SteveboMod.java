@@ -7,7 +7,7 @@ import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import cpw.mods.fml.common.registry.EntityRegistry;
 import net.minecraftforge.common.MinecraftForge;
 
-@Mod(modid = SteveboMod.MODID, name = "Stevebo", version = SteveboMod.VERSION, acceptableRemoteVersions = "*")
+@Mod(modid = SteveboMod.MODID, name = "BlocoVivo", version = SteveboMod.VERSION, acceptableRemoteVersions = "*")
 public class SteveboMod {
     public static final String MODID = "stevebo";
     public static final String VERSION = "0.1.0";
