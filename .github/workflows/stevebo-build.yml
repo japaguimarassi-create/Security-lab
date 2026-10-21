@@ -57,7 +57,7 @@ jobs:
         run: |
           test -f build/libs/BlocoVivo-0.1.0.jar
           jar tf build/libs/BlocoVivo-0.1.0.jar | grep -q 'mcmod.info'
-          jar tf build/libs/Stevebo-0.1.0.jar | grep -q 'br/com/japaguimarassi/stevebo/SteveboMod.class'
+          jar tf build/libs/BlocoVivo-0.1.0.jar | grep -q 'br/com/japaguimarassi/stevebo/SteveboMod.class'
 
       - name: Upload mod and logs
         if: always()
