@@ -1,0 +1,9 @@
+[
+  {
+    "modid": "stevebo",
+    "name": "Stevebô",
+    "description": "Autonomous Minecraft companion and local 250,000-weight semantic model.",
+    "version": "${version}",
+    "mcversion": "${mcversion}"
+  }
+]
