@@ -14,8 +14,8 @@ public class SteveboClientEvents {
 
     @SubscribeEvent
     public void onInitGui(GuiScreenEvent.InitGuiEvent.Post event) {
-        if (!(event.getGui() instanceof GuiMainMenu)) return;
-        for (Object object : event.getButtonList()) {
+        if (!(event.gui instanceof GuiMainMenu)) return;
+        for (Object object : event.buttonList) {
             if (object instanceof GuiButton && ((GuiButton) object).id == BUTTON_ID) return;
         }
         event.getButtonList().add(new GuiButton(BUTTON_ID, 8, 8, 116, 20, "Stevebô"));
@@ -24,7 +24,7 @@ public class SteveboClientEvents {
     @SubscribeEvent
     public void onAction(GuiScreenEvent.ActionPerformedEvent.Pre event) {
         GuiScreen gui = event.getGui();
-        GuiButton button = event.getButton();
+        GuiButton button = event.button;
         if (gui instanceof GuiMainMenu && button != null && button.id == BUTTON_ID) {
             event.setCanceled(true);
             Minecraft.getMinecraft().displayGuiScreen(new GuiSteveboHub(gui));
