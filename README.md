@@ -1,4 +1,4 @@
-# Stevebô — Forge 1.7.10
+# BlocoVivo — Forge 1.7.10
 
 Mod para Minecraft Java 1.7.10 com Forge 10.13.4.1614. O botão Stevebô no menu principal abre uma seleção de destino e inicia o fluxo normal de criação de mundo integrado. O Stevebô é criado no destino selecionado; placas no ponto inicial permitem viajar entre Mundo comum, Arena PvP, Sobrevivência, Construção e Exploração.
 
@@ -16,13 +16,13 @@ O botão cria um mundo single-player com servidor integrado do Minecraft. Os des
 
 ## Skin
 
-O renderizador procura a textura em src/main/resources/assets/stevebo/textures/entity/stevebo.png. Até que a textura exata de Stevebô usada pelo TheLuics seja confirmada e adicionada, a entidade usa a textura padrão do Steve como fallback; portanto, a skin exata ainda precisa ser validada.
+O renderizador procura a textura em src/main/resources/assets/stevebo/textures/entity/stevebo.png. A textura atual é uma aproximação provisória; a correspondência exata com a skin usada pelo TheLuics ainda precisa ser validada.
 
 Uma página pública intitulada Stevebô foi encontrada no NovaSkin, mas não foi possível confirmar que seja a mesma skin do TheLuics: https://minecraft.novaskin.me/post/9lkmutvba9/steveb
 
 ## Compilação
 
-Ambiente recomendado: JDK 8, Gradle 4.5 e Python 3 com NumPy e Pillow. O fluxo do GitHub instala as dependências, treina o modelo e executa Gradle. O resultado esperado é build/libs/Stevebo-0.1.0.jar.
+Ambiente recomendado: JDK 8, Gradle 4.5 e Python 3 com NumPy e Pillow. O fluxo do GitHub instala as dependências, treina o modelo e executa Gradle. O resultado esperado é build/libs/BlocoVivo-0.1.0.jar.
 
 Localmente, instale NumPy com pip e execute python3 scripts/train_model.py antes de gradle clean build.
 
