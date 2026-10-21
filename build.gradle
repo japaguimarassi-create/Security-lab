@@ -24,8 +24,11 @@ minecraft {
 task trainAiModel(type: Exec) {
     commandLine 'python3', 'scripts/train_model.py'
     inputs.file 'data/minecraft_corpus.txt'
+    inputs.file 'scripts/train_model.py'
     outputs.files 'src/main/resources/assets/stevebo/ai/embeddings.bin',
-                  'src/main/resources/assets/stevebo/ai/vocab.tsv'
+                  'src/main/resources/assets/stevebo/ai/vocab.tsv',
+                  'src/main/resources/assets/stevebo/ai/model-info.txt',
+                  'src/main/resources/assets/stevebo/textures/entity/stevebo.png'
 }
 
 processResources.dependsOn trainAiModel
