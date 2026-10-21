@@ -1,4 +1,4 @@
-name: Stevebo Forge 1.7.10 build
+name: BlocoVivo Forge 1.7.10 build
 
 on:
   push:
@@ -55,15 +55,15 @@ jobs:
 
       - name: Verify installable JAR
         run: |
-          test -f build/libs/Stevebo-0.1.0.jar
-          jar tf build/libs/Stevebo-0.1.0.jar | grep -q 'mcmod.info'
+          test -f build/libs/BlocoVivo-0.1.0.jar
+          jar tf build/libs/BlocoVivo-0.1.0.jar | grep -q 'mcmod.info'
           jar tf build/libs/Stevebo-0.1.0.jar | grep -q 'br/com/japaguimarassi/stevebo/SteveboMod.class'
 
       - name: Upload mod and logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Stevebo-Forge-1.7.10-build
+          name: BlocoVivo-Forge-1.7.10-build
           path: |
             build/libs/*.jar
             build-logs/*.log
