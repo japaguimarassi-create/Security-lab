@@ -7,7 +7,7 @@ const idx = (x, y, z) => x + WORLD.w * (z + WORLD.d * y);
 const inside = (x, y, z) => x >= 0 && x < WORLD.w && y >= 0 && y < WORLD.h && z >= 0 && z < WORLD.d;
 const blockAt = (x, y, z) => inside(x, y, z) ? grid[idx(x, y, z)] : 0;
 const putBlock = (x, y, z, type) => { if (inside(x, y, z)) grid[idx(x, y, z)] = type; };
-const state = { started:false, paused:false, resources:0, health:100, extraction:false, weapon:null, preview:null, blueprints:[], history:[], projectiles:[], entities:[], yaw:0, pitch:0, vy:0, player:{x:14,y:4.65,z:23}, bot:null, moveX:0, moveY:0, keys:{}, lastTime:0, fps:0, fpsFrames:0, fpsTime:0, toastTimer:0, fly:false, selectedMode:'arena' };
+const state = { started:false, paused:false, resources:0, health:100, extraction:false, weapon:null, preview:null, blueprints:[], history:[], projectiles:[], entities:[], yaw:0, pitch:0, vy:0, player:{x:14,y:4.65,z:23}, bot:null, botHealth:120, botAttackTimer:1, moveX:0, moveY:0, keys:{}, lastTime:0, fps:0, fpsFrames:0, fpsTime:0, toastTimer:0, fly:false, selectedMode:'arena' };
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x90b8c4);
@@ -171,7 +171,7 @@ function addExplosion(position, radius=2, element='fire') {
   }
   for(const [x,y,z] of removed)putBlock(x,y,z,0);
   if(removed.length){rebuildWorld();notify('EXPLOSÃO: '+removed.length+' blocos removidos.');}
-  if(state.bot){const p=state.bot.position;if(p.distanceTo(position)<radius+1)state.health=Math.max(0,state.health-12);}
+  if(state.bot && state.bot.position.distanceTo(position)<radius+1) damageBot(42);
 }
 
 const projectiles=[];
@@ -197,15 +197,25 @@ function updateProjectiles(dt) {
       scene.remove(p.object);projectiles.splice(i,1);continue;
     }
     if(state.bot&&q.distanceTo(state.bot.position)<0.8){
-      state.bot.position.y-=0.1;
+      damageBot(p.cfg.damage||20);
       if(p.cfg.explosive)addExplosion(q.clone(),1.8,p.cfg.element);
-      scene.remove(p.object);projectiles.splice(i,1);state.health=Math.max(0,state.health-0);notify('ACERTO!');continue;
+      scene.remove(p.object);projectiles.splice(i,1);continue;
     }
   }
 }
 
+function damageBot(amount) {
+  if(!state.bot)return;
+  state.botHealth=Math.max(0,state.botHealth-amount);
+  if(state.botHealth===0){
+    scene.remove(state.bot);state.bot=null;notify('BOT ELIMINADO! Nova unidade em 3 segundos.');
+    setTimeout(()=>{if(state.started&&!state.paused&&!state.bot)spawnBot();},3000);
+  } else { notify('ACERTO! BOT: '+state.botHealth+' HP'); }
+}
+
 function spawnBot() {
   if(state.bot)scene.remove(state.bot);
+  state.botHealth=120;state.botAttackTimer=1;
   state.bot=new THREE.Group();
   const torso=box(0.7,1.1,0.4,0x9b4942);torso.position.y=0.9;state.bot.add(torso);
   const head=sphere(0.28,0xb7c1c6);head.position.y=1.65;state.bot.add(head);
@@ -218,6 +228,8 @@ function moveBot(dt) {
   const dx=state.player.x-state.bot.position.x,dz=state.player.z-state.bot.position.z;
   const distance=Math.hypot(dx,dz);
   if(distance>2.8){state.bot.position.x+=dx/distance*dt*0.7;state.bot.position.z+=dz/distance*dt*0.7;}
+  state.botAttackTimer-=dt;
+  if(distance<2.25&&state.botAttackTimer<=0){state.health=Math.max(0,state.health-5);state.botAttackTimer=1.15;updateHud();notify(state.health>0?'O BOT ACERTOU!':'VOCÊ FOI DERROTADO. REINICIE A ARENA.');if(state.health===0){state.paused=true;$('pause-panel').classList.remove('hidden');}}
   state.bot.position.y=floorAt(state.bot.position.x,state.bot.position.z);
   state.bot.lookAt(state.player.x,state.bot.position.y+1,state.player.z);
   state.bot.position.y=Math.max(2,state.bot.position.y);
@@ -253,6 +265,7 @@ function mineBlock() {
 }
 
 function fireAction() {
+  if(state.paused||!state.started||state.health<=0)return;
   if(state.extraction){mineBlock();return;}
   fireProjectile();
 }
@@ -356,7 +369,7 @@ function parseCommand(raw) {
   cost=Math.min(30,cost);
   const typeName=primary.name||primary.id;
   const modifiers=[barrels>1?barrels+' canos':null,element?element.label:null,projectile?'dispara '+creature.name:null,giant?'tamanho gigante':null,homing?'teleguiado':null,orbit?'orbital':null].filter(Boolean);
-  return {id:primary.id,kind:primary.kind||'creature',name:(count>1?count+'x ':'')+typeName,details:modifiers.length?modifiers.join(' • '):'Modelo básico com comportamento funcional',cost,barrels,element:element?.id||'cyan',projectile,orbit,giant,homing,explosive,ammo,body,count,raw};
+  return {id:primary.id,kind:primary.kind||'creature',name:(count>1?count+'x ':'')+typeName,details:modifiers.length?modifiers.join(' • '):'Modelo básico com comportamento funcional',cost,barrels,element:element?.id||'cyan',projectile,orbit,giant,homing,explosive,ammo,body,count,damage:primary.id==='rpg'?52:primary.id==='espada'?28:primary.id==='escopeta'?30:20,raw};
 }
 
 function showPreview(parsed) {
@@ -466,7 +479,7 @@ function setupControls() {
   $('confirm-craft').addEventListener('click',confirmCraft);
   $('cancel-craft').addEventListener('click',()=>{$('preview').classList.add('hidden');state.preview=null;});
   document.querySelectorAll('.sample').forEach(btn=>btn.addEventListener('click',()=>{$('command-input').value=btn.textContent;submitCommand(btn.textContent);}));
-  $('game-canvas').addEventListener('click',e=>{if(e.pointerType==='mouse'&&state.started&&!state.paused)fireAction();});
+  $('game-canvas').addEventListener('click',()=>{if(state.started&&!state.paused)fireAction();});
   window.addEventListener('keydown',e=>{state.keys[e.key.toLowerCase()]=true;if(e.key.toLowerCase()==='t')openCommand();if(e.key==='Escape')togglePause();if(e.key===' '&&state.started)state.vy=6.2;if(e.key.toLowerCase()==='e')state.extraction=!state.extraction;});
   window.addEventListener('keyup',e=>{state.keys[e.key.toLowerCase()]=false;});
   window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight,false);renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.35));});
