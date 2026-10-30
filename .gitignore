@@ -1,0 +1,10 @@
+.gradle/
+.gradle-cache/
+build/
+app/build/
+node_modules/
+*.apk
+*.aab
+local.properties
+.idea/
+.DS_Store

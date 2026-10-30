@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#080d15">
+<title>VoxelForge Arena</title>
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<div id="game-root">
+  <canvas id="game-canvas"></canvas>
+  <div id="hud" class="hidden">
+    <div class="topbar">
+      <div class="brand"><span class="brand-mark">V</span><span>VOXELFORGE <small>ARENA</small></span></div>
+      <div class="status"><span id="health">100 HP</span><span id="resources">0 MAT</span><span id="fps">-- FPS</span></div>
+      <button id="pause" class="icon-button">Ⅱ</button>
+    </div>
+    <div class="crosshair"><i></i><b></b></div>
+    <div class="weapon-label" id="weapon-label">MÃOS VAZIAS</div>
+    <div class="hint" id="hint">Extraia blocos para criar. Texto e voz funcionam juntos.</div>
+    <div id="toast" class="toast"></div>
+    <div class="controls">
+      <div class="move-pad" id="move-pad"><div class="stick-ring"><div id="stick-knob"></div></div><span>MOVER</span></div>
+      <div class="action-pad">
+        <button id="extract" class="action secondary"><b>⛏</b><small>EXTRAIR</small></button>
+        <button id="voice" class="action voice"><b>●</b><small>VOZ</small></button>
+        <button id="fire" class="action fire"><b>✦</b><small>DISPARAR</small></button>
+        <button id="jump" class="action secondary"><b>↑</b><small>PULAR</small></button>
+      </div>
+    </div>
+    <div class="bottom-actions">
+      <button id="text-open" class="pill-action">⌨ DIGITAR COMANDO</button>
+      <button id="inventory-open" class="pill-action">▦ PROJETOS</button>
+      <button id="tutorial-open" class="pill-action">? COMO JOGAR</button>
+    </div>
+  </div>
+
+  <section id="title-screen" class="screen">
+    <div class="title-grid"></div>
+    <div class="title-content">
+      <div class="eyebrow">SANDBOX • FPS • VOXEL</div>
+      <h1>VOXEL<span>FORGE</span></h1>
+      <p class="subtitle">Imagine. Construa. Destrua.</p>
+      <p class="intro">Uma arena viva onde suas ideias viram equipamentos, criaturas e máquinas. Digite ou fale — você escolhe.</p>
+      <button id="start" class="primary-button">ENTRAR NA ARENA <span>→</span></button>
+      <div class="title-meta"><span>PT-BR</span><span>•</span><span>OFFLINE-FIRST</span><span>•</span><span>ANDROID</span></div>
+    </div>
+    <div class="title-orbit orbit-one"></div><div class="title-orbit orbit-two"></div>
+  </section>
+
+  <section id="command-panel" class="modal hidden">
+    <div class="panel-card">
+      <div class="panel-head"><div><span class="eyebrow">CONSTRUTOR DE IDEIAS</span><h2>O que vamos criar?</h2></div><button class="close" data-close="command-panel">×</button></div>
+      <p class="panel-desc">Escreva a criação completa. O sistema separa objeto, peças, quantidade e propriedades.</p>
+      <form id="command-form">
+        <input id="command-input" autocomplete="off" maxlength="180" placeholder="Ex.: uma besta elétrica de três disparos..." />
+        <button type="submit" class="primary-button">ANALISAR PEDIDO →</button>
+      </form>
+      <div id="voice-status" class="voice-status">Você também pode usar o botão VOZ na arena.</div>
+      <div id="preview" class="preview hidden">
+        <div class="preview-title">PRÉVIA DA CRIAÇÃO</div>
+        <h3 id="preview-name"></h3>
+        <p id="preview-details"></p>
+        <div class="cost-row"><span>CUSTO DE MATERIAIS</span><strong id="preview-cost">0</strong></div>
+        <div class="preview-actions"><button id="cancel-craft" class="secondary-button">CANCELAR</button><button id="confirm-craft" class="primary-button">CRIAR AGORA</button></div>
+      </div>
+      <div class="suggestions"><span>SUGESTÕES</span>
+        <button class="sample">uma pistola de seis canos que atira pombos explosivos</button>
+        <button class="sample">três lobos elétricos que orbitam ao meu redor</button>
+        <button class="sample">uma torre automática que dispara foguetes</button>
+        <button class="sample">uma armadura de gelo com escudo</button>
+        <button class="sample">um dragão de fogo gigante</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="pause-panel" class="modal hidden">
+    <div class="panel-card compact">
+      <div class="panel-head"><div><span class="eyebrow">ARENA PAUSADA</span><h2>Central de jogo</h2></div><button class="close" data-close="pause-panel">×</button></div>
+      <button id="resume" class="primary-button">CONTINUAR</button>
+      <button id="reset" class="secondary-button wide">REINICIAR ARENA</button>
+      <button id="pause-help" class="secondary-button wide">COMO JOGAR</button>
+      <p class="panel-desc">Seu progresso local e projetos salvos ficam no dispositivo.</p>
+    </div>
+  </section>
+
+  <section id="tutorial-panel" class="modal hidden">
+    <div class="panel-card">
+      <div class="panel-head"><div><span class="eyebrow">GUIA RÁPIDO</span><h2>Três passos para começar</h2></div><button class="close" data-close="tutorial-panel">×</button></div>
+      <div class="tutorial-step"><b>01</b><div><strong>Extraia materiais</strong><p>Ative EXTRAIR e toque em blocos do cenário. Cada bloco removido rende material.</p></div></div>
+      <div class="tutorial-step"><b>02</b><div><strong>Descreva sua ideia</strong><p>Digite ou fale em português. O sistema interpreta o tipo, os componentes e os efeitos.</p></div></div>
+      <div class="tutorial-step"><b>03</b><div><strong>Confira e crie</strong><p>Revise a prévia e o custo. Só confirme quando estiver satisfeito; depois teste a criação no combate.</p></div></div>
+      <div class="example-list"><span>COMANDOS PARA EXPERIMENTAR</span><p>“uma escopeta de três canos que dispara paredes”</p><p>“quero voar”</p><p>“um pombo explosivo que me acompanha”</p><p>“um carro elétrico com foguetes”</p></div>
+    </div>
+  </section>
+
+  <section id="inventory-panel" class="modal hidden">
+    <div class="panel-card">
+      <div class="panel-head"><div><span class="eyebrow">OFICINA LOCAL</span><h2>Projetos salvos</h2></div><button class="close" data-close="inventory-panel">×</button></div>
+      <div id="blueprint-list" class="blueprint-list"></div>
+      <div class="history-title">HISTÓRICO DE COMANDOS</div>
+      <div id="command-history" class="history-list"></div>
+    </div>
+  </section>
+</div>
+<script type="module" src="./main.js"></script>
+</body>
+</html>

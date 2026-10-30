@@ -1,0 +1,9 @@
+{
+  "name": "voxelforge-arena",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Pinned runtime dependency for the Android voxel FPS",
+  "dependencies": {
+    "three": "0.180.0"
+  }
+}
