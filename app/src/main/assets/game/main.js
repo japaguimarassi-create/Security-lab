@@ -14,6 +14,7 @@ scene.background = new THREE.Color(0x90b8c4);
 scene.fog = new THREE.Fog(0x90b8c4, 22, 54);
 const camera = new THREE.PerspectiveCamera(76, innerWidth / innerHeight, 0.08, 100);
 camera.rotation.order = 'YXZ';
+scene.add(camera);
 const renderer = new THREE.WebGLRenderer({canvas:$('game-canvas'), antialias:false, powerPreference:'high-performance', alpha:false});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.35));
 renderer.setSize(innerWidth, innerHeight, false);
