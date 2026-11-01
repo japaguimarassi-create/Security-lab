@@ -373,7 +373,7 @@ def build_training_notebook(
         "    if item['approved']:\n"
         "        item['review_notes'] = 'Human-reviewed before staged SFT'\n"
         "        approved_count += 1\n"
-        "candidate_file.write_text(''.join(json.dumps(item, ensure_ascii=False) + '\\\n' for item in candidates), encoding='utf-8')\n"
+        "candidate_file.write_text(''.join(json.dumps(item, ensure_ascii=False) + '\\n' for item in candidates), encoding='utf-8')\n"
         "print('Approved examples:', approved_count)\n"
         "assert approved_count >= "
         + str(MINIMUM_APPROVED)
