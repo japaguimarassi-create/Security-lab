@@ -1,0 +1,171 @@
+name: KLOD GitHub staged training
+
+on:
+  push:
+    branches:
+      - development
+      - training/**
+    paths:
+      - "data/github/run-request.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: klod-github-training-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      phase: ${{ steps.request.outputs.phase }}
+      stage_percent: ${{ steps.request.outputs.stage_percent }}
+      teacher_run_id: ${{ steps.request.outputs.teacher_run_id }}
+      previous_stage_run_id: ${{ steps.request.outputs.previous_stage_run_id }}
+      previous_stage_percent: ${{ steps.request.outputs.previous_stage_percent }}
+      approved_ids: ${{ steps.request.outputs.approved_ids }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install PyYAML
+      - name: Validate the GitHub training request
+        id: request
+        run: python scripts/github_training.py validate-request --request data/github/run-request.json
+
+  execute:
+    needs: validate
+    if: needs.validate.outputs.phase != 'setup'
+    runs-on: ${{ vars.KLOD_GPU_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 360
+    env:
+      PHASE: ${{ needs.validate.outputs.phase }}
+      STAGE_PERCENT: ${{ needs.validate.outputs.stage_percent }}
+      TEACHER_RUN_ID: ${{ needs.validate.outputs.teacher_run_id }}
+      PREVIOUS_STAGE_RUN_ID: ${{ needs.validate.outputs.previous_stage_run_id }}
+      PREVIOUS_STAGE_PERCENT: ${{ needs.validate.outputs.previous_stage_percent }}
+      APPROVED_IDS_JSON: ${{ needs.validate.outputs.approved_ids }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - name: Require an NVIDIA GPU before installing training dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v nvidia-smi >/dev/null 2>&1; then
+            echo "::error::No NVIDIA GPU runner is available."
+            echo "GitHub Actions is using a CPU runner. Configure a GPU runner and set the repository variable KLOD_GPU_RUNNER to its label."
+            exit 1
+          fi
+          nvidia-smi
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install KLOD training dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[training]"
+      - name: Validate GPU and data requirements
+        if: env.PHASE == 'generate'
+        run: python scripts/training_preflight.py --stage teacher --config configs/training/distillation.yaml
+      - name: Generate frozen-teacher candidates
+        if: env.PHASE == 'generate'
+        run: |
+          python scripts/generate_teacher_data.py --config configs/training/distillation.yaml
+          python scripts/github_training.py record-generation
+      - name: Upload teacher candidates for human review
+        if: env.PHASE == 'generate'
+        uses: actions/upload-artifact@v4
+        with:
+          name: klod-teacher-candidates
+          path: |
+            data/generated/teacher_candidates.jsonl
+            data/generated/teacher_run.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Download reviewed teacher candidates
+        if: env.PHASE == 'train_stage'
+        uses: actions/download-artifact@v4
+        with:
+          name: klod-teacher-candidates
+          path: .klod-candidates
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.TEACHER_RUN_ID }}
+      - name: Download previous stage adapter
+        if: env.PHASE == 'train_stage' && env.STAGE_PERCENT != '20'
+        uses: actions/download-artifact@v4
+        with:
+          name: klod-stage-${{ env.PREVIOUS_STAGE_PERCENT }}-adapter
+          path: .klod-previous
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PREVIOUS_STAGE_RUN_ID }}
+      - name: Prepare approved data and stage configs
+        if: env.PHASE == 'train_stage'
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous_args=()
+          if [ "$STAGE_PERCENT" != "20" ]; then
+            previous_args+=(--previous-adapter-zip ".klod-previous/klod-stage-$PREVIOUS_STAGE_PERCENT-adapter.zip")
+          fi
+          python scripts/github_training.py prepare-stage \
+            --request data/github/run-request.json \
+            --branch "$GITHUB_REF_NAME" \
+            --candidate-file .klod-candidates/teacher_candidates.jsonl \
+            "${previous_args[@]}"
+          python scripts/approve_teacher_data.py --minimum 20
+          python scripts/training_preflight.py --stage sft --config configs/training/stages/runtime_stage.yaml
+      - name: Train the requested incremental stage
+        if: env.PHASE == 'train_stage'
+        run: python scripts/train_sft.py --config configs/training/stages/runtime_stage.yaml
+      - name: Run blinded teacher/student evaluation
+        if: env.PHASE == 'train_stage'
+        run: python scripts/evaluate_teacher_student.py --config configs/training/stages/runtime_eval.yaml
+      - name: Package stage adapter and report
+        if: env.PHASE == 'train_stage'
+        run: python scripts/github_training.py package-stage --stage "$STAGE_PERCENT" --adapter-dir "outputs/klod-stage-$STAGE_PERCENT"
+      - name: Upload adapter for the next branch
+        if: env.PHASE == 'train_stage'
+        uses: actions/upload-artifact@v4
+        with:
+          name: klod-stage-${{ env.STAGE_PERCENT }}-adapter
+          path: output/klod-stage-${{ env.STAGE_PERCENT }}-adapter.zip
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload stage results
+        if: env.PHASE == 'train_stage'
+        uses: actions/upload-artifact@v4
+        with:
+          name: klod-stage-${{ env.STAGE_PERCENT }}-report
+          path: |
+            output/klod-stage-${{ env.STAGE_PERCENT }}-results.zip
+            output/RELATORIO_KLOD_${{ env.STAGE_PERCENT }}pct.md
+            output/stage-${{ env.STAGE_PERCENT }}-metadata.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Write run summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## KLOD GitHub staged training"
+            echo ""
+            echo "- Phase: $PHASE"
+            if [ "$PHASE" = "generate" ]; then
+              echo "- Teacher candidates: klod-teacher-candidates"
+            elif [ "$PHASE" = "train_stage" ]; then
+              echo "- Completed stage: $STAGE_PERCENT%"
+              echo "- Adapter artifact: klod-stage-$STAGE_PERCENT-adapter"
+              echo "- Report artifact: klod-stage-$STAGE_PERCENT-report"
+            fi
+            echo "- GitHub run ID: $GITHUB_RUN_ID"
+          } >> "$GITHUB_STEP_SUMMARY"
