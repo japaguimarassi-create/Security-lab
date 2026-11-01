@@ -1,4 +1,3 @@
 {
-  "phase": "setup",
-  "note": "GitHub-only workflow; setup validation only."
+  "phase": "cpu_smoke"
 }
