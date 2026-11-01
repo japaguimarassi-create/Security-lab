@@ -9,6 +9,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from klod.distillation import answer_quality_issue, read_seed_prompts
 from klod.specialists import GENERAL_SYSTEM_PROMPT
+from klod.training import inference_dtype_name
 
 
 TEACHER_INSTRUCTIONS = """You are the teacher model preparing high-quality training examples for KLOD,
@@ -39,7 +40,10 @@ def load_teacher(cfg: dict):
             bnb_4bit_use_double_quant=True,
         )
     else:
-        kwargs["torch_dtype"] = "auto"
+        cuda_available = torch.cuda.is_available()
+        bf16_supported = cuda_available and torch.cuda.is_bf16_supported()
+        dtype_name = inference_dtype_name(cuda_available, bf16_supported)
+        kwargs["torch_dtype"] = getattr(torch, dtype_name)
     tokenizer = AutoTokenizer.from_pretrained(
         cfg["teacher_model"], trust_remote_code=False)
     if tokenizer.pad_token is None:
