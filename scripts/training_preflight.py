@@ -5,6 +5,8 @@ from pathlib import Path
 
 import yaml
 
+from klod.distillation import validate_sft_messages
+
 
 REQUIREMENTS = {
     "teacher": ("configs/distillation_prompts.jsonl", 20,
@@ -38,18 +40,7 @@ def validate_record(item: object, stage: str | None = None,
         if not isinstance(item.get("text"), str) or not item["text"].strip():
             return "text must be non-empty"
     elif stage == "sft":
-        messages = item.get("messages")
-        if not isinstance(messages, list) or len(messages) < 2:
-            return "messages must contain at least two turns"
-        for index, message in enumerate(messages):
-            if not isinstance(message, dict):
-                return f"messages[{index}] must be an object"
-            if message.get("role") not in {"system", "user", "assistant"}:
-                return f"messages[{index}] has an unsupported role"
-            if not isinstance(message.get("content"), str) or not message["content"].strip():
-                return f"messages[{index}].content must be non-empty text"
-        if messages[-1].get("role") != "assistant":
-            return "the final message must have role assistant"
+        return validate_sft_messages(item.get("messages"))
     elif stage == "dpo":
         for field in ("prompt", "chosen", "rejected"):
             if not isinstance(item.get(field), str) or not item[field].strip():
