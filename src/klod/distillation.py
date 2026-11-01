@@ -15,6 +15,8 @@ def read_seed_prompts(path: Path) -> list[dict]:
                 row = json.loads(line)
             except json.JSONDecodeError as exc:
                 raise ValueError(f"{path}:{line_number}: invalid JSON") from exc
+            if not isinstance(row, dict):
+                raise ValueError(f"{path}:{line_number}: expected a JSON object")
             prompt = row.get("prompt")
             domain = row.get("domain")
             language = row.get("language", "pt")
@@ -67,6 +69,8 @@ def approved_candidates(path: Path) -> Iterator[dict]:
                 row = json.loads(line)
             except json.JSONDecodeError as exc:
                 raise ValueError(f"{path}:{line_number}: invalid JSON") from exc
+            if not isinstance(row, dict):
+                raise ValueError(f"{path}:{line_number}: expected a JSON object")
             if row.get("approved") is not True:
                 continue
             if row.get("quality_passed") is not True:
@@ -74,17 +78,22 @@ def approved_candidates(path: Path) -> Iterator[dict]:
             messages = row.get("messages")
             if not isinstance(messages, list) or len(messages) < 2:
                 raise ValueError(f"{path}:{line_number}: approved candidate has invalid messages")
+            if any(not isinstance(item, dict) for item in messages):
+                raise ValueError(f"{path}:{line_number}: messages must be JSON objects")
             if messages[-1].get("role") != "assistant":
                 raise ValueError(f"{path}:{line_number}: final message must be assistant")
-            if any(not isinstance(item.get("content"), str) or not item["content"].strip()
-                   for item in messages):
-                raise ValueError(f"{path}:{line_number}: every message needs text content")
+            if any(item.get("role") not in {"system", "user", "assistant"}
+                   or not isinstance(item.get("content"), str)
+                   or not item["content"].strip() for item in messages):
+                raise ValueError(f"{path}:{line_number}: every message needs a valid role and text content")
             approved = dict(row)
             approved["review_status"] = "approved"
             yield approved
 
 
 def export_approved(input_path: Path, output_path: Path, minimum: int = 20) -> dict:
+    if minimum < 1:
+        raise ValueError("minimum must be at least 1")
     rows = list(approved_candidates(input_path))
     if len(rows) < minimum:
         raise ValueError(f"Only {len(rows)} approved examples; at least {minimum} are required")
