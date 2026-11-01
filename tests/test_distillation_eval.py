@@ -13,7 +13,7 @@ def test_read_eval_prompts_deduplicates_and_preserves_domains(tmp_path):
         {"id": "c", "domain": "history", "language": "pt", "prompt": "Explique a Revolução Industrial"},
     ]
     path.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
-    result = read_eval_prompts(path)
+    result = read_eval_prompts(path, minimum_prompts=2)
     assert [row["id"] for row in result] == ["a", "c"]
     assert result[0]["domain"] == "science"
 
