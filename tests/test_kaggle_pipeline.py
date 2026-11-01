@@ -64,3 +64,11 @@ def test_heldout_prompts_are_not_in_teacher_seed_prompts():
     ]
     assert len(heldout_prompts) >= 5
     assert not (seed_prompts & set(heldout_prompts))
+
+
+
+def test_generated_training_data_and_blind_key_are_ignored():
+    ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert "data/generated/*" in ignored
+    assert "evaluation/distillation_blind.jsonl" in ignored
+    assert "evaluation/distillation_answer_key.json" in ignored
