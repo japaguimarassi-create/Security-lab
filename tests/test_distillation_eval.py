@@ -22,7 +22,7 @@ def test_read_eval_prompts_requires_five_unique_prompts(tmp_path):
     path = tmp_path / "heldout.jsonl"
     row = {"prompt": "Uma pergunta"}
     path.write_text("\n".join(json.dumps(row) for _ in range(5)), encoding="utf-8")
-    with pytest.raises(ValueError, match="five unique"):
+    with pytest.raises(ValueError, match="5 unique"):
         read_eval_prompts(path)
 
 
