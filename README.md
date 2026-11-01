@@ -66,6 +66,10 @@ The training config rejects examples that have not passed the automated screen a
 
 The 48 prompts validate the pipeline; they are not enough to produce broad expert-level ability. Expand the curriculum substantially, use diverse reviewed examples, reserve a separate evaluation set and compare the student against the teacher before promoting a checkpoint.
 
+## Treinamento no Kaggle
+
+Consulte [docs/TREINAMENTO_KAGGLE.md](docs/TREINAMENTO_KAGGLE.md) para configurar o notebook, ativar internet e GPU, aprovar demonstrações e recuperar os resultados. O notebook está em [notebooks/KLOD_Kaggle_Teacher_Distillation.ipynb](notebooks/KLOD_Kaggle_Teacher_Distillation.ipynb).
+
 ## Important training distinction
 
 The teacher is frozen during generation; it does not update student weights directly. It supplies demonstrations. The student learns through supervised fine-tuning of its LoRA adapter. No trained adapter is included in GitHub, and no GPU training is claimed until the commands have actually run and evaluation has passed.
