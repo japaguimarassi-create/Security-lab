@@ -81,3 +81,49 @@ def test_preflight_requires_approved_teacher_rows_when_configured(tmp_path):
     result = inspect_dataset(path, {"messages"}, 1, require_approval=True)
     assert result["valid"] is False
     assert result["unapproved_rows"] == 1
+
+
+
+def test_read_sft_rows_requires_human_approval_and_valid_messages(tmp_path):
+    from klod.distillation import read_sft_rows
+
+    source = tmp_path / "approved.jsonl"
+    messages = [
+        {"role": "system", "content": "KLOD"},
+        {"role": "user", "content": "Explain this."},
+        {"role": "assistant", "content": "A complete explanation."},
+    ]
+    rows = [
+        {"approved": True, "quality_passed": True, "messages": messages},
+        {"approved": False, "quality_passed": True, "messages": messages},
+    ]
+    source.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
+    with pytest.raises(ValueError, match="has not been approved"):
+        read_sft_rows(source, minimum=1, require_approval=True)
+
+
+def test_read_sft_rows_rejects_non_assistant_final_turn(tmp_path):
+    from klod.distillation import read_sft_rows
+
+    source = tmp_path / "invalid.jsonl"
+    row = {"messages": [
+        {"role": "user", "content": "Explain this."},
+        {"role": "user", "content": "This is not an answer."},
+    ]}
+    source.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="final message must have role assistant"):
+        read_sft_rows(source, minimum=1)
+
+
+def test_read_sft_rows_accepts_reviewed_conversation(tmp_path):
+    from klod.distillation import read_sft_rows
+
+    source = tmp_path / "valid.jsonl"
+    row = {"approved": True, "quality_passed": True, "messages": [
+        {"role": "system", "content": "KLOD"},
+        {"role": "user", "content": "Explain this."},
+        {"role": "assistant", "content": "A complete explanation."},
+    ]}
+    source.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    result = read_sft_rows(source, minimum=1, require_approval=True)
+    assert result == [{"messages": row["messages"]}]
