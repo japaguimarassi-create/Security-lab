@@ -118,7 +118,7 @@ def test_stage_notebook_builds_expected_progress_and_config(stage, tmp_path, mon
 
 
 def test_stages_after_twenty_percent_require_previous_adapter():
-    with pytest.raises(RunnerError, match="require the previous stage"):
+    with pytest.raises(RunnerError, match="require the previous private adapter dataset"):
         build_training_notebook(
             base_notebook(), candidate_bytes(),
             [f"pt-{index:03d}" for index in range(1, 21)],
