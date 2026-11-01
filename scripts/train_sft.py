@@ -60,6 +60,8 @@ def main():
         save_steps=int(cfg.get("save_steps", 200)),
         save_total_limit=int(cfg["save_total_limit"]),
         bf16=precision["bf16"], fp16=bool(precision["cuda"] and not precision["bf16"]),
+        use_cpu=not precision["cuda"], optim=cfg.get("optim", "adamw_torch"),
+        dataloader_pin_memory=bool(precision["cuda"]), dataloader_num_workers=0,
         gradient_checkpointing=True, report_to="none", seed=int(cfg.get("seed", 42)))
     trainer_kwargs = {
         "model": model, "args": train_args, "train_dataset": split["train"],
