@@ -5,6 +5,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .coverage
+htmlcov/
 data/raw/*
 data/processed/*
 data/eval/*
@@ -18,3 +19,4 @@ models/
 *.pth
 *.gguf
 *.sqlite*
+evaluation/results.json

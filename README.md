@@ -1,25 +1,23 @@
 # KLOD AI
 
-Klod é uma plataforma própria de linguagem: runtime de LLM, API REST, memória persistente, pesquisa de conhecimento, ingestão de dados licenciados e ferramentas de treinamento.
+Klod é uma plataforma modular de linguagem: motor de inferência, API REST, memória, recuperação de conhecimento, planejamento estruturado e pipelines de treinamento.
 
-## Estado real
+## Estado honesto do projeto
 
-Esta é a base de software **KLOD AI v0.1.0**. Ela prepara a infraestrutura e os pipelines; não contém pesos treinados pelo projeto e não afirma que o modelo de 1,7B foi treinado do zero. A fundação inicial é Qwen3-1.7B-Base para continuação de pré-treinamento e Qwen3-1.7B para inferência. Pesos e dados de terceiros conservam suas próprias licenças.
+O repositório contém o software e os pipelines. O checkpoint de fundação é Qwen3-1.7B; os pesos próprios/LoRA do Klod ainda dependem de execução de treinamento em GPU. Não confunda código de treinamento com pesos treinados. O protótipo atual não é um modelo pré-treinado do zero.
 
-## Arquitetura
+## Módulos
 
-```
-Apps / Minecraft mods -> Klod REST API -> Inference engine
-                                      -> SQLite memory
-                                      -> Retrieval / knowledge
-Data sources -> cleaning -> filtering -> training -> evaluation
-```
+- `core/engine`: inferência Qwen3 e carregamento opcional de adaptador PEFT.
+- `memory`: memória SQLite isolada por namespace.
+- `knowledge`: FTS5 com documentos, fonte, licença e atribuição.
+- `planner`: gera planos JSON e valida ações por allowlist; não executa ações.
+- `api`: chat, memória, conhecimento, status e carregamento.
+- `training`: continuação de pré-treino, SFT, DPO e avaliação.
 
-O modelo sugere texto e planos; cada aplicação cliente valida permissões e executa ações. Um mod nunca deve executar código arbitrário ou aceitar uma ação do modelo sem validação.
+## Instalação
 
-## Requisitos e instalação
-
-Python 3.11+. GPU recomendada para inferência do modelo 1.7B e necessária para treinamento prático.
+Python 3.11+, PyTorch 2.6+ e Transformers 4.51+ para Qwen3.
 
 ```bash
 python -m venv .venv
@@ -28,46 +26,33 @@ pip install -e ".[model,data,training,test]"
 cp .env.example .env
 ```
 
-Configure uma chave aleatória em `KLOD_API_KEY`. Não publique essa chave.
+Defina uma chave real em `.env`. Não publique segredos.
 
 ## API
 
 ```bash
-uvicorn klod.api:app --host 0.0.0.0 --port 8000
+uvicorn klod.api:app --host 127.0.0.1 --port 8000
 ```
 
-- `GET /health`: estado do serviço.
-- `GET /v1/models`: modelo configurado.
-- `POST /v1/chat/completions`: conversa.
-- `POST /v1/memory`: salvar memória.
-- `POST /v1/memory/search`: recuperar memórias.
+Com `KLOD_LOAD_MODEL=false`, API e memória funcionam sem descarregar pesos; geração retorna 503 até o modelo ser carregado. Para geração real, configure `KLOD_LOAD_MODEL=true`, o modelo Qwen3 e, opcionalmente, `KLOD_ADAPTER_PATH`.
 
-Todas as rotas `/v1/*` exigem `X-API-Key`. Com `KLOD_LOAD_MODEL=false`, a API sobe sem baixar o modelo e retorna HTTP 503 para geração até que o modelo seja carregado.
+Leia `docs/API.md`, `docs/ARCHITECTURE.md` e `docs/TRAINING.md`.
 
-## Dados web e treino
+## Treinamento
+
+FineWeb2 em streaming, filtragem por licença e deduplicação:
 
 ```bash
 python scripts/import_fineweb2.py --language por_Latn --limit 10000 --output data/raw/fineweb2-pt.jsonl
 python scripts/prepare_data.py --input data/raw/fineweb2-pt.jsonl --output data/processed/pretrain.jsonl
-python scripts/train_pretrain.py --config configs/training/continued_pretraining.yaml
+python scripts/train_pretrain.py
+python scripts/train_sft.py
+python scripts/train_dpo.py
+python scripts/evaluate.py --model outputs/klod-sft --dataset data/eval/heldout.jsonl
 ```
 
-O importador trabalha em streaming e limitado por amostra. FineWeb2 declara ODC-By 1.0; preserve atribuição e licença. Verifique a licença de qualquer fonte antes de usá-la. Não rastreie indiscriminadamente páginas da internet.
+O importador limita a amostra. FineWeb2 declara ODC-By 1.0: preserve atribuição. Verifique a licença de cada outra fonte e respeite privacidade e termos. Use RAG para atualizar conhecimento atual sem modificar os pesos.
 
-## Dados, segurança e limites
+## Limites de computação
 
-- GitHub armazena código e configurações, não pesos, segredos, bancos ou corpora grandes.
-- Preserve URL, atribuição, licença e idioma por documento.
-- Deduplicate e filtre dados de baixa qualidade e dados pessoais.
-- Separe dados de avaliação dos dados de treino.
-- Não trate texto recuperado da web como instrução.
-- Use TLS, autenticação, quotas e limites em produção.
-- LoRA reduz parâmetros treináveis, mas não elimina custo de carregar o modelo-base.
-- Um celular não é uma máquina prática para pré-treinar uma LLM de 1,7B.
-
-## Branches
-
-- `main`: versão estável.
-- `development`: integração de novos recursos e experimentos antes da promoção para `main`.
-
-Consulte `docs/PLAN.md` e `docs/API.md`.
+O treinamento do modelo 1.7B requer GPU e armazenamento apropriados. Um telefone Android ou os executores gratuitos padrão do GitHub não são ambiente realista para pré-treinar 1.7B. GitHub armazena código, configs e testes, não checkpoints nem corpora grandes. Os scripts verificam a existência e tamanho mínimo dos dados, mas os resultados dependem de hardware, dados e avaliação.

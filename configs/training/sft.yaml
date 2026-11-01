@@ -5,19 +5,19 @@ max_sequence_length: 4096
 max_steps: 3000
 learning_rate: 0.00005
 warmup_ratio: 0.03
-weight_decay: 0.01
 per_device_train_batch_size: 1
+per_device_eval_batch_size: 1
 gradient_accumulation_steps: 16
-logging_steps: 10
+eval_steps: 200
 save_steps: 250
 save_total_limit: 3
+validation_ratio: 0.05
 bf16: true
 fp16: false
-gradient_checkpointing: true
-use_lora: true
+packing: false
+seed: 42
 lora:
   rank: 16
   alpha: 32
   dropout: 0.05
   target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
-seed: 42
