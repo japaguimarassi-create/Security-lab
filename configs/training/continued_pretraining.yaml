@@ -1,0 +1,23 @@
+base_model: Qwen/Qwen3-1.7B-Base
+dataset_path: data/processed/pretrain.jsonl
+output_dir: outputs/klod-continued-pretraining
+max_sequence_length: 2048
+max_steps: 1000
+learning_rate: 0.0001
+warmup_ratio: 0.03
+weight_decay: 0.1
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 16
+logging_steps: 10
+save_steps: 200
+save_total_limit: 3
+bf16: true
+fp16: false
+gradient_checkpointing: true
+use_lora: true
+lora:
+  rank: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+seed: 42
