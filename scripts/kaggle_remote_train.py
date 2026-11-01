@@ -338,9 +338,9 @@ def build_training_notebook(
     cells.append(
         notebook_cell(
             "markdown",
-            f"## Training stage: {stage_percent}%\\n\\n"
+            f"## Training stage: {stage_percent}%\n\n"
             "This stage runs one of five SFT epochs. It continues from the "
-            "previous stage adapter when applicable.\\n",
+            "previous stage adapter when applicable.\n",
         )
     )
 
@@ -352,72 +352,72 @@ def build_training_notebook(
         else None
     )
     injection = (
-        "import base64\\n"
-        "import json\\n"
-        "import zipfile\\n"
-        "from pathlib import Path\\n"
-        "import yaml\\n"
-        "candidate_file = Path('data/generated/teacher_candidates.jsonl')\\n"
-        "candidate_file.parent.mkdir(parents=True, exist_ok=True)\\n"
+        "import base64\n"
+        "import json\n"
+        "import zipfile\n"
+        "from pathlib import Path\n"
+        "import yaml\n"
+        "candidate_file = Path('data/generated/teacher_candidates.jsonl')\n"
+        "candidate_file.parent.mkdir(parents=True, exist_ok=True)\n"
         "candidate_file.write_bytes(base64.b64decode("
         + repr(encoded_candidates)
-        + "))\\n"
-        "candidates = [json.loads(line) for line in candidate_file.read_text(encoding='utf-8').splitlines() if line.strip()]\\n"
+        + "))\n"
+        "candidates = [json.loads(line) for line in candidate_file.read_text(encoding='utf-8').splitlines() if line.strip()]\n"
         "approved_ids = set(json.loads("
         + repr(approved_json)
-        + "))\\n"
-        "approved_count = 0\\n"
-        "for item in candidates:\\n"
-        "    item['approved'] = item.get('id') in approved_ids and item.get('quality_passed') is True\\n"
-        "    item['review_status'] = 'approved' if item['approved'] else 'pending_or_rejected'\\n"
-        "    if item['approved']:\\n"
-        "        item['review_notes'] = 'Human-reviewed before staged SFT'\\n"
-        "        approved_count += 1\\n"
-        "candidate_file.write_text(''.join(json.dumps(item, ensure_ascii=False) + '\\\\n' for item in candidates), encoding='utf-8')\\n"
-        "print('Approved examples:', approved_count)\\n"
+        + "))\n"
+        "approved_count = 0\n"
+        "for item in candidates:\n"
+        "    item['approved'] = item.get('id') in approved_ids and item.get('quality_passed') is True\n"
+        "    item['review_status'] = 'approved' if item['approved'] else 'pending_or_rejected'\n"
+        "    if item['approved']:\n"
+        "        item['review_notes'] = 'Human-reviewed before staged SFT'\n"
+        "        approved_count += 1\n"
+        "candidate_file.write_text(''.join(json.dumps(item, ensure_ascii=False) + '\\\n' for item in candidates), encoding='utf-8')\n"
+        "print('Approved examples:', approved_count)\n"
         "assert approved_count >= "
         + str(MINIMUM_APPROVED)
-        + ", 'Insufficient reviewed examples.'\\n"
+        + ", 'Insufficient reviewed examples.'\n"
         "stage_config = Path("
         + repr(f"configs/training/stages/stage_{stage_percent}.yaml")
-        + ")\\n"
-        "config = yaml.safe_load(stage_config.read_text(encoding='utf-8'))\\n"
+        + ")\n"
+        "config = yaml.safe_load(stage_config.read_text(encoding='utf-8'))\n"
     )
     if encoded_previous:
         injection += (
-            "previous_zip = Path('/kaggle/working/previous-stage-adapter.zip')\\n"
+            "previous_zip = Path('/kaggle/working/previous-stage-adapter.zip')\n"
             "previous_zip.write_bytes(base64.b64decode("
             + repr(encoded_previous)
-            + "))\\n"
-            "previous_dir = Path('outputs/previous-stage-adapter').resolve()\\n"
-            "previous_dir.mkdir(parents=True, exist_ok=True)\\n"
-            "with zipfile.ZipFile(previous_zip) as archive:\\n"
-            "    for member in archive.infolist():\\n"
-            "        target = (previous_dir / member.filename).resolve()\\n"
-            "        if previous_dir != target and previous_dir not in target.parents:\\n"
-            "            raise ValueError('Unsafe path in previous adapter archive')\\n"
-            "        archive.extract(member, previous_dir)\\n"
-            "config['previous_adapter'] = str(previous_dir)\\n"
+            + "))\n"
+            "previous_dir = Path('outputs/previous-stage-adapter').resolve()\n"
+            "previous_dir.mkdir(parents=True, exist_ok=True)\n"
+            "with zipfile.ZipFile(previous_zip) as archive:\n"
+            "    for member in archive.infolist():\n"
+            "        target = (previous_dir / member.filename).resolve()\n"
+            "        if previous_dir != target and previous_dir not in target.parents:\n"
+            "            raise ValueError('Unsafe path in previous adapter archive')\n"
+            "        archive.extract(member, previous_dir)\n"
+            "config['previous_adapter'] = str(previous_dir)\n"
         )
     else:
-        injection += "config['previous_adapter'] = None\\n"
+        injection += "config['previous_adapter'] = None\n"
     injection += (
         "config['output_dir'] = "
         + repr(stage_output)
-        + "\\n"
-        "config['num_train_epochs'] = 1\\n"
-        "config['max_steps'] = -1\\n"
+        + "\n"
+        "config['num_train_epochs'] = 1\n"
+        "config['max_steps'] = -1\n"
         "config['seed'] = 42 + "
         + str(stage_percent // 20 - 1)
-        + "\\n"
+        + "\n"
         "runtime_config = Path("
         + repr(runtime_config)
-        + ")\\n"
-        "runtime_config.parent.mkdir(parents=True, exist_ok=True)\\n"
-        "runtime_config.write_text(yaml.safe_dump(config, sort_keys=False), encoding='utf-8')\\n"
+        + ")\n"
+        "runtime_config.parent.mkdir(parents=True, exist_ok=True)\n"
+        "runtime_config.write_text(yaml.safe_dump(config, sort_keys=False), encoding='utf-8')\n"
         "print('Stage:', "
         + str(stage_percent)
-        + ", 'output:', config['output_dir'], 'previous adapter:', config['previous_adapter'])\\n"
+        + ", 'output:', config['output_dir'], 'previous adapter:', config['previous_adapter'])\n"
     )
     cells.append(notebook_cell("code", injection))
     cells.extend(copy.deepcopy(base["cells"][11:]))
