@@ -36,12 +36,14 @@ class MemoryStore:
                 ON CONFLICT(namespace,memory_key) DO UPDATE SET
                 value=excluded.value, created_at=CURRENT_TIMESTAMP""",
                 (namespace, key, value))
+            db.execute("DELETE FROM memory_vectors WHERE namespace=? AND memory_key=?",
+                       (namespace, key))
             if embedding is not None and model_id:
+                if not embedding:
+                    raise ValueError("Embedding vector cannot be empty")
                 packed = struct.pack(f"<{len(embedding)}f", *[float(x) for x in embedding])
                 db.execute("""INSERT INTO memory_vectors
-                    (namespace,memory_key,model_id,dimension,vector) VALUES(?,?,?,?,?)
-                    ON CONFLICT(namespace,memory_key,model_id) DO UPDATE SET
-                    dimension=excluded.dimension,vector=excluded.vector""",
+                    (namespace,memory_key,model_id,dimension,vector) VALUES(?,?,?,?,?)""",
                     (namespace, key, model_id, len(embedding), packed))
 
     def search(self, namespace: str, query: str, limit: int = 5,
@@ -59,7 +61,6 @@ class MemoryStore:
             if score:
                 lexical.append((score, dict(row)))
         lexical.sort(key=lambda entry: entry[0], reverse=True)
-
         fused = {}
         for rank, (_, item) in enumerate(lexical, 1):
             fused[item["memory_key"]] = {**item, "score": 1.0 / (60 + rank),

@@ -3,7 +3,7 @@ from pathlib import Path
 import yaml
 from datasets import load_dataset
 from peft import LoraConfig, get_peft_model
-from transformers import AutoTokenizer, Trainer, TrainingArguments, DataCollatorForLanguageModeling
+from transformers import AutoTokenizer, Trainer, TrainingArguments
 from klod.training import load_training_model
 
 def main():
@@ -35,7 +35,13 @@ def main():
 
     max_length = int(cfg["max_sequence_length"])
     def tokenize(batch):
-        return tokenizer(batch["text"], truncation=False, add_special_tokens=False)
+        encoded = tokenizer(batch["text"], truncation=False, add_special_tokens=False)
+        eos_id = tokenizer.eos_token_id
+        if eos_id is not None:
+            encoded["input_ids"] = [ids + [eos_id] for ids in encoded["input_ids"]]
+            encoded["attention_mask"] = [mask + [1] for mask in encoded["attention_mask"]]
+        return encoded
+
     tokenized = split.map(tokenize, batched=True, remove_columns=split["train"].column_names)
 
     def pack(batch):
@@ -47,6 +53,16 @@ def main():
     packed = tokenized.map(pack, batched=True, batch_size=1000)
     if len(packed["train"]) == 0 or len(packed["test"]) == 0:
         raise SystemExit("Not enough tokens to create packed training and validation sequences")
+
+    class PackedCausalCollator:
+        def __call__(self, features):
+            import torch
+            batch = tokenizer.pad(features, padding=True, return_tensors="pt")
+            labels = batch["input_ids"].clone()
+            labels[batch["attention_mask"] == 0] = -100
+            batch["labels"] = labels
+            return batch
+
     train_args = TrainingArguments(
         output_dir=cfg["output_dir"], max_steps=int(cfg["max_steps"]),
         learning_rate=float(cfg["learning_rate"]),
@@ -64,8 +80,7 @@ def main():
         report_to="none", seed=int(cfg.get("seed", 42)))
     trainer = Trainer(model=model, args=train_args,
         train_dataset=packed["train"], eval_dataset=packed["test"],
-        data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
-        processing_class=tokenizer)
+        data_collator=PackedCausalCollator(), processing_class=tokenizer)
     trainer.train()
     metrics = trainer.evaluate()
     trainer.save_model(cfg["output_dir"])
