@@ -1,0 +1,31 @@
+base_model: Qwen/Qwen3-1.7B-Base
+previous_adapter: outputs/previous-stage-adapter
+dataset_path: data/processed/teacher_approved.jsonl
+require_approval: true
+minimum_examples: 20
+stage_percent: 40
+stage_index: 2
+stage_total: 5
+output_dir: outputs/klod-stage-40
+max_sequence_length: 2048
+num_train_epochs: 1
+max_steps: -1
+learning_rate: 0.00002
+warmup_ratio: 0.05
+per_device_train_batch_size: 1
+per_device_eval_batch_size: 1
+gradient_accumulation_steps: 16
+validation_ratio: 0.10
+eval_strategy: epoch
+save_strategy: epoch
+save_total_limit: 2
+load_in_4bit: true
+bf16: true
+fp16: false
+packing: false
+seed: 43
+lora:
+  rank: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
