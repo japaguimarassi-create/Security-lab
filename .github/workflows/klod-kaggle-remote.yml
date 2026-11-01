@@ -214,7 +214,11 @@ jobs:
               echo "- Teacher candidate artifact: klod-teacher-candidates"
             elif [ "$PHASE" = "train_stage" ]; then
               echo "- Completed stage target: $STAGE%"
-              echo "- Next branch: training/$((STAGE + 20))-percent"
+              if [ "$STAGE" = "100" ]; then
+                echo "- Final staged adapter produced."
+              else
+                echo "- Next branch: training/$((STAGE + 20))-percent"
+              fi
               echo "- Adapter artifact: klod-stage-$STAGE-adapter"
             else
               echo "- Setup-only; no Kaggle GPU was requested."
