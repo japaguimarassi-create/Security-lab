@@ -4,10 +4,7 @@ import json
 import random
 from pathlib import Path
 
-import torch
 import yaml
-from peft import PeftModel
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from klod.specialists import GENERAL_SYSTEM_PROMPT
 
@@ -46,6 +43,8 @@ def read_eval_prompts(path: Path, limit: int | None = None) -> list[dict]:
 
 
 def _generate(model, tokenizer, prompts: list[dict], cfg: dict) -> list[str]:
+    import torch
+
     answers = []
     for index, row in enumerate(prompts, 1):
         messages = [
@@ -84,6 +83,10 @@ def _generate(model, tokenizer, prompts: list[dict], cfg: dict) -> list[str]:
 
 def run_checkpoint(model_id: str, adapter: str | None,
                    prompts: list[dict], cfg: dict) -> list[str]:
+    import torch
+    from peft import PeftModel
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
     tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=False)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -124,6 +127,7 @@ def main():
 
     prompts = read_eval_prompts(prompt_path, args.limit)
     seed = int(cfg.get("seed", 42))
+    import torch
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
