@@ -1,6 +1,6 @@
 {
   "phase": "setup",
-  "stage_percent": 40,
+  "stage_percent": 60,
   "teacher_run_id": null,
   "previous_stage_run_id": null,
   "approved_ids": []
