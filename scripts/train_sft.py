@@ -18,7 +18,10 @@ def read_rows(path: Path):
                 raise ValueError(f"{path}:{line_number}: expected messages array")
             if messages[-1].get("role") != "assistant":
                 raise ValueError(f"{path}:{line_number}: final message must be assistant")
-            rows.append(row)
+            if any(not isinstance(item.get("content"), str) or not item["content"].strip()
+                   for item in messages):
+                raise ValueError(f"{path}:{line_number}: every message needs text content")
+            rows.append({"messages": messages})
     if len(rows) < 20:
         raise ValueError("SFT requires at least 20 reviewed conversations")
     return rows
@@ -34,10 +37,7 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(cfg["base_model"])
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-    rows = read_rows(source)
-    texts = [tokenizer.apply_chat_template(
-        row["messages"], tokenize=False, add_generation_prompt=False) for row in rows]
-    dataset = Dataset.from_dict({"text": texts})
+    dataset = Dataset.from_list(read_rows(source))
     split = dataset.train_test_split(
         test_size=float(cfg.get("validation_ratio", 0.05)),
         seed=int(cfg.get("seed", 42)))
@@ -58,9 +58,10 @@ def main():
     use_cuda = torch.cuda.is_available()
     bf16 = bool(cfg.get("bf16", True) and use_cuda and torch.cuda.is_bf16_supported())
     train_args = SFTConfig(
-        output_dir=cfg["output_dir"], dataset_text_field="text",
+        output_dir=cfg["output_dir"],
         max_length=int(cfg["max_sequence_length"]),
         packing=bool(cfg.get("packing", False)),
+        assistant_only_loss=True,
         max_steps=int(cfg["max_steps"]),
         learning_rate=float(cfg["learning_rate"]),
         warmup_ratio=float(cfg.get("warmup_ratio", 0.03)),

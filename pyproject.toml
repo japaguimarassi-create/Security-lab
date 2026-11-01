@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "klod-ai"
-version = "0.1.0"
+version = "0.2.0"
 description = "Klod LLM runtime, API, data pipeline and training toolkit"
 requires-python = ">=3.11"
 dependencies = ["fastapi>=0.115,<1", "uvicorn[standard]>=0.30,<1", "pydantic>=2.8,<3"]
@@ -12,9 +12,9 @@ dependencies = ["fastapi>=0.115,<1", "uvicorn[standard]>=0.30,<1", "pydantic>=2.
 [project.optional-dependencies]
 model = ["torch>=2.6", "transformers>=4.51", "accelerate>=1.2", "safetensors>=0.4", "peft>=0.14"]
 data = ["datasets>=3.2", "ftfy>=6.3"]
-training = ["torch>=2.6", "transformers>=4.51", "accelerate>=1.2", "datasets>=3.2", "peft>=0.14", "trl>=0.15", "PyYAML>=6"]
+training = ["torch>=2.6", "transformers>=4.51", "accelerate>=1.2", "datasets>=3.2", "peft>=0.14", "trl>=0.20,<2", "PyYAML>=6"]
 test = ["pytest>=8.3", "httpx>=0.27", "ruff>=0.9"]
-all = ["torch>=2.6", "transformers>=4.51", "accelerate>=1.2", "safetensors>=0.4", "datasets>=3.2", "ftfy>=6.3", "peft>=0.14", "trl>=0.15", "PyYAML>=6"]
+all = ["torch>=2.6", "transformers>=4.51", "accelerate>=1.2", "safetensors>=0.4", "datasets>=3.2", "ftfy>=6.3", "peft>=0.14", "trl>=0.20,<2", "PyYAML>=6"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
