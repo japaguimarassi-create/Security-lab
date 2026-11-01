@@ -10,7 +10,10 @@ from klod.specialists import GENERAL_SYSTEM_PROMPT
 from klod.training import inference_dtype_name
 
 
-def read_eval_prompts(path: Path, limit: int | None = None) -> list[dict]:
+def read_eval_prompts(path: Path, limit: int | None = None,
+                      minimum_prompts: int = 5) -> list[dict]:
+    if minimum_prompts < 1:
+        raise ValueError("minimum_prompts must be at least 1")
     rows = []
     seen = set()
     with path.open(encoding="utf-8") as source:
@@ -38,8 +41,8 @@ def read_eval_prompts(path: Path, limit: int | None = None) -> list[dict]:
             })
             if limit is not None and len(rows) >= limit:
                 break
-    if len(rows) < 5:
-        raise ValueError("At least five unique held-out prompts are required")
+    if len(rows) < minimum_prompts:
+        raise ValueError(f"At least {minimum_prompts} unique held-out prompts are required")
     return rows
 
 
