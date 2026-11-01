@@ -1,4 +1,4 @@
-name: KLOD GitHub staged training
+name: KLOD GitHub CPU staged training
 
 on:
   push:
@@ -14,7 +14,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: klod-github-training-${{ github.ref }}
+  group: klod-github-cpu-training-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -42,9 +42,15 @@ jobs:
   execute:
     needs: validate
     if: needs.validate.outputs.phase != 'setup'
-    runs-on: ${{ vars.KLOD_GPU_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 360
     env:
+      KLOD_FORCE_CPU: "1"
+      KLOD_CPU_THREADS: "4"
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      OPENBLAS_NUM_THREADS: "1"
+      TOKENIZERS_PARALLELISM: "false"
       PHASE: ${{ needs.validate.outputs.phase }}
       STAGE_PERCENT: ${{ needs.validate.outputs.stage_percent }}
       TEACHER_RUN_ID: ${{ needs.validate.outputs.teacher_run_id }}
@@ -55,27 +61,35 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
-      - name: Require an NVIDIA GPU before installing training dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          if ! command -v nvidia-smi >/dev/null 2>&1; then
-            echo "::error::No NVIDIA GPU runner is available."
-            echo "GitHub Actions is using a CPU runner. Configure a GPU runner and set the repository variable KLOD_GPU_RUNNER to its label."
-            exit 1
-          fi
-          nvidia-smi
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install KLOD training dependencies
+      - name: Inspect the free public runner
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[training]"
-      - name: Validate GPU and data requirements
+          set -euo pipefail
+          echo "CPU threads: $(nproc)"
+          free -h
+          df -h /
+          test "$(nproc)" -ge 2
+      - name: Install CPU-only PyTorch
+        run: python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch==2.6.0+cpu"
+      - name: Install KLOD CPU training dependencies
+        run: python -m pip install --no-cache-dir -e ".[training-cpu]"
+      - name: Verify CPU-only runtime
+        run: |
+          python - <<'PY'
+          import torch
+          assert not torch.cuda.is_available(), "Expected CPU-only PyTorch."
+          torch.set_num_threads(4)
+          print({"torch": torch.__version__, "cuda": torch.cuda.is_available(), "threads": torch.get_num_threads()})
+          PY
+      - name: Prove Qwen3-1.7B LoRA backward pass fits the runner
+        if: env.PHASE == 'cpu_smoke'
+        run: python scripts/cpu_training_smoke.py --threads 4
+      - name: Validate teacher data and CPU settings
         if: env.PHASE == 'generate'
         run: python scripts/training_preflight.py --stage teacher --config configs/training/distillation.yaml
-      - name: Generate frozen-teacher candidates
+      - name: Generate frozen-teacher candidates on CPU
         if: env.PHASE == 'generate'
         run: |
           python scripts/generate_teacher_data.py --config configs/training/distillation.yaml
@@ -89,7 +103,7 @@ jobs:
             data/generated/teacher_candidates.jsonl
             data/generated/teacher_run.json
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 14
       - name: Download reviewed teacher candidates
         if: env.PHASE == 'train_stage'
         uses: actions/download-artifact@v4
@@ -124,10 +138,10 @@ jobs:
             "${previous_args[@]}"
           python scripts/approve_teacher_data.py --minimum 20
           python scripts/training_preflight.py --stage sft --config configs/training/stages/runtime_stage.yaml
-      - name: Train the requested incremental stage
+      - name: Train the incremental LoRA stage on CPU
         if: env.PHASE == 'train_stage'
         run: python scripts/train_sft.py --config configs/training/stages/runtime_stage.yaml
-      - name: Run blinded teacher/student evaluation
+      - name: Run blinded teacher/student evaluation on CPU
         if: env.PHASE == 'train_stage'
         run: python scripts/evaluate_teacher_student.py --config configs/training/stages/runtime_eval.yaml
       - name: Package stage adapter and report
@@ -140,7 +154,7 @@ jobs:
           name: klod-stage-${{ env.STAGE_PERCENT }}-adapter
           path: output/klod-stage-${{ env.STAGE_PERCENT }}-adapter.zip
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 14
       - name: Upload stage results
         if: env.PHASE == 'train_stage'
         uses: actions/upload-artifact@v4
@@ -151,21 +165,24 @@ jobs:
             output/RELATORIO_KLOD_${{ env.STAGE_PERCENT }}pct.md
             output/stage-${{ env.STAGE_PERCENT }}-metadata.json
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 14
       - name: Write run summary
         if: always()
         shell: bash
         run: |
           {
-            echo "## KLOD GitHub staged training"
+            echo "## KLOD GitHub CPU training"
             echo ""
             echo "- Phase: $PHASE"
-            if [ "$PHASE" = "generate" ]; then
+            if [ "$PHASE" = "cpu_smoke" ]; then
+              echo "- Qwen3-1.7B CPU backward-pass smoke test executed."
+            elif [ "$PHASE" = "generate" ]; then
               echo "- Teacher candidates: klod-teacher-candidates"
             elif [ "$PHASE" = "train_stage" ]; then
               echo "- Completed stage: $STAGE_PERCENT%"
               echo "- Adapter artifact: klod-stage-$STAGE_PERCENT-adapter"
               echo "- Report artifact: klod-stage-$STAGE_PERCENT-report"
             fi
+            echo "- CPU-only; no paid runner required."
             echo "- GitHub run ID: $GITHUB_RUN_ID"
           } >> "$GITHUB_STEP_SUMMARY"
