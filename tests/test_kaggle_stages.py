@@ -85,6 +85,8 @@ def test_stage_notebook_builds_expected_progress_and_config(stage, tmp_path, mon
     target = tmp_path / "configs" / "training" / "stages"
     target.mkdir(parents=True)
     shutil.copy2(config_source, target / config_source.name)
+    training_config = ROOT / "configs" / "training" / "distillation_eval.yaml"
+    shutil.copy2(training_config, target.parent / training_config.name)
     monkeypatch.chdir(tmp_path)
     exec(compile(injection, "<stage-injection>", "exec"), {})
 
