@@ -68,7 +68,7 @@ The 48 prompts validate the pipeline; they are not enough to produce broad exper
 
 ## Treinamento no GitHub
 
-Consulte [docs/GITHUB_TRAINING.md](docs/GITHUB_TRAINING.md) para a execução por GitHub Actions, revisão dos exemplos, sequência das cinco etapas e recuperação dos artefatos. O fluxo usa GitHub Actions como orquestrador. O treino Qwen3-1.7B/QLoRA exige um runner com GPU NVIDIA; em runner CPU, o workflow encerra com erro explícito e não declara treinamento.
+Consulte [docs/GITHUB_TRAINING.md](docs/GITHUB_TRAINING.md) para a execução gratuita por GitHub Actions em CPU, revisão dos exemplos, sequência das cinco etapas e recuperação dos artefatos. O modelo professor e aluno continuam sendo Qwen3-1.7B. O fluxo das cinco etapas usa LoRA FP32 sem bitsandbytes, pois os runners gratuitos não têm GPU. O teste cpu_smoke verifica a memória e um passo real de retropropagação antes do treino completo.
 
 ## Important training distinction
 
