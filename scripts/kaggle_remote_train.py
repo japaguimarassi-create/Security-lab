@@ -80,13 +80,15 @@ def repository_root():
         quiet=True,
         check=False,
     )
-    if code == 0 and branch.strip() != "development":
+    active_branch = branch.strip()
+    allowed = active_branch == "development" or re.fullmatch(
+        r"training/(20|40|60|80|100)-percent", active_branch
+    )
+    if code == 0 and not allowed:
         raise RunnerError(
-            "This automation is restricted to the development branch. "
-            "Switch to development and update it before running."
+            "This automation is restricted to development and staged training branches."
         )
     return root
-
 
 def notebook_cell(cell_type, source):
     cell = {
@@ -319,53 +321,116 @@ def review_candidates(candidates):
     return approved_ids
 
 
-def build_training_notebook(base, candidate_bytes, approved_ids):
+def build_training_notebook(
+    base, candidate_bytes, approved_ids, stage_percent=20, previous_adapter_bytes=None
+):
+    allowed_stages = (20, 40, 60, 80, 100)
+    if stage_percent not in allowed_stages:
+        raise RunnerError("stage_percent must be one of 20, 40, 60, 80, 100.")
+    if stage_percent == 20 and previous_adapter_bytes is not None:
+        raise RunnerError("The 20% stage must start from the base model.")
+    if stage_percent > 20 and not previous_adapter_bytes:
+        raise RunnerError("Stages above 20% require the previous stage adapter ZIP.")
+
+    stage_output = f"outputs/klod-stage-{stage_percent}"
+    runtime_config = "configs/training/stages/runtime_stage.yaml"
     cells = copy.deepcopy(base["cells"][:7])
     cells.append(
         notebook_cell(
             "markdown",
-            "## 4. Import reviewed teacher candidates\n\n"
-            "The candidates were generated in the first Kaggle run and reviewed "
-            "locally before this training run. Only the approved IDs are marked "
-            "for SFT.\n",
+            f"## Training stage: {stage_percent}%\\n\\n"
+            "This stage runs one of five SFT epochs. It continues from the "
+            "previous stage adapter when applicable.\\n",
         )
     )
-    encoded = base64.b64encode(candidate_bytes).decode("ascii")
+
+    encoded_candidates = base64.b64encode(candidate_bytes).decode("ascii")
     approved_json = json.dumps(approved_ids, ensure_ascii=False)
+    encoded_previous = (
+        base64.b64encode(previous_adapter_bytes).decode("ascii")
+        if previous_adapter_bytes
+        else None
+    )
     injection = (
-        "import base64\n"
-        "import json\n"
-        "from pathlib import Path\n"
-        "candidate_file = Path('data/generated/teacher_candidates.jsonl')\n"
-        "candidate_file.parent.mkdir(parents=True, exist_ok=True)\n"
+        "import base64\\n"
+        "import json\\n"
+        "import zipfile\\n"
+        "from pathlib import Path\\n"
+        "import yaml\\n"
+        "candidate_file = Path('data/generated/teacher_candidates.jsonl')\\n"
+        "candidate_file.parent.mkdir(parents=True, exist_ok=True)\\n"
         "candidate_file.write_bytes(base64.b64decode("
-        + repr(encoded)
-        + "))\n"
-        "candidates = [json.loads(line) for line in "
-        "candidate_file.read_text(encoding='utf-8').splitlines() if line.strip()]\n"
+        + repr(encoded_candidates)
+        + "))\\n"
+        "candidates = [json.loads(line) for line in candidate_file.read_text(encoding='utf-8').splitlines() if line.strip()]\\n"
         "approved_ids = set(json.loads("
         + repr(approved_json)
-        + "))\n"
-        "approved_count = 0\n"
-        "for item in candidates:\n"
-        "    item['approved'] = item.get('id') in approved_ids and "
-        "item.get('quality_passed') is True\n"
-        "    item['review_status'] = 'approved' if item['approved'] else "
-        "'pending_or_rejected'\n"
-        "    if item['approved']:\n"
-        "        item['review_notes'] = 'Reviewed locally before Kaggle SFT run'\n"
-        "        approved_count += 1\n"
-        "candidate_file.write_text(''.join(json.dumps(item, ensure_ascii=False) "
-        "+ '\\n' for item in candidates), encoding='utf-8')\n"
-        "print('Approved examples:', approved_count)\n"
+        + "))\\n"
+        "approved_count = 0\\n"
+        "for item in candidates:\\n"
+        "    item['approved'] = item.get('id') in approved_ids and item.get('quality_passed') is True\\n"
+        "    item['review_status'] = 'approved' if item['approved'] else 'pending_or_rejected'\\n"
+        "    if item['approved']:\\n"
+        "        item['review_notes'] = 'Human-reviewed before staged SFT'\\n"
+        "        approved_count += 1\\n"
+        "candidate_file.write_text(''.join(json.dumps(item, ensure_ascii=False) + '\\\\n' for item in candidates), encoding='utf-8')\\n"
+        "print('Approved examples:', approved_count)\\n"
         "assert approved_count >= "
         + str(MINIMUM_APPROVED)
-        + ", 'Insufficient reviewed examples.'\n"
+        + ", 'Insufficient reviewed examples.'\\n"
+        "stage_config = Path("
+        + repr(f"configs/training/stages/stage_{stage_percent}.yaml")
+        + ")\\n"
+        "config = yaml.safe_load(stage_config.read_text(encoding='utf-8'))\\n"
+    )
+    if encoded_previous:
+        injection += (
+            "previous_zip = Path('/kaggle/working/previous-stage-adapter.zip')\\n"
+            "previous_zip.write_bytes(base64.b64decode("
+            + repr(encoded_previous)
+            + "))\\n"
+            "previous_dir = Path('outputs/previous-stage-adapter').resolve()\\n"
+            "previous_dir.mkdir(parents=True, exist_ok=True)\\n"
+            "with zipfile.ZipFile(previous_zip) as archive:\\n"
+            "    for member in archive.infolist():\\n"
+            "        target = (previous_dir / member.filename).resolve()\\n"
+            "        if previous_dir != target and previous_dir not in target.parents:\\n"
+            "            raise ValueError('Unsafe path in previous adapter archive')\\n"
+            "        archive.extract(member, previous_dir)\\n"
+            "config['previous_adapter'] = str(previous_dir)\\n"
+        )
+    else:
+        injection += "config['previous_adapter'] = None\\n"
+    injection += (
+        "config['output_dir'] = "
+        + repr(stage_output)
+        + "\\n"
+        "config['num_train_epochs'] = 1\\n"
+        "config['max_steps'] = -1\\n"
+        "config['seed'] = 42 + "
+        + str(stage_percent // 20 - 1)
+        + "\\n"
+        "runtime_config = Path("
+        + repr(runtime_config)
+        + ")\\n"
+        "runtime_config.parent.mkdir(parents=True, exist_ok=True)\\n"
+        "runtime_config.write_text(yaml.safe_dump(config, sort_keys=False), encoding='utf-8')\\n"
+        "print('Stage:', "
+        + str(stage_percent)
+        + ", 'output:', config['output_dir'], 'previous adapter:', config['previous_adapter'])\\n"
     )
     cells.append(notebook_cell("code", injection))
     cells.extend(copy.deepcopy(base["cells"][11:]))
+    for cell in cells[9:]:
+        if cell.get("cell_type") != "code":
+            continue
+        source = "".join(cell.get("source", []))
+        source = source.replace(
+            "configs/training/distillation_sft.yaml", runtime_config
+        )
+        source = source.replace("outputs/klod-teacher-distilled", stage_output)
+        cell["source"] = source.splitlines(keepends=True)
     return cells
-
 
 def sha256_file(path):
     digest = hashlib.sha256()
