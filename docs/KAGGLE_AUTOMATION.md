@@ -1,73 +1,80 @@
-# Automação remota do treinamento KLOD com Kaggle
+# Treinamento KLOD via GitHub Actions + Kaggle
 
-## O que o script automatiza
+## Fluxo
 
-O arquivo scripts/kaggle_remote_train.py coordena duas execuções privadas no Kaggle usando o Kaggle CLI oficial. O processamento do modelo acontece nas GPUs do Kaggle; o Android apenas envia notebooks, acompanha o estado, apresenta as respostas para revisão e baixa os arquivos finais.
+O GitHub Actions coordena o processo e o Kaggle fornece a GPU. O treinamento não usa a GPU do telefone nem a máquina de execução do GitHub Actions para carregar o modelo.
 
-1. Envia um notebook privado para gerar as respostas candidatas do professor Qwen3-1.7B.
-2. Aguarda a conclusão e baixa apenas o ZIP que contém os candidatos.
-3. Exibe cada pergunta e resposta no Termux para revisão humana.
-4. Impede a continuação se menos de 20 exemplos forem aprovados.
-5. Cria um segundo notebook privado com os exemplos aprovados incorporados.
-6. Envia o treinamento QLoRA do aluno Qwen3-1.7B-Base e a avaliação cega.
-7. Aguarda a execução, baixa os dois ZIPs finais e gera um relatório com métricas, tamanhos e hashes SHA-256.
+O fluxo é dividido intencionalmente em duas execuções:
 
-O script não baixa a chave privada da avaliação cega e não envia credenciais para o GitHub.
+1. **generate:** o Actions envia um notebook privado ao Kaggle, gera respostas com o professor Qwen3-1.7B e disponibiliza teacher_candidates.jsonl como artefato do GitHub Actions.
+2. **train:** depois da revisão humana, o Actions recupera o artefato da primeira execução, confere os IDs aprovados e envia o notebook de treinamento QLoRA do aluno Qwen3-1.7B-Base ao Kaggle.
 
-## Requisitos e autenticação
+O processo não aprova automaticamente respostas do professor.
 
-- Python 3.11 ou mais recente.
-- Git.
-- Kaggle CLI instalado: python -m pip install --upgrade kaggle.
-- Uma conta Kaggle habilitada e com acesso à cota de GPU.
-- Token/API authentication configurado para o Kaggle CLI.
+## Configuração única do repositório
 
-A autenticação pode ser feita com kaggle auth login ou com o arquivo kaggle.json no diretório ~/.kaggle/. Proteja esse arquivo com permissões restritas (chmod 600). Nunca cole o token no chat, no código ou no GitHub.
+Na página do repositório, abra **Settings → Secrets and variables → Actions**.
 
-**Idade:** a política do Kaggle exige consentimento parental verificável para usuários de 13 a 16 anos. O responsável deve concluir o processo oficial antes do uso da conta. Consulte https://www.kaggle.com/privacy/pt.
+Crie:
 
-## Execução pelo Android/Termux
+- **Repository secret** KAGGLE_API_TOKEN: token de API do Kaggle.
+- **Repository variable** KAGGLE_USERNAME: nome de usuário exato da conta Kaggle.
 
-Instale os requisitos no Termux:
+Não coloque tokens em arquivos, commits, mensagens, artefatos ou no chat. O token deve ser configurado diretamente na área de Secrets do GitHub. A CLI oficial do Kaggle aceita KAGGLE_API_TOKEN como forma de autenticação não interativa.
 
-    pkg update
-    pkg install python git -y
-    python -m pip install --upgrade kaggle
+Para usuários de 13 a 16 anos, o Kaggle exige consentimento parental verificável. O responsável deve concluir a configuração da conta e autorizar seu uso antes de adicionar a credencial.
 
-Clone a branch de desenvolvimento:
+## Iniciar a geração do professor
 
-    git clone -b development https://github.com/japaguimarassi-create/Security-lab.git
-    cd Security-lab
+Edite data/kaggle/run-request.json na branch development e deixe:
 
-Configure a autenticação oficial do Kaggle e execute:
+    {
+      "phase": "generate"
+    }
 
-    python scripts/kaggle_remote_train.py
+Salve o commit na branch development. A alteração do arquivo dispara o workflow. A execução remota leva o notebook ao Kaggle e aguarda a geração dos candidatos.
 
-O programa solicitará o nome de usuário do Kaggle. Também aceita:
+Quando terminar, abra **Actions**, entre na execução mais recente de **KLOD Kaggle remote training** e baixe o artefato klod-teacher-candidates. Ele contém:
 
-    python scripts/kaggle_remote_train.py --username SEU_USUARIO
+- teacher_candidates.jsonl
+- teacher_run.json
 
-Mantenha o Termux aberto enquanto o programa estiver aguardando as execuções remotas. O script usa o acelerador NvidiaTeslaT4 (T4x2) e habilita Internet no notebook; a disponibilidade da GPU depende da cota e da disponibilidade atual da conta.
+O campo teacher_run.json contém o identificador do kernel Kaggle e a quantidade de respostas geradas. O ID da execução do GitHub aparece no resumo da execução; guarde-o para a etapa seguinte.
 
-## Revisão obrigatória
+## Revisar e iniciar o aluno
 
-Cada resposta candidata aparece no terminal. Use y para aprovar, n para rejeitar ou q para interromper. A opção padrão é rejeitar. Os filtros automáticos verificam estrutura e qualidade superficial, mas não confirmam se uma resposta é factualmente correta.
+Leia todas as respostas em teacher_candidates.jsonl. Só aprove respostas corretas, úteis e relevantes. O filtro automático não verifica a veracidade.
 
-O treinamento só começa após pelo menos 20 aprovações explícitas. O conjunto inicial de 48 prompts é um teste do pipeline, não uma base suficiente para afirmar inteligência geral ampla.
+Depois edite data/kaggle/run-request.json na branch development com o ID da execução geradora e uma lista JSON dos IDs que você revisou:
 
-## Arquivos entregues
+    {
+      "phase": "train",
+      "source_run_id": 12345678901,
+      "approved_ids": [
+        "pt-001",
+        "en-004"
+      ]
+    }
 
-Quando as duas execuções terminam com sucesso, o script salva em ~/storage/downloads/KLOD-Kaggle-AAAAmmdd-HHMMSS/ (quando o diretório de Downloads do Termux está disponível) ou no diretório pessoal:
+O exemplo acima é apenas a estrutura. Use IDs reais do seu artefato. São necessárias pelo menos 20 aprovações. IDs duplicados, inexistentes ou reprovados pelo filtro automático fazem a execução parar antes do treinamento.
 
-- klod-teacher-distilled-adapter.zip: adaptador LoRA para inferência.
-- klod-teacher-distillation-results.zip: adaptador, métricas, exemplos aprovados, configurações e avaliação cega.
-- RELATORIO_KLOD.txt: identificadores das execuções, contagem dos exemplos, arquivos, hashes e métricas disponíveis.
+A alteração do arquivo dispara a segunda execução. O Actions recupera o artefato da execução indicada, cria o notebook de treinamento, envia-o ao Kaggle e acompanha treinamento e avaliação.
 
-O relatório registra o que a execução realmente produziu. Um job concluído não prova que o aluno superou o professor; a avaliação cega ainda precisa ser analisada separadamente.
+## Entrega
 
-## Falhas e limites
+Ao terminar, baixe o artefato klod-trained-model-and-report na execução de treinamento. Ele contém:
 
-- A automação não cria contas nem contorna consentimento, cotas ou regras do Kaggle.
-- Não é possível garantir que uma T4x2 esteja disponível ou que todos os pacotes e pesos caibam na memória.
-- Se um job falhar, o script interrompe o fluxo e tenta mostrar os logs disponíveis. Não inicia o treino com dados não revisados.
-- A execução permanece associada à conta Kaggle autenticada pelo usuário; não existe uma conta pertencente ao assistente.
+- klod-teacher-distilled-adapter.zip
+- klod-teacher-distillation-results.zip
+- RELATORIO_KLOD.txt
+- Metadados da execução.
+
+O relatório apresenta o identificador do kernel, número de exemplos aprovados, métricas disponíveis, tamanho e hashes SHA-256. A chave da avaliação cega não é baixada.
+
+## Limites operacionais
+
+- A branch padrão main não é modificada. O fluxo por push em development permanece disponível sem mesclar o workflow à branch padrão.
+- O GitHub workflow_dispatch só pode ser usado quando o arquivo de workflow existe na branch padrão. Enquanto main permanecer intocada, use o arquivo data/kaggle/run-request.json como gatilho controlado por commit.
+- O runner hospedado pelo GitHub tem limite de seis horas neste workflow. A espera pelo Kaggle é limitada a cinco horas e meia; uma execução que ultrapasse esse período pode exigir verificação manual no Kaggle.
+- A GPU do Kaggle, a cota disponível, os downloads de pesos e o espaço em disco dependem da conta e do estado do serviço.
+- O checkpoint não é promovido automaticamente. A avaliação cega deve ser analisada antes de concluir que houve melhora.
