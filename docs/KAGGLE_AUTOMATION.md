@@ -77,7 +77,9 @@ Repita o mesmo processo nas branches seguintes. Mantenha o mesmo teacher_run_id 
 | training/80-percent | 80 | ID da execução concluída em 60% |
 | training/100-percent | 100 | ID da execução concluída em 80% |
 
-Cada execução baixa o adaptador da etapa anterior, valida o arquivo e só então solicita a GPU do Kaggle. Se o artefato anterior estiver ausente, inválido ou for de uma execução errada, o processo para antes de treinar.
+Cada execução baixa o adaptador da etapa anterior a partir do artefato do GitHub Actions e valida o ZIP. Em seguida, o runner cria um dataset privado no Kaggle contendo esse ZIP e vincula o dataset ao notebook da etapa atual por meio de dataset_sources. O notebook lê o adaptador em /kaggle/input/<dataset-slug>/ e continua o fine-tuning. Os pesos não são colocados em Base64 no notebook, não são commitados no Git e não são publicados como dataset público.
+
+Se o artefato anterior estiver ausente, inválido, não puder ser transferido para um dataset privado ou for de uma execução errada, o processo para antes de iniciar o treinamento.
 
 ## Artefatos gerados em cada etapa
 
@@ -88,7 +90,7 @@ Cada execução de treinamento publica:
 
 O número N corresponde a 20, 40, 60, 80 ou 100. O arquivo RELATORIO_KLOD_Npct.txt registra o resultado observado. A chave que identifica professor/aluno na avaliação cega não é enviada como artefato.
 
-O artefato da etapa anterior precisa estar disponível no GitHub Actions. A configuração atual retém os artefatos por 30 dias; execute a próxima etapa dentro desse período.
+O artefato da etapa anterior precisa estar disponível no GitHub Actions para o próximo job. A configuração atual retém os artefatos por 30 dias; execute a próxima etapa dentro desse período. O dataset temporário criado no Kaggle fica associado à conta autenticada e deve permanecer privado.
 
 ## Limites e segurança
 
