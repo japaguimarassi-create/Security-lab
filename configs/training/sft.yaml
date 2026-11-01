@@ -1,4 +1,5 @@
-base_model: outputs/klod-continued-pretraining
+base_model: Qwen/Qwen3-1.7B-Base
+previous_adapter: outputs/klod-continued-pretraining
 dataset_path: data/processed/sft.jsonl
 output_dir: outputs/klod-sft
 max_sequence_length: 4096

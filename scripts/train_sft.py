@@ -4,7 +4,7 @@ from pathlib import Path
 import yaml
 import torch
 from datasets import Dataset
-from peft import LoraConfig
+from peft import LoraConfig, PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import SFTConfig, SFTTrainer
 
@@ -13,8 +13,11 @@ def read_rows(path: Path):
     with path.open(encoding="utf-8") as source:
         for line_number, line in enumerate(source, 1):
             row = json.loads(line)
-            if not isinstance(row.get("messages"), list) or len(row["messages"]) < 2:
-                raise ValueError(f"{path}:{line_number}: expected a messages array")
+            messages = row.get("messages")
+            if not isinstance(messages, list) or len(messages) < 2:
+                raise ValueError(f"{path}:{line_number}: expected messages array")
+            if messages[-1].get("role") != "assistant":
+                raise ValueError(f"{path}:{line_number}: final message must be assistant")
             rows.append(row)
     if len(rows) < 20:
         raise ValueError("SFT requires at least 20 reviewed conversations")
@@ -32,22 +35,34 @@ def main():
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     rows = read_rows(source)
-    def format_row(row):
-        return tokenizer.apply_chat_template(row["messages"], tokenize=False, add_generation_prompt=False)
-    dataset = Dataset.from_dict({"text": [format_row(row) for row in rows]})
-    split = dataset.train_test_split(test_size=float(cfg.get("validation_ratio", 0.05)), seed=int(cfg.get("seed", 42)))
+    texts = [tokenizer.apply_chat_template(
+        row["messages"], tokenize=False, add_generation_prompt=False) for row in rows]
+    dataset = Dataset.from_dict({"text": texts})
+    split = dataset.train_test_split(
+        test_size=float(cfg.get("validation_ratio", 0.05)),
+        seed=int(cfg.get("seed", 42)))
     model = AutoModelForCausalLM.from_pretrained(cfg["base_model"], torch_dtype="auto")
     model.config.use_cache = False
-    lora = cfg["lora"]
-    peft = LoraConfig(r=int(lora["rank"]), lora_alpha=int(lora["alpha"]),
-        lora_dropout=float(lora["dropout"]), target_modules=lora["target_modules"],
-        task_type="CAUSAL_LM")
+    previous_adapter = cfg.get("previous_adapter")
+    peft_config = None
+    if previous_adapter:
+        if not Path(previous_adapter).is_dir():
+            raise SystemExit(f"Previous LoRA adapter not found: {previous_adapter}")
+        model = PeftModel.from_pretrained(model, previous_adapter, is_trainable=True)
+    else:
+        lora = cfg["lora"]
+        peft_config = LoraConfig(
+            r=int(lora["rank"]), lora_alpha=int(lora["alpha"]),
+            lora_dropout=float(lora["dropout"]),
+            target_modules=lora["target_modules"], task_type="CAUSAL_LM")
     use_cuda = torch.cuda.is_available()
     bf16 = bool(cfg.get("bf16", True) and use_cuda and torch.cuda.is_bf16_supported())
     train_args = SFTConfig(
         output_dir=cfg["output_dir"], dataset_text_field="text",
-        max_length=int(cfg["max_sequence_length"]), packing=bool(cfg.get("packing", False)),
-        max_steps=int(cfg["max_steps"]), learning_rate=float(cfg["learning_rate"]),
+        max_length=int(cfg["max_sequence_length"]),
+        packing=bool(cfg.get("packing", False)),
+        max_steps=int(cfg["max_steps"]),
+        learning_rate=float(cfg["learning_rate"]),
         warmup_ratio=float(cfg.get("warmup_ratio", 0.03)),
         per_device_train_batch_size=int(cfg["per_device_train_batch_size"]),
         per_device_eval_batch_size=int(cfg.get("per_device_eval_batch_size", 1)),
@@ -56,17 +71,17 @@ def main():
         save_strategy="steps", save_steps=int(cfg["save_steps"]),
         save_total_limit=int(cfg["save_total_limit"]), bf16=bf16,
         fp16=bool(cfg.get("fp16", False) and use_cuda and not bf16),
-        gradient_checkpointing=True, report_to="none", seed=int(cfg.get("seed", 42))
-    )
+        gradient_checkpointing=True, report_to="none",
+        seed=int(cfg.get("seed", 42)))
     trainer = SFTTrainer(
         model=model, args=train_args, train_dataset=split["train"],
-        eval_dataset=split["test"], processing_class=tokenizer, peft_config=peft
-    )
+        eval_dataset=split["test"], processing_class=tokenizer,
+        peft_config=peft_config)
     trainer.train()
     trainer.evaluate()
     trainer.save_model(cfg["output_dir"])
     tokenizer.save_pretrained(cfg["output_dir"])
-    print(f"SFT adapter saved to {cfg['output_dir']}")
+    print(f"SFT adapter/checkpoint saved to {cfg['output_dir']}")
 
 if __name__ == "__main__":
     main()

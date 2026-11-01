@@ -1,4 +1,5 @@
-base_model: outputs/klod-sft
+base_model: Qwen/Qwen3-1.7B-Base
+previous_adapter: outputs/klod-sft
 dataset_path: data/processed/preferences.jsonl
 output_dir: outputs/klod-dpo
 max_sequence_length: 4096
