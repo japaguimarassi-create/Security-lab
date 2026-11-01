@@ -113,7 +113,9 @@ def save_notebook(base, cells, destination):
     )
 
 
-def make_kernel_workspace(workdir, username, slug, title, notebook_name, notebook):
+def make_kernel_workspace(
+    workdir, username, slug, title, notebook_name, notebook, dataset_sources=None
+):
     folder = workdir / slug
     folder.mkdir(parents=True, exist_ok=True)
     save_notebook(notebook, notebook["cells"], folder / notebook_name)
@@ -127,7 +129,7 @@ def make_kernel_workspace(workdir, username, slug, title, notebook_name, noteboo
         "enable_gpu": "true",
         "enable_internet": "true",
         "machine_shape": "NvidiaTeslaT4",
-        "dataset_sources": [],
+        "dataset_sources": dataset_sources or [],
         "competition_sources": [],
         "kernel_sources": [],
         "model_sources": [],
@@ -323,15 +325,19 @@ def review_candidates(candidates):
 
 
 def build_training_notebook(
-    base, candidate_bytes, approved_ids, stage_percent=20, previous_adapter_bytes=None
+    base, candidate_bytes, approved_ids, stage_percent=20, previous_adapter_dataset=None
 ):
     allowed_stages = (20, 40, 60, 80, 100)
     if stage_percent not in allowed_stages:
         raise RunnerError("stage_percent must be one of 20, 40, 60, 80, 100.")
-    if stage_percent == 20 and previous_adapter_bytes is not None:
+    if stage_percent == 20 and previous_adapter_dataset is not None:
         raise RunnerError("The 20% stage must start from the base model.")
-    if stage_percent > 20 and not previous_adapter_bytes:
-        raise RunnerError("Stages above 20% require the previous stage adapter ZIP.")
+    if stage_percent > 20 and not previous_adapter_dataset:
+        raise RunnerError("Stages above 20% require the previous private adapter dataset.")
+    if previous_adapter_dataset is not None and not re.fullmatch(
+        r"[A-Za-z0-9_-]+/[A-Za-z0-9_-]+", previous_adapter_dataset
+    ):
+        raise RunnerError("Invalid Kaggle previous adapter dataset reference.")
 
     stage_output = f"outputs/klod-stage-{stage_percent}"
     runtime_config = "configs/training/stages/runtime_stage.yaml"
@@ -349,11 +355,6 @@ def build_training_notebook(
 
     encoded_candidates = base64.b64encode(candidate_bytes).decode("ascii")
     approved_json = json.dumps(approved_ids, ensure_ascii=False)
-    encoded_previous = (
-        base64.b64encode(previous_adapter_bytes).decode("ascii")
-        if previous_adapter_bytes
-        else None
-    )
     injection = (
         "import base64\n"
         "import json\n"
@@ -386,12 +387,16 @@ def build_training_notebook(
         + ")\n"
         "config = yaml.safe_load(stage_config.read_text(encoding='utf-8'))\n"
     )
-    if encoded_previous:
+    if previous_adapter_dataset:
+        dataset_slug = previous_adapter_dataset.split("/", 1)[1]
+        previous_percent = stage_percent - 20
+        previous_zip_name = f"klod-stage-{previous_percent}-adapter.zip"
+        previous_zip_path = f"/kaggle/input/{dataset_slug}/{previous_zip_name}"
         injection += (
-            "previous_zip = Path('previous-stage-adapter.zip')\n"
-            "previous_zip.write_bytes(base64.b64decode("
-            + repr(encoded_previous)
-            + "))\n"
+            "previous_zip = Path("
+            + repr(previous_zip_path)
+            + ")\n"
+            "assert previous_zip.is_file(), 'Previous stage adapter dataset file is missing.'\n"
             "previous_dir = Path('outputs/previous-stage-adapter').resolve()\n"
             "previous_dir.mkdir(parents=True, exist_ok=True)\n"
             "with zipfile.ZipFile(previous_zip) as archive:\n"
