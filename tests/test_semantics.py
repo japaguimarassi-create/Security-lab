@@ -7,8 +7,8 @@ def test_semantic_knowledge_retrieval_can_match_different_words(tmp_path):
     saved = store.put("minecraft", "Creature registration", body,
                       "https://example.org/creatures", "CC-BY-4.0", "Example")
     passages = store.split_passages("Creature registration", body, max_chars=400, overlap=40)
-    store.save_vectors(saved["id"], "test-embedder", passages[:2], [[1.0, 0.0], [0.8, 0.2]])
-    result = store.search_hybrid("minecraft", "custom creature entity", [1.0, 0.0],
+    store.save_vectors(saved["id"], "test-embedder", passages, [[1.0, 0.0] for _ in passages])
+    result = store.search_hybrid("minecraft", "beasts mobs", [1.0, 0.0],
                                  "test-embedder", 3)
     assert result
     assert result[0]["id"] == saved["id"]
