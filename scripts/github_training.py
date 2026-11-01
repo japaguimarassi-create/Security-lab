@@ -240,9 +240,9 @@ def package_stage(args):
     output_dir.mkdir(parents=True, exist_ok=True)
     adapter_zip = output_dir / f"klod-stage-{stage}-adapter.zip"
     with zipfile.ZipFile(adapter_zip, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for path in adapter_dir.rglob("*"):
+        for path in sorted(adapter_dir.iterdir()):
             if path.is_file():
-                archive.write(path, path.relative_to(adapter_dir).as_posix())
+                archive.write(path, path.name)
 
     metadata = {
         "stage_percent": stage,
