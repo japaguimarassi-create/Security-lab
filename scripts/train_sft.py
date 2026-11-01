@@ -8,41 +8,8 @@ from peft import LoraConfig, PeftModel
 from transformers import AutoTokenizer
 from trl import SFTConfig, SFTTrainer
 
+from klod.distillation import read_sft_rows
 from klod.training import load_training_model
-
-
-def read_rows(path: Path, require_approval: bool = False):
-    rows = []
-    with path.open(encoding="utf-8") as source:
-        for line_number, line in enumerate(source, 1):
-            if not line.strip():
-                continue
-            try:
-                row = json.loads(line)
-            except json.JSONDecodeError as exc:
-                raise ValueError(f"{path}:{line_number}: invalid JSON") from exc
-            if not isinstance(row, dict):
-                raise ValueError(f"{path}:{line_number}: expected a JSON object")
-            if require_approval and row.get("approved") is not True:
-                raise ValueError(f"{path}:{line_number}: teacher example has not been approved")
-            if require_approval and row.get("quality_passed") is not True:
-                raise ValueError(f"{path}:{line_number}: teacher example failed automated checks")
-            messages = row.get("messages")
-            if not isinstance(messages, list) or len(messages) < 2:
-                raise ValueError(f"{path}:{line_number}: expected messages array")
-            if any(not isinstance(item, dict) for item in messages):
-                raise ValueError(f"{path}:{line_number}: messages must be JSON objects")
-            if messages[-1].get("role") != "assistant":
-                raise ValueError(f"{path}:{line_number}: final message must be assistant")
-            if any(item.get("role") not in {"system", "user", "assistant"}
-                   or not isinstance(item.get("content"), str)
-                   or not item["content"].strip() for item in messages):
-                raise ValueError(f"{path}:{line_number}: every message needs a valid role and text content")
-            rows.append({"messages": messages})
-    minimum = 20
-    if len(rows) < minimum:
-        raise ValueError(f"SFT requires at least {minimum} reviewed conversations; found {len(rows)}")
-    return rows
 
 
 def main():
@@ -53,7 +20,11 @@ def main():
     source = Path(cfg["dataset_path"])
     if not source.is_file():
         raise SystemExit(f"Dataset not found: {source}")
-    rows = read_rows(source, require_approval=bool(cfg.get("require_approval", False)))
+    rows = read_sft_rows(
+        source,
+        minimum=int(cfg.get("minimum_examples", 20)),
+        require_approval=bool(cfg.get("require_approval", False)),
+    )
     tokenizer = AutoTokenizer.from_pretrained(cfg["base_model"])
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
