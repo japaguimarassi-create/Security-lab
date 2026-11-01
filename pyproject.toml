@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "klod-ai"
-version = "0.5.0"
-description = "General-purpose multilingual AI runtime, domain routing, memory, retrieval and training toolkit"
+version = "0.6.0"
+description = "General-purpose multilingual AI with teacher-student distillation, domain routing, memory and retrieval"
 requires-python = ">=3.11"
 dependencies = ["fastapi>=0.115,<1", "uvicorn[standard]>=0.30,<1", "pydantic>=2.8,<3"]
 
