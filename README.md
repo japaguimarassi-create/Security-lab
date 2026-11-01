@@ -66,11 +66,7 @@ The training config rejects examples that have not passed the automated screen a
 
 The 48 prompts validate the pipeline; they are not enough to produce broad expert-level ability. Expand the curriculum substantially, use diverse reviewed examples, reserve a separate evaluation set and compare the student against the teacher before promoting a checkpoint.
 
-## Treinamento no Kaggle
-
-Consulte [docs/TREINAMENTO_KAGGLE.md](docs/TREINAMENTO_KAGGLE.md) para configurar o notebook, ativar internet e GPU, aprovar demonstrações e recuperar os resultados. O notebook está em [notebooks/KLOD_Kaggle_Teacher_Distillation.ipynb](notebooks/KLOD_Kaggle_Teacher_Distillation.ipynb). O treinamento remoto agora é dividido em cinco branches encadeadas: `training/20-percent`, `training/40-percent`, `training/60-percent`, `training/80-percent` e `training/100-percent`. Cada uma continua os pesos do adaptador anterior por mais uma época. O workflow GitHub Actions + Kaggle está em [`.github/workflows/klod-kaggle-remote.yml`](.github/workflows/klod-kaggle-remote.yml); instruções completas em [docs/KAGGLE_AUTOMATION.md](docs/KAGGLE_AUTOMATION.md).
-
-## Important training distinction
+## Treinamento no GitHub\n\nConsulte [docs/GITHUB_TRAINING.md](docs/GITHUB_TRAINING.md) para a execução por GitHub Actions, revisão dos exemplos, sequência das cinco etapas e recuperação dos artefatos. O fluxo não usa Kaggle nem Colab. O treino Qwen3-1.7B/QLoRA exige um runner com GPU NVIDIA; em runner CPU, o workflow encerra com erro explícito e não declara treinamento.\n\n## Important training distinction
 
 The teacher is frozen during generation; it does not update student weights directly. It supplies demonstrations. The student learns through supervised fine-tuning of its LoRA adapter. No trained adapter is included in GitHub, and no GPU training is claimed until the commands have actually run and evaluation has passed.
 
