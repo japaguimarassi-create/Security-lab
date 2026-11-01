@@ -22,11 +22,15 @@ performed work outside this conversation. Do not mention that this is a syntheti
 
 
 def load_teacher(cfg: dict):
+    force_cpu = __import__("os").environ.get("KLOD_FORCE_CPU") == "1"
+    cuda_available = torch.cuda.is_available() and not force_cpu
+    if force_cpu or not cuda_available:
+        torch.set_num_threads(max(1, int(__import__("os").environ.get("KLOD_CPU_THREADS", "4"))))
     quantized = bool(cfg.get("load_in_4bit", False))
-    if quantized and not torch.cuda.is_available():
+    if quantized and not cuda_available:
         raise RuntimeError("4-bit teacher loading requires a CUDA GPU and bitsandbytes")
     kwargs = {
-        "device_map": cfg.get("device_map", "auto"),
+        "device_map": "cpu" if not cuda_available else cfg.get("device_map", "auto"),
         "trust_remote_code": False,
         "low_cpu_mem_usage": True,
     }
@@ -40,10 +44,11 @@ def load_teacher(cfg: dict):
             bnb_4bit_use_double_quant=True,
         )
     else:
-        cuda_available = torch.cuda.is_available()
         bf16_supported = cuda_available and torch.cuda.is_bf16_supported()
         dtype_name = inference_dtype_name(cuda_available, bf16_supported)
         kwargs["torch_dtype"] = getattr(torch, dtype_name)
+        if not cuda_available:
+            kwargs["attn_implementation"] = "eager"
     tokenizer = AutoTokenizer.from_pretrained(
         cfg["teacher_model"], trust_remote_code=False)
     if tokenizer.pad_token is None:
@@ -114,7 +119,7 @@ def main():
     system_prompt = GENERAL_SYSTEM_PROMPT + "\n\n" + TEACHER_INSTRUCTIONS
     model, tokenizer = load_teacher(cfg)
     torch.manual_seed(int(cfg.get("seed", 42)))
-    if torch.cuda.is_available():
+    if torch.cuda.is_available() and __import__("os").environ.get("KLOD_FORCE_CPU") != "1":
         torch.cuda.manual_seed_all(int(cfg.get("seed", 42)))
 
     temporary = output_path.with_suffix(output_path.suffix + ".tmp")
