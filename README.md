@@ -16,53 +16,53 @@ KLOD is a general-purpose multilingual AI runtime for open-domain conversation a
 
 Python 3.11+:
 
-\`\`\`bash
+```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[model,embeddings]"
 cp .env.example .env
 uvicorn klod.api:app --host 127.0.0.1 --port 8000
-\`\`\`
+```
 
-Set a strong \`KLOD_API_KEY\`. Keep \`KLOD_LOAD_MODEL=false\` until the device has enough memory. The embedding model loads lazily on first semantic use and runs locally. Set \`KLOD_SEMANTIC_SEARCH=false\` to disable it.
+Set a strong `KLOD_API_KEY`. Keep `KLOD_LOAD_MODEL=false` until the device has enough memory. The embedding model loads lazily on first semantic use and runs locally. Set `KLOD_SEMANTIC_SEARCH=false` to disable it.
 
 ## General chat
 
-Use \`POST /v1/chat/completions\` for every subject. Automatic routing selects a specialist only when the topic is clear. Set \`auto_route=false\` to force the general assistant or use \`specialist\` to select one explicitly.
+Use `POST /v1/chat/completions` for every subject. Automatic routing selects a specialist only when the topic is clear. Set `auto_route=false` to force the general assistant or use `specialist` to select one explicitly.
 
 ## Teacher-student training
 
 KLOD 0.6 adds an executable distillation pipeline.
 
-- Teacher: \`Qwen/Qwen3-1.7B\`, matching the current instruct model used by the runtime.
-- Student: \`Qwen/Qwen3-1.7B-Base\`, initialized separately with a new LoRA adapter.
+- Teacher: `Qwen/Qwen3-1.7B`, matching the current instruct model used by the runtime.
+- Student: `Qwen/Qwen3-1.7B-Base`, initialized separately with a new LoRA adapter.
 - Curriculum: 48 starter prompts spanning science, mathematics, programming, research, history, geography, writing, education, languages, business, data analysis, design, arts and general reasoning.
 - Teacher generation: temperature 0.65, top-p 0.90, repetition penalty 1.08, 512 maximum new tokens and 4096 input tokens.
 - Student: NF4 QLoRA, LoRA rank 16, alpha 32, dropout 0.05, learning rate 2e-5, sequence length 2048, batch size 1, gradient accumulation 16 and 5 epochs.
 
 Generate the teacher's candidate answers:
 
-\`\`\`bash
+```bash
 pip install -e ".[training]"
 python scripts/training_preflight.py --stage teacher
 python scripts/generate_teacher_data.py
-\`\`\`
+```
 
-Candidates are saved in \`data/generated/teacher_candidates.jsonl\`. Review them interactively:
+Candidates are saved in `data/generated/teacher_candidates.jsonl`. Review them interactively:
 
-\`\`\`bash
+```bash
 python scripts/review_teacher_data.py
-\`\`\`
+```
 
 Approve only answers that are correct, relevant and useful. The automatic checks catch empty, short, oversized, echoed and repetitive answers, but do not prove factual correctness. Export the approved records and train:
 
-\`\`\`bash
+```bash
 python scripts/approve_teacher_data.py --minimum 20
 python scripts/training_preflight.py --stage sft --config configs/training/distillation_sft.yaml
 python scripts/train_sft.py --config configs/training/distillation_sft.yaml
-\`\`\`
+```
 
-The training config rejects examples that have not passed the automated screen and been explicitly approved. The adapter is saved to \`outputs/klod-teacher-distilled\`. Configure inference with \`KLOD_MODEL_ID=Qwen/Qwen3-1.7B-Base\` and \`KLOD_ADAPTER_PATH=outputs/klod-teacher-distilled\`.
+The training config rejects examples that have not passed the automated screen and been explicitly approved. The adapter is saved to `outputs/klod-teacher-distilled`. Configure inference with `KLOD_MODEL_ID=Qwen/Qwen3-1.7B-Base` and `KLOD_ADAPTER_PATH=outputs/klod-teacher-distilled`.
 
 The 48 prompts validate the pipeline; they are not enough to produce broad expert-level ability. Expand the curriculum substantially, use diverse reviewed examples, reserve a separate evaluation set and compare the student against the teacher before promoting a checkpoint.
 
@@ -70,7 +70,7 @@ The 48 prompts validate the pipeline; they are not enough to produce broad exper
 
 The teacher is frozen during generation; it does not update student weights directly. It supplies demonstrations. The student learns through supervised fine-tuning of its LoRA adapter. No trained adapter is included in GitHub, and no GPU training is claimed until the commands have actually run and evaluation has passed.
 
-See \`docs/TRAINING.md\`, \`docs/ARCHITECTURE.md\`, \`docs/API.md\` and \`docs/SPECIALISTS.md\`.
+See `docs/TRAINING.md`, `docs/ARCHITECTURE.md`, `docs/API.md` and `docs/SPECIALISTS.md`.
 
 
 ## Blinded teacher/student evaluation
