@@ -64,13 +64,13 @@ def test_stage_configs_define_one_epoch_and_twenty_percent(stage):
 
 @pytest.mark.parametrize("stage", STAGES)
 def test_stage_notebook_builds_expected_progress_and_config(stage, tmp_path, monkeypatch):
-    previous = adapter_zip_bytes() if stage > 20 else None
+    previous = f"test-owner/klod-stage-{stage - 20}-adapter-run-123" if stage > 20 else None
     cells = build_training_notebook(
         base_notebook(),
         candidate_bytes(),
         [f"pt-{index:03d}" for index in range(1, 21)],
         stage_percent=stage,
-        previous_adapter_bytes=previous,
+        previous_adapter_dataset=previous,
     )
     injection = "".join(cells[8]["source"])
     compile(injection, "<stage-injection>", "exec")
@@ -82,6 +82,11 @@ def test_stage_notebook_builds_expected_progress_and_config(stage, tmp_path, mon
     config_source = (
         ROOT / "configs" / "training" / "stages" / f"stage_{stage}.yaml"
     )
+    if stage > 20:
+        assert f"/kaggle/input/klod-stage-{stage - 20}-adapter-run-123/" in injection
+        assert "previous_adapter" in injection
+        return
+
     target = tmp_path / "configs" / "training" / "stages"
     target.mkdir(parents=True)
     shutil.copy2(config_source, target / config_source.name)
@@ -93,8 +98,13 @@ def test_stage_notebook_builds_expected_progress_and_config(stage, tmp_path, mon
     runtime = yaml.safe_load(
         Path("configs/training/stages/runtime_stage.yaml").read_text()
     )
+    eval_runtime = yaml.safe_load(
+        Path("configs/training/stages/runtime_eval.yaml").read_text()
+    )
     assert runtime["num_train_epochs"] == 1
     assert runtime["output_dir"] == f"outputs/klod-stage-{stage}"
+    assert eval_runtime["student_adapter"] == f"outputs/klod-stage-{stage}"
+    assert eval_runtime["blind_output_path"] == f"evaluation/distillation_blind_stage_{stage}.jsonl"
     assert len(
         [
             json.loads(line)
@@ -104,12 +114,7 @@ def test_stage_notebook_builds_expected_progress_and_config(stage, tmp_path, mon
             if json.loads(line).get("approved")
         ]
     ) == 20
-    if stage > 20:
-        assert Path(runtime["previous_adapter"]).joinpath(
-            "adapter_model.safetensors"
-        ).is_file()
-    else:
-        assert runtime["previous_adapter"] is None
+    assert runtime["previous_adapter"] is None
 
 
 def test_stages_after_twenty_percent_require_previous_adapter():
@@ -118,6 +123,7 @@ def test_stages_after_twenty_percent_require_previous_adapter():
             base_notebook(), candidate_bytes(),
             [f"pt-{index:03d}" for index in range(1, 21)],
             stage_percent=40,
+            previous_adapter_dataset=None,
         )
 
 
@@ -127,7 +133,7 @@ def test_first_stage_rejects_previous_adapter():
             base_notebook(), candidate_bytes(),
             [f"pt-{index:03d}" for index in range(1, 21)],
             stage_percent=20,
-            previous_adapter_bytes=adapter_zip_bytes(),
+            previous_adapter_dataset="test-owner/klod-stage-0-adapter-run-123",
         )
 
 
@@ -136,7 +142,7 @@ def test_stage_notebook_uses_stage_specific_training_config_and_output():
         base_notebook(), candidate_bytes(),
         [f"pt-{index:03d}" for index in range(1, 21)],
         stage_percent=60,
-        previous_adapter_bytes=adapter_zip_bytes(),
+        previous_adapter_dataset="test-owner/klod-stage-40-adapter-run-123",
     )
     code = "\n".join(
         "".join(cell.get("source", []))
@@ -146,3 +152,5 @@ def test_stage_notebook_uses_stage_specific_training_config_and_output():
     assert "configs/training/stages/runtime_stage.yaml" in code
     assert "outputs/klod-stage-60" in code
     assert "outputs/klod-teacher-distilled" not in code
+    assert "runtime_eval.yaml" in code
+    assert "distillation_blind_stage_60.jsonl" in code
