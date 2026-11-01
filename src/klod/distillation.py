@@ -60,6 +60,49 @@ def answer_quality_issue(prompt: str, answer: str, min_chars: int = 40,
     return None
 
 
+def validate_sft_messages(messages: object) -> str | None:
+    if not isinstance(messages, list) or len(messages) < 2:
+        return "messages must contain at least two turns"
+    for index, message in enumerate(messages):
+        if not isinstance(message, dict):
+            return f"messages[{index}] must be an object"
+        if message.get("role") not in {"system", "user", "assistant"}:
+            return f"messages[{index}] has an unsupported role"
+        if not isinstance(message.get("content"), str) or not message["content"].strip():
+            return f"messages[{index}].content must be non-empty text"
+    if messages[-1].get("role") != "assistant":
+        return "the final message must have role assistant"
+    return None
+
+
+def read_sft_rows(path: Path, minimum: int = 20,
+                  require_approval: bool = False) -> list[dict]:
+    if minimum < 1:
+        raise ValueError("minimum must be at least 1")
+    rows = []
+    with path.open(encoding="utf-8") as source:
+        for line_number, line in enumerate(source, 1):
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"{path}:{line_number}: invalid JSON") from exc
+            if not isinstance(row, dict):
+                raise ValueError(f"{path}:{line_number}: expected a JSON object")
+            if require_approval and row.get("approved") is not True:
+                raise ValueError(f"{path}:{line_number}: teacher example has not been approved")
+            if require_approval and row.get("quality_passed") is not True:
+                raise ValueError(f"{path}:{line_number}: teacher example failed automated checks")
+            message_error = validate_sft_messages(row.get("messages"))
+            if message_error:
+                raise ValueError(f"{path}:{line_number}: {message_error}")
+            rows.append({"messages": row["messages"]})
+    if len(rows) < minimum:
+        raise ValueError(f"SFT requires at least {minimum} conversations; found {len(rows)}")
+    return rows
+
+
 def approved_candidates(path: Path) -> Iterator[dict]:
     with path.open(encoding="utf-8") as source:
         for line_number, line in enumerate(source, 1):
