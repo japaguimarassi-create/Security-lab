@@ -343,9 +343,9 @@ def build_training_notebook(base, candidate_bytes, approved_ids):
         + "))\n"
         "candidates = [json.loads(line) for line in "
         "candidate_file.read_text(encoding='utf-8').splitlines() if line.strip()]\n"
-        "approved_ids = set("
+        "approved_ids = set(json.loads("
         + repr(approved_json)
-        + ")\n"
+        + "))\n"
         "approved_count = 0\n"
         "for item in candidates:\n"
         "    item['approved'] = item.get('id') in approved_ids and "
