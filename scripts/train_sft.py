@@ -113,7 +113,7 @@ def main():
     }
     metrics_path = Path(cfg["output_dir"]) / "training_metrics.json"
     metrics_path.write_text(
-        json.dumps(metrics_payload, ensure_ascii=False, indent=2, default=str) + "\\n",
+        json.dumps(metrics_payload, ensure_ascii=False, indent=2, default=str) + "\n",
         encoding="utf-8",
     )
     print({"saved_to": cfg["output_dir"], "metrics_file": str(metrics_path),
