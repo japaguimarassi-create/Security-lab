@@ -1,7 +1,7 @@
 sources:
   - name: portuguese
     path: data/processed/pt.jsonl
-    weight: 0.40
+    weight: 0.30
   - name: english
     path: data/processed/en.jsonl
     weight: 0.25
@@ -17,6 +17,12 @@ sources:
   - name: mathematics_science
     path: data/processed/science.jsonl
     weight: 0.10
+  - name: humanities
+    path: data/processed/humanities.jsonl
+    weight: 0.05
+  - name: instruction_conversation
+    path: data/processed/instruction.jsonl
+    weight: 0.05
   - name: technical_docs
     path: data/processed/technical.jsonl
     weight: 0.05
