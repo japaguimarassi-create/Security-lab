@@ -1,3 +1,9 @@
+def inference_dtype_name(cuda_available: bool, bf16_supported: bool) -> str:
+    if cuda_available and bf16_supported:
+        return "bfloat16"
+    return "float16" if cuda_available else "float32"
+
+
 def load_training_model(model_id: str, load_in_4bit: bool = True,
                         gradient_checkpointing: bool = True):
     try:
