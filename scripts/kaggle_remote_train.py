@@ -386,7 +386,7 @@ def build_training_notebook(
     )
     if encoded_previous:
         injection += (
-            "previous_zip = Path('/kaggle/working/previous-stage-adapter.zip')\n"
+            "previous_zip = Path('previous-stage-adapter.zip')\n"
             "previous_zip.write_bytes(base64.b64decode("
             + repr(encoded_previous)
             + "))\n"
