@@ -2,18 +2,28 @@ import argparse
 import importlib.util
 import json
 from pathlib import Path
+
 import yaml
 
+
 REQUIREMENTS = {
-    "pretrain": ("data/processed/mixture.jsonl", 20, {"text"}, "configs/training/continued_pretraining.yaml"),
-    "sft": ("data/processed/sft.jsonl", 20, {"messages"}, "configs/training/sft.yaml"),
-    "dpo": ("data/processed/preferences.jsonl", 100, {"prompt", "chosen", "rejected"}, "configs/training/dpo.yaml")
+    "teacher": ("configs/distillation_prompts.jsonl", 20,
+                {"prompt", "domain", "language"}, "configs/training/distillation.yaml"),
+    "pretrain": ("data/processed/mixture.jsonl", 20, {"text"},
+                 "configs/training/continued_pretraining.yaml"),
+    "sft": ("data/processed/sft.jsonl", 20, {"messages"},
+            "configs/training/sft.yaml"),
+    "dpo": ("data/processed/preferences.jsonl", 100,
+            {"prompt", "chosen", "rejected"}, "configs/training/dpo.yaml"),
 }
 
-def inspect_dataset(path: Path, required_fields: set[str], minimum: int):
+
+def inspect_dataset(path: Path, required_fields: set[str], minimum: int,
+                    require_approval: bool = False):
     if not path.is_file():
-        return {"exists": False, "rows": 0, "valid": False, "reason": f"Missing {path}"}
-    rows = valid = invalid = 0
+        return {"exists": False, "rows": 0, "valid": False,
+                "reason": f"Missing {path}"}
+    rows = valid = invalid = unapproved = 0
     with path.open(encoding="utf-8") as source:
         for line in source:
             if not line.strip():
@@ -21,15 +31,26 @@ def inspect_dataset(path: Path, required_fields: set[str], minimum: int):
             rows += 1
             try:
                 item = json.loads(line)
-                if required_fields.issubset(item.keys()):
+                fields_ok = required_fields.issubset(item.keys())
+                approval_ok = (
+                    not require_approval
+                    or (item.get("approved") is True and item.get("quality_passed") is True)
+                )
+                if fields_ok and approval_ok:
                     valid += 1
                 else:
                     invalid += 1
+                    if fields_ok and not approval_ok:
+                        unapproved += 1
             except (ValueError, TypeError):
                 invalid += 1
-    return {"exists": True, "rows": rows, "valid_rows": valid,
-            "invalid_rows": invalid, "valid": valid >= minimum and invalid == 0,
-            "minimum_rows": minimum}
+    return {
+        "exists": True, "rows": rows, "valid_rows": valid,
+        "invalid_rows": invalid, "unapproved_rows": unapproved,
+        "valid": valid >= minimum and invalid == 0,
+        "minimum_rows": minimum, "approval_required": require_approval,
+    }
+
 
 def inspect_gpu():
     try:
@@ -37,11 +58,15 @@ def inspect_gpu():
     except ImportError:
         return {"available": False, "reason": "PyTorch is not installed"}
     if not torch.cuda.is_available():
-        return {"available": False, "reason": "CUDA GPU not detected", "torch": torch.__version__}
+        return {"available": False, "reason": "CUDA GPU not detected",
+                "torch": torch.__version__}
     device = torch.cuda.get_device_properties(0)
-    return {"available": True, "name": device.name,
-            "vram_gib": round(device.total_memory / (1024 ** 3), 2),
-            "bf16": bool(torch.cuda.is_bf16_supported()), "torch": torch.__version__}
+    return {
+        "available": True, "name": device.name,
+        "vram_gib": round(device.total_memory / (1024 ** 3), 2),
+        "bf16": bool(torch.cuda.is_bf16_supported()), "torch": torch.__version__,
+    }
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -49,28 +74,46 @@ def main():
     parser.add_argument("--dataset", type=Path)
     parser.add_argument("--config", type=Path)
     args = parser.parse_args()
+
     default_dataset, minimum, fields, default_config = REQUIREMENTS[args.stage]
     config_path = args.config or Path(default_config)
+    if not config_path.is_file():
+        raise SystemExit(f"Training config not found: {config_path}")
     cfg = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    dataset = inspect_dataset(args.dataset or Path(cfg.get("dataset_path", default_dataset)), fields, minimum)
+    configured_dataset = (
+        cfg.get("seed_prompts_path", default_dataset)
+        if args.stage == "teacher"
+        else cfg.get("dataset_path", default_dataset)
+    )
+    dataset = inspect_dataset(
+        args.dataset or Path(configured_dataset), fields, minimum,
+        require_approval=bool(cfg.get("require_approval", False)),
+    )
     gpu = inspect_gpu()
     quantized = bool(cfg.get("load_in_4bit", False))
     bnb_available = importlib.util.find_spec("bitsandbytes") is not None
     issues = []
-    if not gpu["available"]:
-        issues.append("A CUDA GPU is required for this 1.7B QLoRA training configuration.")
+
+    cuda_required = args.stage != "teacher" or bool(cfg.get("require_cuda", True))
+    if cuda_required and not gpu["available"]:
+        issues.append("A CUDA GPU is required by this training configuration.")
     if quantized and not bnb_available:
-        issues.append("Install bitsandbytes for the configured 4-bit QLoRA training.")
+        issues.append("Install bitsandbytes for the configured 4-bit QLoRA stage.")
     if quantized and gpu["available"] and gpu.get("vram_gib", 0) < 12:
         issues.append("GPU has less than 12 GiB VRAM; reduce sequence length/batch or use a larger GPU.")
     if not dataset["valid"]:
-        issues.append("Dataset is missing, malformed or below the minimum reviewed row count.")
-    result = {"stage": args.stage, "dataset": dataset, "gpu": gpu,
-              "qlora_4bit": quantized, "bitsandbytes_installed": bnb_available,
-              "ready": not issues, "issues": issues}
+        issues.append("Dataset is missing, malformed, unapproved or below the minimum row count.")
+
+    result = {
+        "stage": args.stage, "dataset": dataset, "gpu": gpu,
+        "qlora_4bit": quantized, "bitsandbytes_installed": bnb_available,
+        "teacher_model": cfg.get("teacher_model") if args.stage == "teacher" else None,
+        "ready": not issues, "issues": issues,
+    }
     print(json.dumps(result, ensure_ascii=False, indent=2))
     if issues:
         raise SystemExit(2)
+
 
 if __name__ == "__main__":
     main()
