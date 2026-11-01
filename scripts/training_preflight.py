@@ -150,7 +150,7 @@ def main():
     bnb_available = importlib.util.find_spec("bitsandbytes") is not None
     issues = []
 
-    cuda_required = args.stage != "teacher" or bool(cfg.get("require_cuda", True))
+    cuda_required = bool(cfg.get("require_cuda", quantized or args.stage != "teacher"))
     if cuda_required and not gpu["available"]:
         issues.append("A CUDA GPU is required by this training configuration.")
     if quantized and not bnb_available:
