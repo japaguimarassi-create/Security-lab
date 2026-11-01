@@ -30,7 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -60,7 +60,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -175,7 +175,7 @@ jobs:
             echo ""
             echo "- Phase: $PHASE"
             if [ "$PHASE" = "cpu_smoke" ]; then
-              echo "- Qwen3-1.7B CPU backward-pass smoke test executed."
+              echo "- Qwen3-1.7B SFTTrainer smoke test executed."
             elif [ "$PHASE" = "generate" ]; then
               echo "- Teacher candidates: klod-teacher-candidates"
             elif [ "$PHASE" = "train_stage" ]; then
