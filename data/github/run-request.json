@@ -1,4 +1,7 @@
 {
   "phase": "setup",
-  "note": "GitHub-only workflow; setup validation only."
+  "stage_percent": 20,
+  "teacher_run_id": null,
+  "previous_stage_run_id": null,
+  "approved_ids": []
 }
