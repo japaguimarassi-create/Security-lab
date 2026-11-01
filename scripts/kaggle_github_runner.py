@@ -152,8 +152,21 @@ def generate(username, output_dir, workdir, poll_seconds, max_wait_seconds):
     print(json.dumps(metadata, ensure_ascii=False, indent=2))
 
 
-def train(username, candidate_file, approved_ids_json, output_dir, workdir,
-          poll_seconds, max_wait_seconds):
+def train_stage(
+    username, candidate_file, approved_ids_json, output_dir, workdir,
+    stage_percent, previous_adapter_zip, poll_seconds, max_wait_seconds
+):
+    import zipfile
+
+    if stage_percent not in (20, 40, 60, 80, 100):
+        raise RunnerError("stage_percent must be 20, 40, 60, 80, 100.")
+    if stage_percent == 20 and previous_adapter_zip is not None:
+        raise RunnerError("The 20% stage must not receive a previous adapter.")
+    if stage_percent > 20 and (
+        previous_adapter_zip is None or not previous_adapter_zip.is_file()
+    ):
+        raise RunnerError("Stages above 20% require the previous stage adapter ZIP.")
+
     root = repository_root()
     base = load_base_notebook(root)
     candidates = load_candidates(candidate_file)
@@ -163,24 +176,49 @@ def train(username, candidate_file, approved_ids_json, output_dir, workdir,
         raise RunnerError("approved_ids_json is not valid JSON.") from exc
     approved_ids = validate_approvals(candidates, raw_approved)
 
+    previous_bytes = None
+    if previous_adapter_zip is not None:
+        try:
+            with zipfile.ZipFile(previous_adapter_zip) as archive:
+                bad_member = archive.testzip()
+                names = archive.namelist()
+                if bad_member:
+                    raise RunnerError("Previous adapter ZIP is corrupt: " + bad_member)
+                if not any(name.endswith("adapter_config.json") for name in names):
+                    raise RunnerError("Previous adapter ZIP has no adapter_config.json.")
+                if not any(
+                    name.endswith("adapter_model.safetensors")
+                    or name.endswith("adapter_model.bin")
+                    for name in names
+                ):
+                    raise RunnerError("Previous adapter ZIP has no adapter weights.")
+            previous_bytes = previous_adapter_zip.read_bytes()
+        except zipfile.BadZipFile as exc:
+            raise RunnerError("Previous adapter is not a valid ZIP.") from exc
+
     notebook_cells = build_training_notebook(
-        base, candidate_file.read_bytes(), approved_ids
+        base,
+        candidate_file.read_bytes(),
+        approved_ids,
+        stage_percent=stage_percent,
+        previous_adapter_bytes=previous_bytes,
     )
     notebook = copy.deepcopy(base)
     notebook["cells"] = notebook_cells
+    slug = "klod-student-stage-" + str(stage_percent)
     folder, kernel_ref = make_kernel_workspace(
         workdir,
         username,
-        "klod-student-training",
-        "KLOD Student Training",
-        "klod_student_training.ipynb",
+        slug,
+        "KLOD Student Training " + str(stage_percent) + "%",
+        slug + ".ipynb",
         notebook,
     )
-    print("Submitting student training to Kaggle:", kernel_ref)
+    print("Submitting KLOD stage", str(stage_percent) + "% to Kaggle:", kernel_ref)
     push_kernel(folder)
     poll_kernel(kernel_ref, poll_seconds, max_wait_seconds)
 
-    downloaded = workdir / "student-output"
+    downloaded = workdir / ("student-stage-" + str(stage_percent) + "-output")
     download_kernel_outputs(kernel_ref, downloaded)
     adapter_candidates = list(
         downloaded.rglob("klod-teacher-distilled-adapter.zip")
@@ -195,16 +233,16 @@ def train(username, candidate_file, approved_ids_json, output_dir, workdir,
             if path.is_file()
         ]
         raise RunnerError(
-            "Kaggle finished but required output ZIPs were not found. "
+            "Kaggle finished but required stage ZIPs were not found. "
             "Downloaded files: " + ", ".join(found[:60])
         )
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    adapter_zip = output_dir / "klod-teacher-distilled-adapter.zip"
-    results_zip = output_dir / "klod-teacher-distillation-results.zip"
+    adapter_zip = output_dir / ("klod-stage-" + str(stage_percent) + "-adapter.zip")
+    results_zip = output_dir / ("klod-stage-" + str(stage_percent) + "-results.zip")
     shutil.copy2(adapter_candidates[0], adapter_zip)
     shutil.copy2(result_candidates[0], results_zip)
-    report = output_dir / "RELATORIO_KLOD.txt"
+    report = output_dir / ("RELATORIO_KLOD_" + str(stage_percent) + "pct.txt")
     make_report(
         report,
         username,
@@ -215,31 +253,32 @@ def train(username, candidate_file, approved_ids_json, output_dir, workdir,
         adapter_zip,
         results_zip,
     )
-    (output_dir / "student_run.json").write_text(
-        json.dumps(
-            {
-                "kernel_ref": kernel_ref,
-                "trained_at_utc": datetime.now(timezone.utc).isoformat(),
-                "approved_count": len(approved_ids),
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
-        + "\n",
+    metadata = {
+        "stage_percent": stage_percent,
+        "stage_index": stage_percent // 20,
+        "stage_total": 5,
+        "previous_adapter_used": stage_percent > 20,
+        "kernel_ref": kernel_ref,
+        "trained_at_utc": datetime.now(timezone.utc).isoformat(),
+        "approved_count": len(approved_ids),
+    }
+    (output_dir / ("stage-" + str(stage_percent) + "-metadata.json")).write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    print("Training outputs validated.")
+    print("Stage outputs validated.")
     print("Adapter:", adapter_zip)
     print("Results:", results_zip)
     print("Report:", report)
 
-
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("phase", choices=("generate", "train"))
+    parser.add_argument("phase", choices=("generate", "train_stage"))
     parser.add_argument("--username", required=True)
     parser.add_argument("--candidate-file", type=Path)
     parser.add_argument("--approved-ids-json", default="[]")
+    parser.add_argument("--stage-percent", type=int)
+    parser.add_argument("--previous-adapter-zip", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--workdir", type=Path, required=True)
     parser.add_argument("--poll-seconds", type=int, default=45)
@@ -269,21 +308,28 @@ def main():
             args.poll_seconds,
             int(args.max_wait_hours * 3600),
         )
-    else:
-        if args.candidate_file is None or not args.candidate_file.is_file():
-            raise RunnerError(
-                "--candidate-file must point to teacher_candidates.jsonl."
-            )
-        train(
-            args.username.strip().lower(),
-            args.candidate_file.resolve(),
-            args.approved_ids_json,
-            output_dir,
-            workdir,
-            args.poll_seconds,
-            int(args.max_wait_hours * 3600),
-        )
+        return
 
+    if args.candidate_file is None or not args.candidate_file.is_file():
+        raise RunnerError("--candidate-file must point to teacher_candidates.jsonl.")
+    if args.stage_percent is None:
+        raise RunnerError("--stage-percent is required for train_stage.")
+    previous_zip = (
+        args.previous_adapter_zip.expanduser().resolve()
+        if args.previous_adapter_zip is not None
+        else None
+    )
+    train_stage(
+        args.username.strip().lower(),
+        args.candidate_file.resolve(),
+        args.approved_ids_json,
+        output_dir,
+        workdir,
+        args.stage_percent,
+        previous_zip,
+        args.poll_seconds,
+        int(args.max_wait_hours * 3600),
+    )
 
 if __name__ == "__main__":
     try:
