@@ -83,6 +83,8 @@ def test_generated_training_cell_marks_exact_approved_ids(tmp_path, monkeypatch)
     target_config = tmp_path / "configs" / "training" / "stages"
     target_config.mkdir(parents=True)
     shutil.copy2(stage_config, target_config / stage_config.name)
+    eval_config = ROOT / "configs" / "training" / "distillation_eval.yaml"
+    shutil.copy2(eval_config, target_config.parent / eval_config.name)
 
     monkeypatch.chdir(tmp_path)
     exec(compile(generated_code, "<generated-approval-cell>", "exec"), {})
