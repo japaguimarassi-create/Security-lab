@@ -1,17 +1,16 @@
-# KLOD AI 0.5.0
+# KLOD AI 0.6.0
 
-KLOD is a general-purpose multilingual AI runtime. It is designed for open-domain conversation and work across everyday questions, programming, science, mathematics, research, education, writing, creative development, business and specialized technical subjects. Minecraft is one optional specialist, not the identity or limit of the system.
+KLOD is a general-purpose multilingual AI runtime for open-domain conversation and work across everyday questions, programming, science, mathematics, research, education, writing, creative development, business and specialized technical subjects. Minecraft is one optional specialist.
 
 ## Core capabilities
 
-- One persistent general-purpose assistant prompt and a shared language-model runtime.
-- Conservative automatic domain routing with a general fallback for ambiguous or unfamiliar topics.
-- Optional specialist prompts for programming, science, mathematics, research, writing, education, creative development, business and Minecraft.
-- SQLite persistent memory with lexical and optional semantic recall.
-- Hybrid knowledge retrieval: FTS5 + multilingual embeddings + reciprocal-rank fusion.
-- Source/license/attribution metadata returned with retrieved answers.
-- Structured action planner with caller-provided allowlists; plans are not executed automatically.
-- Continued pretraining, SFT, DPO and evaluation pipeline.
+- General-purpose assistant with conservative automatic domain routing.
+- Optional specialists for programming, science, mathematics, research, writing, education, creative work, business and Minecraft.
+- Persistent memory and hybrid lexical/semantic knowledge retrieval.
+- Source/license/attribution metadata for retrieved documents.
+- Structured action planner that returns proposals without executing them.
+- Teacher-student self-distillation: the current Qwen3 instruct model generates candidate demonstrations; a human-reviewed dataset fine-tunes a separate LoRA student adapter on Qwen3-1.7B-Base.
+- Continued pretraining, SFT, DPO and evaluation pipelines.
 
 ## Quick start
 
@@ -25,38 +24,46 @@ cp .env.example .env
 uvicorn klod.api:app --host 127.0.0.1 --port 8000
 \`\`\`
 
-Set a strong \`KLOD_API_KEY\`. Keep \`KLOD_LOAD_MODEL=false\` until the device has enough memory; generation returns 503 until the model is loaded. The embedding model loads lazily on first semantic use and runs locally. Set \`KLOD_SEMANTIC_SEARCH=false\` to disable it.
+Set a strong \`KLOD_API_KEY\`. Keep \`KLOD_LOAD_MODEL=false\` until the device has enough memory. The embedding model loads lazily on first semantic use and runs locally. Set \`KLOD_SEMANTIC_SEARCH=false\` to disable it.
 
-## General chat and automatic routing
+## General chat
 
-Use \`POST /v1/chat/completions\` for every subject. The router may select a focused prompt when the user's message clearly matches a domain. Unclear requests stay with the general assistant.
+Use \`POST /v1/chat/completions\` for every subject. Automatic routing selects a specialist only when the topic is clear. Set \`auto_route=false\` to force the general assistant or use \`specialist\` to select one explicitly.
 
-\`\`\`json
-{
-  "messages": [{"role": "user", "content": "Explique a relatividade geral."}],
-  "auto_route": true
-}
+## Teacher-student training
+
+KLOD 0.6 adds an executable distillation pipeline.
+
+- Teacher: \`Qwen/Qwen3-1.7B\`, matching the current instruct model used by the runtime.
+- Student: \`Qwen/Qwen3-1.7B-Base\`, initialized separately with a new LoRA adapter.
+- Curriculum: 48 starter prompts spanning science, mathematics, programming, research, history, geography, writing, education, languages, business, data analysis, design, arts and general reasoning.
+- Teacher generation parameters: temperature 0.65, top-p 0.90, repetition penalty 1.08, maximum 512 new tokens and 4096 input tokens.
+- Student parameters: NF4 QLoRA, LoRA rank 16, alpha 32, dropout 0.05, learning rate 2e-5, sequence length 2048, batch size 1 and gradient accumulation 16.
+
+Generate teacher candidates:
+
+\`\`\`bash
+pip install -e ".[training]"
+python scripts/training_preflight.py --stage teacher
+python scripts/generate_teacher_data.py
 \`\`\`
 
-Use \`"auto_route": false\` to force the general assistant, or set \`"specialist": "science"\` to choose a specialist explicitly. The response includes \`specialist\` and \`routing\` metadata. Check \`POST /v1/route\` to inspect a routing decision before sending a request.
+Candidates are written to \`data/generated/teacher_candidates.jsonl\`. Automated checks remove empty, excessively short, excessively long, echoed and highly repetitive responses. These checks do not establish factual correctness. Review each answer and set \`"approved": true\` only when it is correct and useful.
 
-## Optional specialist modules
+Export reviewed examples and train the student:
 
-Available modules: \`general\`, \`programming\`, \`science\`, \`mathematics\`, \`research\`, \`writing\`, \`education\`, \`creative\`, \`business\` and \`minecraft\`.
+\`\`\`bash
+python scripts/approve_teacher_data.py --minimum 20
+python scripts/training_preflight.py --stage sft --config configs/training/distillation_sft.yaml
+python scripts/train_sft.py --config configs/training/distillation_sft.yaml
+\`\`\`
 
-- \`GET /v1/specialists\`
-- \`POST /v1/specialists/{name}/chat\`
+The SFT configuration rejects rows that have not passed the automated screen and been explicitly approved. The resulting adapter is saved to \`outputs/klod-teacher-distilled\`. Configure inference with \`KLOD_MODEL_ID=Qwen/Qwen3-1.7B-Base\` and \`KLOD_ADAPTER_PATH=outputs/klod-teacher-distilled\`.
 
-All modules use the same foundation language model. They are prompts and optional knowledge namespaces, not separate trained model weights.
+The 48 prompts are a starter curriculum and a pipeline test, not enough to produce broad expert-level capability. Expand the curriculum substantially, use diverse reviewed examples, reserve a separate evaluation set and compare against the teacher before promoting a checkpoint.
 
-## Semantic knowledge
+## Important training distinction
 
-Documents keep source URL, license and attribution. They are split into passages and indexed with \`intfloat/multilingual-e5-small\`. The API performs hybrid lexical/semantic retrieval and returns source metadata. Local SQLite vector scanning suits small corpora; use a vector database as the corpus grows.
+The teacher is frozen during generation; it does not update the student's weights directly. It supplies demonstrations. The student learns through supervised fine-tuning of its LoRA adapter. No trained adapter is included in GitHub, and no GPU training is claimed until the commands have actually run and evaluation has passed.
 
-The E5-small embedding model supports multilingual retrieval and is separate from KLOD's language model. It is downloaded from Hugging Face on first use.
-
-## Training status
-
-This repository includes training code, configs and a Colab notebook. No KLOD-specific language-model adapter is claimed until an actual GPU run creates and evaluates it. The current runtime uses an external Qwen3 foundation model; adding specialist prompts does not create separately trained expert models.
-
-See \`docs/API.md\`, \`docs/SPECIALISTS.md\`, \`docs/TRAINING.md\` and \`docs/ARCHITECTURE.md\`.
+See \`docs/TRAINING.md\`, \`docs/ARCHITECTURE.md\`, \`docs/API.md\` and \`docs/SPECIALISTS.md\`.
