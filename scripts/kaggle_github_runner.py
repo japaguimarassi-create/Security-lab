@@ -2,6 +2,7 @@ import argparse
 import copy
 import hashlib
 import json
+import os
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -13,6 +14,7 @@ try:
         build_training_notebook,
         check_environment,
         download_kernel_outputs,
+        execute,
         extract_candidate_file,
         load_candidates,
         make_kernel_workspace,
@@ -28,6 +30,7 @@ except ImportError:
         build_training_notebook,
         check_environment,
         download_kernel_outputs,
+        execute,
         extract_candidate_file,
         load_candidates,
         make_kernel_workspace,
@@ -152,6 +155,94 @@ def generate(username, output_dir, workdir, poll_seconds, max_wait_seconds):
     print(json.dumps(metadata, ensure_ascii=False, indent=2))
 
 
+def upload_previous_adapter_dataset(username, stage_percent, adapter_zip, workdir):
+    import zipfile
+
+    previous_percent = stage_percent - 20
+    run_token = os.environ.get("GITHUB_RUN_ID") or datetime.now(
+        timezone.utc
+    ).strftime("%Y%m%d%H%M%S")
+    slug = f"klod-stage-{previous_percent}-adapter-{run_token}"
+    dataset_ref = username + "/" + slug
+    folder = workdir / ("dataset-" + slug)
+    if folder.exists():
+        shutil.rmtree(folder)
+    folder.mkdir(parents=True)
+    with zipfile.ZipFile(adapter_zip) as archive:
+        if archive.testzip():
+            raise RunnerError("Previous stage adapter ZIP is corrupt.")
+        names = archive.namelist()
+        if not any(name.endswith("adapter_config.json") for name in names):
+            raise RunnerError("Previous stage adapter ZIP is missing adapter_config.json.")
+        if not any(
+            name.endswith("adapter_model.safetensors")
+            or name.endswith("adapter_model.bin")
+            for name in names
+        ):
+            raise RunnerError("Previous stage adapter ZIP is missing model weights.")
+
+    dataset_file = folder / f"klod-stage-{previous_percent}-adapter.zip"
+    shutil.copy2(adapter_zip, dataset_file)
+    metadata = {
+        "id": dataset_ref,
+        "title": f"KLOD Stage {previous_percent}% Adapter {run_token}",
+        "licenses": [{"name": "Other"}],
+    }
+    (folder / "dataset-metadata.json").write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    create_output, create_code = execute(
+        [
+            "kaggle",
+            "datasets",
+            "create",
+            "--path",
+            str(folder),
+            "--dir-mode",
+            "skip",
+        ],
+        check=False,
+        quiet=True,
+    )
+    if create_code != 0:
+        version_output, version_code = execute(
+            [
+                "kaggle",
+                "datasets",
+                "version",
+                "--path",
+                str(folder),
+                "--message",
+                f"KLOD stage {previous_percent}% adapter for run {run_token}",
+                "--dir-mode",
+                "skip",
+            ],
+            check=False,
+            quiet=True,
+        )
+        if version_code != 0:
+            raise RunnerError(
+                "Could not create or version the private Kaggle adapter dataset.\n"
+                + create_output[-5000:]
+                + "\n"
+                + version_output[-5000:]
+            )
+    status_output, status_code = execute(
+        ["kaggle", "datasets", "status", dataset_ref],
+        check=False,
+        quiet=True,
+    )
+    if status_code != 0:
+        raise RunnerError(
+            "Kaggle did not confirm the previous adapter dataset:\n"
+            + status_output[-5000:]
+        )
+    print("Previous stage adapter uploaded as private Kaggle dataset:", dataset_ref)
+    return dataset_ref
+
+
 def train_stage(
     username, candidate_file, approved_ids_json, output_dir, workdir,
     stage_percent, previous_adapter_zip, poll_seconds, max_wait_seconds
@@ -176,32 +267,18 @@ def train_stage(
         raise RunnerError("approved_ids_json is not valid JSON.") from exc
     approved_ids = validate_approvals(candidates, raw_approved)
 
-    previous_bytes = None
+    previous_dataset_ref = None
     if previous_adapter_zip is not None:
-        try:
-            with zipfile.ZipFile(previous_adapter_zip) as archive:
-                bad_member = archive.testzip()
-                names = archive.namelist()
-                if bad_member:
-                    raise RunnerError("Previous adapter ZIP is corrupt: " + bad_member)
-                if not any(name.endswith("adapter_config.json") for name in names):
-                    raise RunnerError("Previous adapter ZIP has no adapter_config.json.")
-                if not any(
-                    name.endswith("adapter_model.safetensors")
-                    or name.endswith("adapter_model.bin")
-                    for name in names
-                ):
-                    raise RunnerError("Previous adapter ZIP has no adapter weights.")
-            previous_bytes = previous_adapter_zip.read_bytes()
-        except zipfile.BadZipFile as exc:
-            raise RunnerError("Previous adapter is not a valid ZIP.") from exc
+        previous_dataset_ref = upload_previous_adapter_dataset(
+            username, stage_percent, previous_adapter_zip, workdir
+        )
 
     notebook_cells = build_training_notebook(
         base,
         candidate_file.read_bytes(),
         approved_ids,
         stage_percent=stage_percent,
-        previous_adapter_bytes=previous_bytes,
+        previous_adapter_dataset=previous_dataset_ref,
     )
     notebook = copy.deepcopy(base)
     notebook["cells"] = notebook_cells
@@ -213,6 +290,7 @@ def train_stage(
         "KLOD Student Training " + str(stage_percent) + "%",
         slug + ".ipynb",
         notebook,
+        dataset_sources=[previous_dataset_ref] if previous_dataset_ref else [],
     )
     print("Submitting KLOD stage", str(stage_percent) + "% to Kaggle:", kernel_ref)
     push_kernel(folder)
