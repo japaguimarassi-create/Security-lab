@@ -117,7 +117,7 @@ def test_prepare_stage_creates_runtime_configs_and_approval_file(stage, tmp_path
     evaluation = yaml.safe_load(Path("configs/training/stages/runtime_eval.yaml").read_text())
     assert runtime["stage_percent"] == stage
     assert runtime["output_dir"] == f"outputs/klod-stage-{stage}"
-    assert runtime["previous_adapter"] is (None if stage == 20 else "outputs/previous-stage-adapter")
+    assert runtime["previous_adapter"] == (None if stage == 20 else "outputs/previous-stage-adapter")
     assert evaluation["student_adapter"] == f"outputs/klod-stage-{stage}"
     assert evaluation["blind_output_path"].endswith(f"stage_{stage}.jsonl")
 
