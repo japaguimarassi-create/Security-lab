@@ -20,3 +20,10 @@ models/
 *.gguf
 *.sqlite*
 evaluation/results.json
+
+data/generated/*
+!data/generated/.gitkeep
+evaluation/distillation_blind.jsonl
+evaluation/distillation_answer_key.json
+evaluation/*.tmp
+.ipynb_checkpoints/
