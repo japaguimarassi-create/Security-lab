@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 
 from klod.specialists import GENERAL_SYSTEM_PROMPT
+from klod.training import inference_dtype_name
 
 
 def read_eval_prompts(path: Path, limit: int | None = None) -> list[dict]:
@@ -90,8 +91,12 @@ def run_checkpoint(model_id: str, adapter: str | None,
     tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=False)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    cuda_available = torch.cuda.is_available()
+    bf16_supported = cuda_available and torch.cuda.is_bf16_supported()
+    dtype_name = inference_dtype_name(cuda_available, bf16_supported)
     model = AutoModelForCausalLM.from_pretrained(
-        model_id, torch_dtype="auto", device_map=cfg.get("device_map", "auto"),
+        model_id, torch_dtype=getattr(torch, dtype_name),
+        device_map=cfg.get("device_map", "auto"),
         low_cpu_mem_usage=True, trust_remote_code=False)
     if adapter:
         adapter_path = Path(adapter)
