@@ -335,6 +335,8 @@ def build_training_notebook(
 
     stage_output = f"outputs/klod-stage-{stage_percent}"
     runtime_config = "configs/training/stages/runtime_stage.yaml"
+    runtime_eval_config = "configs/training/stages/runtime_eval.yaml"
+    blind_output = f"evaluation/distillation_blind_stage_{stage_percent}.jsonl"
     cells = copy.deepcopy(base["cells"][:7])
     cells.append(
         notebook_cell(
@@ -416,6 +418,14 @@ def build_training_notebook(
         + ")\n"
         "runtime_config.parent.mkdir(parents=True, exist_ok=True)\n"
         "runtime_config.write_text(yaml.safe_dump(config, sort_keys=False), encoding='utf-8')\n"
+        "eval_source = Path('configs/training/distillation_eval.yaml')\n"
+        "eval_config = yaml.safe_load(eval_source.read_text(encoding='utf-8'))\n"
+        "eval_config['student_adapter'] = " + repr(stage_output) + "\n"
+        "eval_config['blind_output_path'] = " + repr(blind_output) + "\n"
+        "eval_config['answer_key_path'] = " + repr(f"evaluation/distillation_answer_key_stage_{stage_percent}.json") + "\n"
+        "runtime_eval = Path(" + repr(runtime_eval_config) + ")\n"
+        "runtime_eval.parent.mkdir(parents=True, exist_ok=True)\n"
+        "runtime_eval.write_text(yaml.safe_dump(eval_config, sort_keys=False), encoding='utf-8')\n"
         "print('Stage:', "
         + str(stage_percent)
         + ", 'output:', config['output_dir'], 'previous adapter:', config['previous_adapter'])\n"
@@ -429,7 +439,13 @@ def build_training_notebook(
         source = source.replace(
             "configs/training/distillation_sft.yaml", runtime_config
         )
+        source = source.replace(
+            "configs/training/distillation_eval.yaml", runtime_eval_config
+        )
         source = source.replace("outputs/klod-teacher-distilled", stage_output)
+        source = source.replace(
+            "evaluation/distillation_blind.jsonl", blind_output
+        )
         cell["source"] = source.splitlines(keepends=True)
     return cells
 
