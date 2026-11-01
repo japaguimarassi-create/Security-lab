@@ -1,5 +1,3 @@
-from pathlib import Path
-
 def load_training_model(model_id: str, load_in_4bit: bool = True,
                         gradient_checkpointing: bool = True):
     try:
@@ -10,9 +8,9 @@ def load_training_model(model_id: str, load_in_4bit: bool = True,
         raise RuntimeError("Install the training extra: pip install -e '.[training]'") from exc
 
     use_cuda = torch.cuda.is_available()
-    if load_in_4bit and not use_cuda:
-        raise RuntimeError("4-bit QLoRA requires a CUDA GPU; run training_preflight.py first")
-    bf16 = bool(use_cuda and torch.cuda.is_bf16_supported())
+    if not use_cuda:
+        raise RuntimeError("Training Klod 1.7B requires a CUDA GPU; run training_preflight.py first")
+    bf16 = bool(torch.cuda.is_bf16_supported())
     kwargs = {"trust_remote_code": False, "low_cpu_mem_usage": True}
 
     if load_in_4bit:

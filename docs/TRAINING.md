@@ -10,7 +10,7 @@ DPO JSONL: one object per line with `prompt`, `chosen`, and `rejected`. Each pai
 
 ## Corpus construction
 
-Import each FineWeb2 language separately, then run the cleaning script on every source:
+Import each FineWeb2 language separately, then clean each source:
 
 ```bash
 python scripts/import_fineweb2.py --language por_Latn --limit 200000 --output data/raw/pt.jsonl
@@ -40,10 +40,14 @@ python scripts/train_dpo.py
 python scripts/evaluate.py --model Qwen/Qwen3-1.7B-Base --adapter outputs/klod-dpo --dataset data/eval/heldout.jsonl
 ```
 
-The training scripts use 4-bit NF4 QLoRA by default, requiring an NVIDIA CUDA GPU and bitsandbytes. The continued-pretraining adapter is loaded by SFT; the SFT adapter is loaded by DPO. A typical working starting point is 16 GiB VRAM, not a guarantee. Reduce sequence lengths and batch size if the GPU runs out of memory.
+The training scripts use 4-bit NF4 QLoRA by default, requiring an NVIDIA CUDA GPU and bitsandbytes. The continued-pretraining adapter is loaded by SFT; the SFT adapter is loaded by DPO. A GPU with 16 GiB or more is a practical starting target, not a guarantee. Reduce sequence lengths and batch size if memory is insufficient.
 
 For inference after DPO, set `KLOD_MODEL_ID=Qwen/Qwen3-1.7B-Base` and `KLOD_ADAPTER_PATH=outputs/klod-dpo`.
 
+## Colab
+
+Open the [KLOD QLoRA notebook](https://colab.research.google.com/github/japaguimarassi-create/Security-lab/blob/development/notebooks/KLOD_QLoRA_Pretraining.ipynb) and select a GPU runtime. It performs a small first continuation-pretraining run on a capped Portuguese FineWeb2 sample and saves the adapter to Google Drive. This short run validates the training path; it is not enough to claim a finished general-purpose model.
+
 ## Release
 
-This environment has CPU-only PyTorch, no CUDA and three logical CPU cores. Full 1.7B QLoRA training cannot be run here. The scripts and tests can be maintained here, but the resulting adapter must be trained on external GPU hardware. Record the base revision, adapter hash, datasets, licenses, configuration, Git commit and held-out results. Never promote a checkpoint without regression testing.
+The development environment used for this work has CPU-only PyTorch, no CUDA and three logical CPU cores. Full 1.7B QLoRA training could not be run here. The scripts and tests are present, but resulting adapters must be trained on external GPU hardware. Record base revision, adapter hash, datasets, licenses, configuration, Git commit and held-out results. Never promote a checkpoint without regression testing.
