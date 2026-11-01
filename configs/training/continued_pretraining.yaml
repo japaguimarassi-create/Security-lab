@@ -1,5 +1,5 @@
 base_model: Qwen/Qwen3-1.7B-Base
-dataset_path: data/processed/pretrain.jsonl
+dataset_path: data/processed/mixture.jsonl
 output_dir: outputs/klod-continued-pretraining
 max_sequence_length: 2048
 max_steps: 1000
@@ -14,6 +14,7 @@ eval_steps: 200
 save_steps: 200
 save_total_limit: 3
 validation_ratio: 0.02
+load_in_4bit: true
 bf16: true
 fp16: false
 gradient_checkpointing: true

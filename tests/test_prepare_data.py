@@ -6,7 +6,9 @@ def test_prepare_data_filters_and_deduplicates(tmp_path):
     source = tmp_path / "source.jsonl"
     output = tmp_path / "clean.jsonl"
     dedupe = tmp_path / "dedupe.sqlite3"
-    text = ("Este documento descreve conceitos de inteligência artificial, modelos de linguagem e treinamento. " * 12)
+    text = " ".join(
+        f"conceito{i} apresenta explicacao{i} exemplo{i} aplicacao{i} " for i in range(50)
+    )
     row = {"text": text, "source_url": "https://example.org/a",
            "license": "CC-BY-4.0", "attribution": "Example"}
     source.write_text("\n".join(json.dumps(row) for _ in range(2)), encoding="utf-8")

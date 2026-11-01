@@ -2,22 +2,24 @@
 
 Klod é uma plataforma modular de linguagem: motor de inferência, API REST, memória, recuperação de conhecimento, planejamento estruturado e pipelines de treinamento.
 
-## Estado real
+## Estado
 
-O repositório contém o software e os pipelines. A fundação inicial é Qwen3-1.7B-Base (~1,7B parâmetros). Os pesos e adaptadores próprios do Klod só passam a existir depois da execução dos estágios de treinamento em GPU. O código não é apresentado como um modelo que já foi treinado do zero.
+O repositório contém o software e os pipelines. A fundação é Qwen3-1.7B-Base (~1,7B parâmetros). Os pesos/adaptadores do Klod ainda dependem de treinamento real em GPU; o código não é apresentado como um modelo pré-treinado do zero.
 
 ## Módulos
 
-- Inferência Qwen3 com carregamento opcional de adaptador PEFT.
-- Memória SQLite isolada por namespace.
-- Recuperação lexical FTS5 com URL, licença e atribuição preservadas.
-- Planejador JSON que valida ações por allowlist e não executa ações.
-- API REST autenticada para chat, memória, conhecimento e planos.
-- Treino em sequência: continuação de pré-treino, SFT apenas nas respostas do assistente, DPO e avaliação.
+- Motor Qwen3 com adaptador PEFT opcional.
+- Memória SQLite por namespace.
+- Conhecimento com pesquisa lexical FTS5 e proveniência.
+- Planejador JSON com lista permitida de ações; não executa ações.
+- API autenticada para chat, memória, conhecimento, planos e carga do modelo.
+- Pipeline de pré-treino contínuo, SFT com perda somente nas respostas, DPO e avaliação.
+- Mistura de corpus por pesos para equilibrar português, inglês, espanhol, código, ciências e documentação.
+- QLoRA 4-bit para reduzir memória de treino.
 
-## Instalação e API
+## Instalação
 
-Python 3.11+, PyTorch 2.6+ e Transformers 4.51+.
+Python 3.11+, PyTorch 2.6+, Transformers 4.51+.
 
 ```bash
 python -m venv .venv
@@ -27,12 +29,12 @@ cp .env.example .env
 uvicorn klod.api:app --host 127.0.0.1 --port 8000
 ```
 
-Configure uma chave forte em `.env`. Com `KLOD_LOAD_MODEL=false`, a API sobe sem carregar os pesos; a geração responde 503 até o modelo ser carregado. Consulte `docs/API.md`.
+Configure uma chave forte em `.env`. Com `KLOD_LOAD_MODEL=false`, a API inicia sem carregar pesos; a geração retorna HTTP 503 até carregar o modelo. Consulte `docs/API.md`.
 
 ## Treinamento
 
-Consulte `docs/TRAINING.md`. A sequência é importante: cada estágio reaproveita o adaptador gerado pelo anterior. O pipeline de dados seleciona documentos com proveniência e licença; FineWeb2 é importado em streaming com limite.
+Siga `docs/TRAINING.md` na ordem: importar e filtrar dados, construir mistura, pré-treinar LoRA, continuar no SFT, refinar no DPO e avaliar em dados separados. Checkpoints e corpora grandes ficam fora do Git.
 
-## Limites
+## Limites de hardware
 
-A máquina desta sessão tem PyTorch somente em CPU e três CPUs lógicas; não há CUDA nem Transformers instalados. Portanto, os módulos e scripts podem ser desenvolvidos e testados, mas o ajuste dos pesos 1.7B exige GPU externa. GitHub armazena código e configs, não pesos e corpora grandes. Um telefone Android não é uma plataforma prática para treinar esta LLM.
+O ambiente desta sessão tem PyTorch somente em CPU, sem CUDA e três CPUs lógicas. Não há GPU para treinar o modelo 1.7B aqui. QLoRA precisa de GPU NVIDIA e bitsandbytes; um smartphone não é uma máquina de treinamento adequada para esse modelo.

@@ -14,8 +14,7 @@ def acceptable(row, min_chars, max_chars):
     text = re.sub(r"\s+", " ", text).strip()
     url = urlparse(str(row.get("source_url", "")))
     words = text.split()
-    alpha_count = sum(char.isalpha() for char in text)
-    alpha_ratio = alpha_count / max(1, len(text))
+    alpha_ratio = sum(char.isalpha() for char in text) / max(1, len(text))
     if len(text) < min_chars or len(text) > max_chars:
         return None
     if url.scheme != "https" or not url.netloc:
@@ -43,6 +42,7 @@ def main():
     kept = rejected = duplicates = 0
     with sqlite3.connect(args.dedupe_db) as dedupe:
         dedupe.execute("CREATE TABLE IF NOT EXISTS hashes (digest TEXT PRIMARY KEY)")
+        dedupe.execute("DELETE FROM hashes")
         with args.input.open(encoding="utf-8") as source, args.output.open("w", encoding="utf-8") as target:
             for line in source:
                 try:

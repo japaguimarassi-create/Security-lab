@@ -2,11 +2,11 @@ import argparse
 import json
 from pathlib import Path
 import yaml
-import torch
 from datasets import Dataset
 from peft import LoraConfig, PeftModel
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoTokenizer
 from trl import SFTConfig, SFTTrainer
+from klod.training import load_training_model
 
 def read_rows(path: Path):
     rows = []
@@ -38,11 +38,10 @@ def main():
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     dataset = Dataset.from_list(read_rows(source))
-    split = dataset.train_test_split(
-        test_size=float(cfg.get("validation_ratio", 0.05)),
-        seed=int(cfg.get("seed", 42)))
-    model = AutoModelForCausalLM.from_pretrained(cfg["base_model"], torch_dtype="auto")
-    model.config.use_cache = False
+    split = dataset.train_test_split(test_size=float(cfg.get("validation_ratio", 0.05)),
+                                     seed=int(cfg.get("seed", 42)))
+    model, precision = load_training_model(
+        cfg["base_model"], bool(cfg.get("load_in_4bit", True)), True)
     previous_adapter = cfg.get("previous_adapter")
     peft_config = None
     if previous_adapter:
@@ -51,38 +50,34 @@ def main():
         model = PeftModel.from_pretrained(model, previous_adapter, is_trainable=True)
     else:
         lora = cfg["lora"]
-        peft_config = LoraConfig(
-            r=int(lora["rank"]), lora_alpha=int(lora["alpha"]),
-            lora_dropout=float(lora["dropout"]),
-            target_modules=lora["target_modules"], task_type="CAUSAL_LM")
-    use_cuda = torch.cuda.is_available()
-    bf16 = bool(cfg.get("bf16", True) and use_cuda and torch.cuda.is_bf16_supported())
+        peft_config = LoraConfig(r=int(lora["rank"]), lora_alpha=int(lora["alpha"]),
+            lora_dropout=float(lora["dropout"]), target_modules=lora["target_modules"],
+            task_type="CAUSAL_LM")
     train_args = SFTConfig(
-        output_dir=cfg["output_dir"],
-        max_length=int(cfg["max_sequence_length"]),
-        packing=bool(cfg.get("packing", False)),
-        assistant_only_loss=True,
-        max_steps=int(cfg["max_steps"]),
-        learning_rate=float(cfg["learning_rate"]),
+        output_dir=cfg["output_dir"], max_length=int(cfg["max_sequence_length"]),
+        packing=bool(cfg.get("packing", False)), assistant_only_loss=True,
+        max_steps=int(cfg["max_steps"]), learning_rate=float(cfg["learning_rate"]),
         warmup_ratio=float(cfg.get("warmup_ratio", 0.03)),
         per_device_train_batch_size=int(cfg["per_device_train_batch_size"]),
         per_device_eval_batch_size=int(cfg.get("per_device_eval_batch_size", 1)),
         gradient_accumulation_steps=int(cfg["gradient_accumulation_steps"]),
         eval_strategy="steps", eval_steps=int(cfg.get("eval_steps", 200)),
         save_strategy="steps", save_steps=int(cfg["save_steps"]),
-        save_total_limit=int(cfg["save_total_limit"]), bf16=bf16,
-        fp16=bool(cfg.get("fp16", False) and use_cuda and not bf16),
-        gradient_checkpointing=True, report_to="none",
-        seed=int(cfg.get("seed", 42)))
-    trainer = SFTTrainer(
-        model=model, args=train_args, train_dataset=split["train"],
-        eval_dataset=split["test"], processing_class=tokenizer,
-        peft_config=peft_config)
+        save_total_limit=int(cfg["save_total_limit"]),
+        bf16=precision["bf16"], fp16=bool(precision["cuda"] and not precision["bf16"]),
+        gradient_checkpointing=True, report_to="none", seed=int(cfg.get("seed", 42)))
+    trainer_kwargs = {
+        "model": model, "args": train_args, "train_dataset": split["train"],
+        "eval_dataset": split["test"], "processing_class": tokenizer
+    }
+    if peft_config is not None:
+        trainer_kwargs["peft_config"] = peft_config
+    trainer = SFTTrainer(**trainer_kwargs)
     trainer.train()
-    trainer.evaluate()
+    metrics = trainer.evaluate()
     trainer.save_model(cfg["output_dir"])
     tokenizer.save_pretrained(cfg["output_dir"])
-    print(f"SFT adapter/checkpoint saved to {cfg['output_dir']}")
+    print({"saved_to": cfg["output_dir"], "evaluation": metrics})
 
 if __name__ == "__main__":
     main()
