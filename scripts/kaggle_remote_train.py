@@ -3,6 +3,7 @@ import base64
 import copy
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -80,7 +81,7 @@ def repository_root():
         quiet=True,
         check=False,
     )
-    active_branch = branch.strip()
+    active_branch = branch.strip() or os.environ.get("GITHUB_REF_NAME", "")
     allowed = active_branch == "development" or re.fullmatch(
         r"training/(20|40|60|80|100)-percent", active_branch
     )
