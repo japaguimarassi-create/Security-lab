@@ -134,7 +134,7 @@ def main():
                 "teacher_model": cfg["teacher_model"],
                 "teacher_config_sha256": config_digest,
                 "messages": [
-                    {"role": "system", "content": system_prompt},
+                    {"role": "system", "content": GENERAL_SYSTEM_PROMPT},
                     {"role": "user", "content": seed["prompt"]},
                     {"role": "assistant", "content": answer},
                 ],
