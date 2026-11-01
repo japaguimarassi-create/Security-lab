@@ -121,3 +121,12 @@ The training scripts use 4-bit NF4 QLoRA and require an NVIDIA CUDA GPU with bit
 ## Release gate
 
 The source code and generated candidates are not trained model weights. No adapter is complete until a real GPU run saves it and separate held-out evaluation passes. Record the base revision, adapter hash, datasets, licenses, config digest, Git commit and domain metrics before promoting any checkpoint.
+
+
+## Blind evaluation against the teacher
+
+Do not evaluate on prompts used to generate training demonstrations. The repository includes eight separate hold-out prompts at `data/eval/distillation_heldout.jsonl`; expand this set with new tasks before making quality claims. After training the student adapter, run:
+
+    python scripts/evaluate_teacher_student.py
+
+The script loads the frozen teacher and trained student sequentially to limit VRAM usage, generates answers with the same system prompt and decoding settings, then randomizes which answer appears as A or B. The review file is `evaluation/distillation_blind.jsonl`. The answer mapping is stored separately in `evaluation/distillation_answer_key.json`; do not inspect that key until the blind review is finished. Record preference per row (`answer_a`, `answer_b` or `tie`) and review notes. This is a human comparison workflow, not an automatic proof that the student is better.
