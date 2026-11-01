@@ -116,11 +116,11 @@ python scripts/train_dpo.py
 python scripts/evaluate.py --model Qwen/Qwen3-1.7B-Base --adapter outputs/klod-dpo --dataset data/eval/heldout.jsonl
 ```
 
-The training scripts use 4-bit NF4 QLoRA and require an NVIDIA CUDA GPU with bitsandbytes support. A GPU with 16 GiB or more is a practical starting point, not a guarantee.
+The general QLoRA configurations use 4-bit NF4 and require an NVIDIA CUDA GPU with bitsandbytes. The staged GitHub workflow uses a separate CPU profile: FP32 LoRA, frozen base weights, rank 8, sequence length 512 and PyTorch AdamW. It does not use 4-bit quantization. See [GITHUB_TRAINING.md](GITHUB_TRAINING.md) for the free public-runner setup and its runtime limits.
 
 ## Release gate
 
-The source code and generated candidates are not trained model weights. No adapter is complete until a real GPU run saves it and separate held-out evaluation passes. Record the base revision, adapter hash, datasets, licenses, config digest, Git commit and domain metrics before promoting any checkpoint.
+The source code and generated candidates are not trained model weights. No adapter is complete until a real CPU or GPU training run saves it and separate held-out evaluation passes. Record the base revision, adapter hash, datasets, licenses, config digest, Git commit and domain metrics before promoting any checkpoint.
 
 
 ## Blind evaluation against the teacher
@@ -129,4 +129,4 @@ Do not evaluate on prompts used to generate training demonstrations. The reposit
 
     python scripts/evaluate_teacher_student.py
 
-The script loads the frozen teacher and trained student sequentially to limit VRAM usage, generates answers with the same system prompt and decoding settings, then randomizes which answer appears as A or B. The review file is `evaluation/distillation_blind.jsonl`. The answer mapping is stored separately in `evaluation/distillation_answer_key.json`; do not inspect that key until the blind review is finished. Record preference per row (`answer_a`, `answer_b` or `tie`) and review notes. This is a human comparison workflow, not an automatic proof that the student is better.
+The script loads the frozen teacher and trained student sequentially to limit RAM usage, generates answers with the same system prompt and decoding settings, then randomizes which answer appears as A or B. The review file is `evaluation/distillation_blind.jsonl`. The answer mapping is stored separately in `evaluation/distillation_answer_key.json`; do not inspect that key until the blind review is finished. Record preference per row (`answer_a`, `answer_b` or `tie`) and review notes. This is a human comparison workflow, not an automatic proof that the student is better.
