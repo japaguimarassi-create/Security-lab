@@ -1,14 +1,17 @@
-# KLOD 0.4 architecture
+# KLOD 0.5 architecture
 
-- **Language model:** Qwen3-1.7B foundation with optional PEFT adapter.
-- **Embedding model:** multilingual-e5-small, independent from the language model; loaded lazily and executed locally.
-- **Inference engine:** official model chat template, input/output bounds, generation lock and optional PEFT adapter.
-- **Memory:** namespace-isolated SQLite records with optional normalized embedding vectors.
-- **Knowledge:** source-attributed documents, overlapping passages, FTS5 lexical search and vector similarity.
-- **Rank fusion:** reciprocal-rank fusion combines lexical and semantic candidates.
-- **Specialists:** programming/Minecraft system prompts and default knowledge namespaces.
-- **Planner:** JSON proposals checked against caller allowlists; no game action is executed by the API.
-- **API:** authenticated REST endpoints; mods call it asynchronously.
-- **Training:** continued pretraining, assistant-only SFT, DPO and held-out evaluation.
+- General-purpose system prompt and open-domain fallback.
+- Conservative domain router with an explicit force-general option.
+- Optional modules for programming, science, mathematics, research, writing, education, creative work, business and Minecraft.
+- Qwen3-1.7B foundation model with optional PEFT adapter.
+- Multilingual E5 embeddings, loaded lazily and locally.
+- SQLite memory with optional semantic recall.
+- Source-attributed knowledge documents, overlapping passages, FTS5 and vector similarity.
+- Reciprocal-rank fusion for lexical and semantic retrieval.
+- Authenticated REST API; callers may inspect or override routing.
+- Structured action planner checked against caller allowlists; it does not execute actions.
+- Continued pretraining, assistant-only SFT, DPO and held-out evaluation pipeline.
 
-SQLite's brute-force vector scan is for small and medium local collections. Use a vector DB/pgvector for large indexes.
+All specialist modules share the same language model. They are prompt and retrieval configurations, not independent expert models. The domain router is a deterministic routing utility, not a second AI model.
+
+SQLite's brute-force vector scan is suitable for small and medium collections. Use a vector database for very large indexes.
