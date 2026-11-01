@@ -1,0 +1,195 @@
+name: KLOD Kaggle remote training
+
+on:
+  push:
+    branches:
+      - development
+    paths:
+      - "data/kaggle/run-request.json"
+      - ".github/workflows/klod-kaggle-remote.yml"
+      - "scripts/kaggle_github_runner.py"
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: "Generate teacher candidates or train from reviewed candidates"
+        required: true
+        type: choice
+        options:
+          - generate
+          - train
+      source_run_id:
+        description: "GitHub Actions run ID containing klod-teacher-candidates (train phase)"
+        required: false
+        type: string
+      approved_ids_json:
+        description: 'JSON array of reviewed IDs, e.g. ["pt-001","pt-002"]'
+        required: false
+        type: string
+      kaggle_username:
+        description: "Kaggle account username"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: klod-kaggle-training-\${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  remote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      KAGGLE_API_TOKEN: \${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME: \${{ vars.KAGGLE_USERNAME }}
+    steps:
+      - name: Checkout development
+        uses: actions/checkout@v4
+        with:
+          ref: development
+
+      - name: Determine phase and request values
+        id: request
+        shell: bash
+        env:
+          EVENT_NAME: \${{ github.event_name }}
+          INPUT_PHASE: \${{ inputs.phase }}
+          INPUT_USERNAME: \${{ inputs.kaggle_username }}
+          INPUT_SOURCE_RUN_ID: \${{ inputs.source_run_id }}
+          INPUT_APPROVED_IDS: \${{ inputs.approved_ids_json }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            phase="$INPUT_PHASE"
+            username="$INPUT_USERNAME"
+            source_run_id="$INPUT_SOURCE_RUN_ID"
+            approved_ids="$INPUT_APPROVED_IDS"
+          else
+            phase="$(python -c 'import json; print(json.load(open("data/kaggle/run-request.json"))["phase"])')"
+            username="\${KAGGLE_USERNAME:-}"
+            source_run_id="$(python -c 'import json; print(json.load(open("data/kaggle/run-request.json")).get("source_run_id", ""))')"
+            approved_ids="$(python -c 'import json; print(json.dumps(json.load(open("data/kaggle/run-request.json")).get("approved_ids", [])))')"
+          fi
+          echo "phase=$phase" >> "$GITHUB_OUTPUT"
+          echo "username=$username" >> "$GITHUB_OUTPUT"
+          echo "source_run_id=$source_run_id" >> "$GITHUB_OUTPUT"
+          echo "approved_ids=$approved_ids" >> "$GITHUB_OUTPUT"
+          echo "KAGGLE_USERNAME=$username" >> "$GITHUB_ENV"
+          if [ "$phase" = "setup" ]; then
+            echo "Setup-only request; no Kaggle job will be started."
+          elif [ "$phase" != "generate" ] && [ "$phase" != "train" ]; then
+            echo "Unknown phase: $phase" >&2
+            exit 1
+          fi
+
+      - name: Validate Kaggle credentials
+        if: steps.request.outputs.phase != 'setup'
+        shell: bash
+        env:
+          REQUESTED_KAGGLE_USERNAME: \${{ steps.request.outputs.username }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KAGGLE_API_TOKEN" ]; then
+            echo "KAGGLE_API_TOKEN repository secret is missing." >&2
+            echo "Add it under Settings > Secrets and variables > Actions." >&2
+            exit 1
+          fi
+          if [ -z "$REQUESTED_KAGGLE_USERNAME" ]; then
+            echo "Kaggle username is missing. Set the KAGGLE_USERNAME repository variable." >&2
+            exit 1
+          fi
+
+      - name: Set up Python
+        if: steps.request.outputs.phase != 'setup'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Kaggle CLI
+        if: steps.request.outputs.phase != 'setup'
+        run: python -m pip install --upgrade kaggle
+
+      - name: Validate Kaggle account access
+        if: steps.request.outputs.phase != 'setup'
+        run: kaggle kernels list --mine --page-size 1
+
+      - name: Download reviewed-source candidates
+        if: steps.request.outputs.phase == 'train'
+        uses: actions/download-artifact@v4
+        with:
+          name: klod-teacher-candidates
+          path: .klod-candidates
+          github-token: \${{ secrets.GITHUB_TOKEN }}
+          repository: \${{ github.repository }}
+          run-id: \${{ steps.request.outputs.source_run_id }}
+
+      - name: Generate candidates on Kaggle
+        if: steps.request.outputs.phase == 'generate'
+        run: |
+          python scripts/kaggle_github_runner.py generate \
+            --username "$KAGGLE_USERNAME" \
+            --output-dir output \
+            --workdir /tmp/klod-kaggle \
+            --max-wait-hours 5.5
+
+      - name: Train reviewed student on Kaggle
+        if: steps.request.outputs.phase == 'train'
+        env:
+          APPROVED_IDS_JSON: \${{ steps.request.outputs.approved_ids }}
+        run: |
+          python scripts/kaggle_github_runner.py train \
+            --username "$KAGGLE_USERNAME" \
+            --candidate-file .klod-candidates/teacher_candidates.jsonl \
+            --approved-ids-json "$APPROVED_IDS_JSON" \
+            --output-dir output \
+            --workdir /tmp/klod-kaggle \
+            --max-wait-hours 5.5
+
+      - name: Upload teacher candidates for human review
+        if: steps.request.outputs.phase == 'generate'
+        uses: actions/upload-artifact@v4
+        with:
+          name: klod-teacher-candidates
+          path: |
+            output/teacher_candidates.jsonl
+            output/teacher_run.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload trained model and report
+        if: steps.request.outputs.phase == 'train'
+        uses: actions/upload-artifact@v4
+        with:
+          name: klod-trained-model-and-report
+          path: output/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Write run summary
+        if: always()
+        shell: bash
+        env:
+          PHASE: \${{ steps.request.outputs.phase }}
+          SOURCE_RUN_ID: \${{ github.run_id }}
+          KERNEL_USERNAME: \${{ steps.request.outputs.username }}
+        run: |
+          {
+            echo "## KLOD Kaggle remote training"
+            echo ""
+            echo "- Phase: $PHASE"
+            echo "- GitHub run ID: $SOURCE_RUN_ID"
+            echo "- Kaggle account: $KERNEL_USERNAME"
+            if [ "$PHASE" = "generate" ]; then
+              echo "- Download artifact: klod-teacher-candidates"
+              echo "- Review every answer before approving IDs."
+              echo "- Use the run ID above as source_run_id for the train phase."
+            elif [ "$PHASE" = "train" ]; then
+              echo "- Download artifact: klod-trained-model-and-report"
+              echo "- The answer key for blind evaluation is excluded."
+            else
+              echo "- No Kaggle execution was requested."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
