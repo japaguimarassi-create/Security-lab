@@ -33,7 +33,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: klod-kaggle-training-\${{ github.ref }}
+  group: klod-kaggle-training-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -41,8 +41,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     env:
-      KAGGLE_API_TOKEN: \${{ secrets.KAGGLE_API_TOKEN }}
-      KAGGLE_USERNAME: \${{ vars.KAGGLE_USERNAME }}
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME: ${{ vars.KAGGLE_USERNAME }}
     steps:
       - name: Checkout development
         uses: actions/checkout@v4
@@ -53,11 +53,11 @@ jobs:
         id: request
         shell: bash
         env:
-          EVENT_NAME: \${{ github.event_name }}
-          INPUT_PHASE: \${{ inputs.phase }}
-          INPUT_USERNAME: \${{ inputs.kaggle_username }}
-          INPUT_SOURCE_RUN_ID: \${{ inputs.source_run_id }}
-          INPUT_APPROVED_IDS: \${{ inputs.approved_ids_json }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_PHASE: ${{ inputs.phase }}
+          INPUT_USERNAME: ${{ inputs.kaggle_username }}
+          INPUT_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          INPUT_APPROVED_IDS: ${{ inputs.approved_ids_json }}
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
@@ -67,7 +67,7 @@ jobs:
             approved_ids="$INPUT_APPROVED_IDS"
           else
             phase="$(python -c 'import json; print(json.load(open("data/kaggle/run-request.json"))["phase"])')"
-            username="\${KAGGLE_USERNAME:-}"
+            username="${KAGGLE_USERNAME:-}"
             source_run_id="$(python -c 'import json; print(json.load(open("data/kaggle/run-request.json")).get("source_run_id", ""))')"
             approved_ids="$(python -c 'import json; print(json.dumps(json.load(open("data/kaggle/run-request.json")).get("approved_ids", [])))')"
           fi
@@ -93,7 +93,7 @@ jobs:
         if: steps.request.outputs.phase != 'setup'
         shell: bash
         env:
-          REQUESTED_KAGGLE_USERNAME: \${{ steps.request.outputs.username }}
+          REQUESTED_KAGGLE_USERNAME: ${{ steps.request.outputs.username }}
         run: |
           set -euo pipefail
           if [ -z "$KAGGLE_API_TOKEN" ]; then
@@ -126,9 +126,9 @@ jobs:
         with:
           name: klod-teacher-candidates
           path: .klod-candidates
-          github-token: \${{ secrets.GITHUB_TOKEN }}
-          repository: \${{ github.repository }}
-          run-id: \${{ steps.request.outputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.request.outputs.source_run_id }}
 
       - name: Generate candidates on Kaggle
         if: steps.request.outputs.phase == 'generate'
@@ -142,7 +142,7 @@ jobs:
       - name: Train reviewed student on Kaggle
         if: steps.request.outputs.phase == 'train'
         env:
-          APPROVED_IDS_JSON: \${{ steps.request.outputs.approved_ids }}
+          APPROVED_IDS_JSON: ${{ steps.request.outputs.approved_ids }}
         run: |
           python scripts/kaggle_github_runner.py train \
             --username "$KAGGLE_USERNAME" \
@@ -176,9 +176,9 @@ jobs:
         if: always()
         shell: bash
         env:
-          PHASE: \${{ steps.request.outputs.phase }}
-          SOURCE_RUN_ID: \${{ github.run_id }}
-          KERNEL_USERNAME: \${{ steps.request.outputs.username }}
+          PHASE: ${{ steps.request.outputs.phase }}
+          SOURCE_RUN_ID: ${{ github.run_id }}
+          KERNEL_USERNAME: ${{ steps.request.outputs.username }}
         run: |
           {
             echo "## KLOD Kaggle remote training"
