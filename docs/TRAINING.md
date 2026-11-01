@@ -6,20 +6,20 @@ The current instruct checkpoint is a frozen teacher. It generates candidate answ
 
 Model roles:
 
-- Teacher: \`Qwen/Qwen3-1.7B\`, the current instruct model.
-- Student base: \`Qwen/Qwen3-1.7B-Base\`.
-- Student output adapter: \`outputs/klod-teacher-distilled\`.
+- Teacher: `Qwen/Qwen3-1.7B`, the current instruct model.
+- Student base: `Qwen/Qwen3-1.7B-Base`.
+- Student output adapter: `outputs/klod-teacher-distilled`.
 
-The starter curriculum in \`configs/distillation_prompts.jsonl\` has 48 Portuguese and English prompts spanning science, mathematics, programming, research, history, geography, humanities, writing, education, languages, business, data analysis, design, arts and general reasoning. Expand it before treating the result as a broadly capable model.
+The starter curriculum in `configs/distillation_prompts.jsonl` has 48 Portuguese and English prompts spanning science, mathematics, programming, research, history, geography, humanities, writing, education, languages, business, data analysis, design, arts and general reasoning. Expand it before treating the result as a broadly capable model.
 
 ### Teacher generation parameters
 
-Configured in \`configs/training/distillation.yaml\`:
+Configured in `configs/training/distillation.yaml`:
 
 | Parameter | Value |
 |---|---:|
-| Teacher model | \`Qwen/Qwen3-1.7B\` |
-| Student base | \`Qwen/Qwen3-1.7B-Base\` |
+| Teacher model | `Qwen/Qwen3-1.7B` |
+| Student base | `Qwen/Qwen3-1.7B-Base` |
 | Maximum input tokens | 4096 |
 | Maximum new tokens | 512 |
 | Temperature | 0.65 |
@@ -31,35 +31,35 @@ Configured in \`configs/training/distillation.yaml\`:
 
 Generate candidates:
 
-\`\`\`bash
+```bash
 pip install -e ".[training]"
 python scripts/training_preflight.py --stage teacher
 python scripts/generate_teacher_data.py
-\`\`\`
+```
 
-The script saves candidate conversations and provenance metadata at \`data/generated/teacher_candidates.jsonl\`. Automated checks detect empty answers, short/long answers, prompt echoes and excessive repetition. These checks cannot validate factual correctness; every candidate starts with \`approved: false\`.
+The script saves candidate conversations and provenance metadata at `data/generated/teacher_candidates.jsonl`. Automated checks detect empty answers, short/long answers, prompt echoes and excessive repetition. These checks cannot validate factual correctness; every candidate starts with `approved: false`.
 
 Review candidates interactively:
 
-\`\`\`bash
+```bash
 python scripts/review_teacher_data.py
-\`\`\`
+```
 
 Approve only responses that are factually sound, relevant, clear, in the requested language and safe to use as teaching examples. The review command records approvals, rejections and pending records. Export only approved responses:
 
-\`\`\`bash
+```bash
 python scripts/approve_teacher_data.py --minimum 20
-\`\`\`
+```
 
-The export writes \`data/processed/teacher_approved.jsonl\`. The student training config requires approval metadata; pending examples cannot enter the training run.
+The export writes `data/processed/teacher_approved.jsonl`. The student training config requires approval metadata; pending examples cannot enter the training run.
 
 ### Student QLoRA parameters
 
-Configured in \`configs/training/distillation_sft.yaml\`:
+Configured in `configs/training/distillation_sft.yaml`:
 
 | Parameter | Value |
 |---|---:|
-| Base model | \`Qwen/Qwen3-1.7B-Base\` |
+| Base model | `Qwen/Qwen3-1.7B-Base` |
 | LoRA rank | 16 |
 | LoRA alpha | 32 |
 | LoRA dropout | 0.05 |
@@ -76,45 +76,45 @@ Configured in \`configs/training/distillation_sft.yaml\`:
 
 Run preflight and SFT:
 
-\`\`\`bash
+```bash
 python scripts/training_preflight.py --stage sft --config configs/training/distillation_sft.yaml
 python scripts/train_sft.py --config configs/training/distillation_sft.yaml
-\`\`\`
+```
 
-The adapter is saved to \`outputs/klod-teacher-distilled\`. Serve it with:
+The adapter is saved to `outputs/klod-teacher-distilled`. Serve it with:
 
-\`\`\`bash
+```bash
 KLOD_MODEL_ID=Qwen/Qwen3-1.7B-Base
 KLOD_ADAPTER_PATH=outputs/klod-teacher-distilled
-\`\`\`
+```
 
 These values are a starter experiment, not proven optimal hyperparameters. The 48 prompts are not enough for general-purpose mastery. Grow the dataset to thousands of diverse, reviewed examples, protect a held-out set from contamination, evaluate every major domain and check for regressions against the teacher.
 
 ## Other training data
 
-Continued-pretraining JSONL uses \`text\`, \`source_url\`, \`license\`, \`language\` and \`attribution\`.
+Continued-pretraining JSONL uses `text`, `source_url`, `license`, `language` and `attribution`.
 
-SFT JSONL uses \`messages\`, an array of role/content messages. The final message must be from the assistant.
+SFT JSONL uses `messages`, an array of role/content messages. The final message must be from the assistant.
 
-DPO JSONL uses \`prompt\`, \`chosen\` and \`rejected\`; each pair must be reviewed.
+DPO JSONL uses `prompt`, `chosen` and `rejected`; each pair must be reviewed.
 
 For continued pretraining, prepare separate, licensed and quality-filtered corpora for Portuguese, English, Spanish, other languages, code, mathematics/science, humanities, general instruction/conversation and technical documents. Initial proportions are experimental and should be balanced using measured tokens and held-out evaluations.
 
-\`\`\`bash
+```bash
 python scripts/build_mixture.py --config configs/data_mixture.yaml --output data/processed/mixture.jsonl --max-documents 500000
 python scripts/training_preflight.py --stage pretrain
 python scripts/train_pretrain.py
-\`\`\`
+```
 
 ## Full training path
 
 After SFT, prepare at least 100 human-reviewed preference pairs for DPO:
 
-\`\`\`bash
+```bash
 python scripts/training_preflight.py --stage dpo
 python scripts/train_dpo.py
 python scripts/evaluate.py --model Qwen/Qwen3-1.7B-Base --adapter outputs/klod-dpo --dataset data/eval/heldout.jsonl
-\`\`\`
+```
 
 The training scripts use 4-bit NF4 QLoRA and require an NVIDIA CUDA GPU with bitsandbytes support. A GPU with 16 GiB or more is a practical starting point, not a guarantee.
 
