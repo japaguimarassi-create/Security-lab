@@ -17,6 +17,29 @@ The default GitHub-hosted runner is CPU-only. GitHub-managed GPU runners are an 
 
 If a compatible runner is later attached to the repository, set the repository Actions variable `KLOD_GPU_RUNNER` to the runner label. Do not set it to a CPU runner.
 
+## Native GitHub GPU runner setup
+
+The current repository is owned by a personal account. To use a GitHub-hosted GPU runner without an external compute service:
+
+1. Create or use a GitHub organization and transfer this repository to it.
+2. Put that organization on GitHub Team or GitHub Enterprise Cloud.
+3. In the organization, open **Settings → Actions → Runners → New runner → New GitHub-hosted runner**.
+4. Select a Linux GPU-powered runner. GitHub's published Linux GPU configuration is 4 vCPU, 28 GB RAM, one NVIDIA Tesla T4 with 16 GB VRAM and 176 GB SSD.
+5. Give the runner a name/label and allow this repository to use its runner group.
+6. In the repository, open **Settings → Secrets and variables → Actions → Variables** and create `KLOD_GPU_RUNNER` with that exact runner label.
+
+The workflow already reads `vars.KLOD_GPU_RUNNER` and checks `nvidia-smi` before installing training libraries. If the variable is missing or the selected image does not expose an NVIDIA GPU, the training job stops before model training.
+
+### Cost and billing
+
+The current published Linux GPU runner rate is **US$0.052 per minute** (US$3.12 per hour). The GitHub Team list price is **US$4 per user per month**. Larger runners are metered while jobs run; public repositories are not exempt from larger-runner billing. Actual billing and any eligible included compute value must be checked in the organization's Billing settings before starting a run.
+
+The current workflow gives a training job a six-hour timeout. At the published Linux GPU rate, six hours would cost up to **US$18.72 for that one job** if it used the entire timeout. This is a ceiling from the configured timeout, not a prediction of actual training duration or cost. Set an Actions spending limit and have the account's billing owner approve the setup before enabling GPU jobs.
+
+### Artifact visibility
+
+This repository is currently public. Anyone with repository read access can download its GitHub Actions artifacts. Do not upload private datasets, personal information, secrets or model weights that must remain private while the repository is public. Change the repository to private before running a training cycle whose adapter artifacts or teacher candidates are confidential.
+
 ## Request lifecycle
 
 The workflow is triggered by a commit changing `data/github/run-request.json` on `development` or one of the five training branches. It can also be started manually from Actions.
