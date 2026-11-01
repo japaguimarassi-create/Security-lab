@@ -1,4 +1,5 @@
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -77,6 +78,11 @@ def test_generated_training_cell_marks_exact_approved_ids(tmp_path, monkeypatch)
     ).encode("utf-8")
     cells = build_training_notebook(load_notebook(), candidate_bytes, approved_ids)
     generated_code = "".join(cells[8]["source"])
+
+    stage_config = ROOT / "configs" / "training" / "stages" / "stage_20.yaml"
+    target_config = tmp_path / "configs" / "training" / "stages"
+    target_config.mkdir(parents=True)
+    shutil.copy2(stage_config, target_config / stage_config.name)
 
     monkeypatch.chdir(tmp_path)
     exec(compile(generated_code, "<generated-approval-cell>", "exec"), {})
