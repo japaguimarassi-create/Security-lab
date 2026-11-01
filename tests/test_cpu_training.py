@@ -50,6 +50,7 @@ def test_teacher_and_evaluation_configs_are_cpu_bounded():
 def test_cpu_workflow_does_not_require_gpu_runner():
     workflow = (ROOT / ".github/workflows/klod-github-training.yml").read_text()
     assert "runs-on: ubuntu-latest" in workflow
+    assert "ref: ${{ github.sha }}" in workflow
     assert "KLOD_FORCE_CPU: \"1\"" in workflow
     assert "torch==2.6.0+cpu" in workflow
     assert "nvidia-smi" not in workflow
