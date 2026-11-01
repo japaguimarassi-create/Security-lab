@@ -70,11 +70,12 @@ def test_approval_validation_rejects_quality_failed_candidate():
 
 
 def test_generated_training_cell_marks_exact_approved_ids(tmp_path, monkeypatch):
-    candidates = make_candidates(2)
+    candidates = make_candidates(21)
+    approved_ids = [item["id"] for item in candidates if item["id"] != "pt-001"]
     candidate_bytes = "".join(
         json.dumps(item, ensure_ascii=False) + "\n" for item in candidates
     ).encode("utf-8")
-    cells = build_training_notebook(load_notebook(), candidate_bytes, ["pt-002"])
+    cells = build_training_notebook(load_notebook(), candidate_bytes, approved_ids)
     generated_code = "".join(cells[8]["source"])
 
     monkeypatch.chdir(tmp_path)
@@ -87,7 +88,9 @@ def test_generated_training_cell_marks_exact_approved_ids(tmp_path, monkeypatch)
         .splitlines()
     ]
     approved = [item["id"] for item in saved if item.get("approved") is True]
-    assert approved == ["pt-002"]
+    assert approved == approved_ids
+    assert len(approved) == 20
+    assert "pt-001" not in approved
 
 
 def test_workflow_uses_development_request_file_and_private_token_secret():
@@ -96,6 +99,7 @@ def test_workflow_uses_development_request_file_and_private_token_secret():
     assert "push" in workflow["on"]
     assert "development" in workflow["on"]["push"]["branches"]
     assert "data/kaggle/run-request.json" in workflow["on"]["push"]["paths"]
-    assert workflow["jobs"]["remote"]["env"]["KAGGLE_API_TOKEN"] == "\${{ secrets.KAGGLE_API_TOKEN }}"
+    expected_expression = chr(36) + "{{ secrets.KAGGLE_API_TOKEN }}"
+    assert workflow["jobs"]["remote"]["env"]["KAGGLE_API_TOKEN"] == expected_expression
     request = json.loads((ROOT / "data" / "kaggle" / "run-request.json").read_text())
     assert request["phase"] == "setup"
