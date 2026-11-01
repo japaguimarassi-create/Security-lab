@@ -32,7 +32,7 @@ def main():
             ],
         })
     dataset.write_text(
-        "".join(json.dumps(row, ensure_ascii=False) + "\\n" for row in rows),
+        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
         encoding="utf-8",
     )
 
@@ -112,7 +112,7 @@ def main():
     if not payload["optimizer_step_completed"]:
         raise SystemExit("The CPU SFTTrainer did not complete an optimizer step.")
     (adapter / "cpu-smoke.json").write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\\n",
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     print(json.dumps(payload, ensure_ascii=False, indent=2))
