@@ -37,7 +37,7 @@ On `development`, change `data/github/run-request.json` to:
 }
 ```
 
-Commit it. The workflow downloads the public Qwen3-1.7B-Base checkpoint, attaches LoRA, performs one real forward/backward/optimizer step on a tiny synthetic string and saves a disposable smoke-test adapter. It reports peak resident memory. This is a hardware compatibility test only; it is not one of the five training stages.
+Commit it. The workflow downloads the public Qwen3-1.7B-Base checkpoint and invokes the same `scripts/train_sft.py` used by the five stages. It builds a 20-row synthetic approved dataset, runs one real SFTTrainer optimizer step, evaluates the tiny validation split, saves a disposable LoRA adapter and reports peak resident memory. This is a hardware compatibility test only; it is not one of the five training stages.
 
 After the test, reset the request to:
 
