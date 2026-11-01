@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 from pathlib import Path
 
 import yaml
@@ -31,6 +32,16 @@ def main():
     dataset = Dataset.from_list(rows)
     split = dataset.train_test_split(test_size=float(cfg.get("validation_ratio", 0.05)),
                                      seed=int(cfg.get("seed", 42)))
+    train_batch_size = int(cfg["per_device_train_batch_size"])
+    gradient_accumulation = int(cfg["gradient_accumulation_steps"])
+    steps_per_epoch = math.ceil(len(split["train"]) / (train_batch_size * gradient_accumulation))
+    configured_max_steps = int(cfg.get("max_steps", -1))
+    total_steps = configured_max_steps if configured_max_steps > 0 else math.ceil(
+        steps_per_epoch * float(cfg.get("num_train_epochs", 3))
+    )
+    warmup_steps = int(cfg.get("warmup_steps", math.ceil(
+        total_steps * float(cfg.get("warmup_ratio", 0.03))
+    )))
     model, precision = load_training_model(
         cfg["base_model"], bool(cfg.get("load_in_4bit", True)), True)
     previous_adapter = cfg.get("previous_adapter")
@@ -50,7 +61,7 @@ def main():
         max_steps=int(cfg.get("max_steps", -1)),
         num_train_epochs=float(cfg.get("num_train_epochs", 3)),
         learning_rate=float(cfg["learning_rate"]),
-        warmup_ratio=float(cfg.get("warmup_ratio", 0.03)),
+        warmup_steps=warmup_steps,
         per_device_train_batch_size=int(cfg["per_device_train_batch_size"]),
         per_device_eval_batch_size=int(cfg.get("per_device_eval_batch_size", 1)),
         gradient_accumulation_steps=int(cfg["gradient_accumulation_steps"]),
@@ -81,6 +92,8 @@ def main():
         "train_examples": len(split["train"]),
         "validation_examples": len(split["test"]),
         "global_step": int(trainer.state.global_step),
+        "planned_optimizer_steps": total_steps,
+        "warmup_steps": warmup_steps,
         "precision": precision,
         "evaluation_metrics": metrics,
     }
