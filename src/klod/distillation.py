@@ -46,12 +46,12 @@ def answer_quality_issue(prompt: str, answer: str, min_chars: int = 40,
     if not isinstance(answer, str) or not answer.strip():
         return "empty_answer"
     value = answer.strip()
+    if value.casefold() == prompt.strip().casefold():
+        return "prompt_echo"
     if len(value) < min_chars:
         return "answer_too_short"
     if len(value) > max_chars:
         return "answer_too_long"
-    if value.casefold() == prompt.strip().casefold():
-        return "prompt_echo"
     tokens = re.findall(r"\w+", value.casefold())
     if len(tokens) >= 40 and len(set(tokens)) / len(tokens) < 0.22:
         return "excessive_repetition"
