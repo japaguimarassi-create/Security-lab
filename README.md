@@ -68,7 +68,7 @@ The 48 prompts validate the pipeline; they are not enough to produce broad exper
 
 ## Treinamento no Kaggle
 
-Consulte [docs/TREINAMENTO_KAGGLE.md](docs/TREINAMENTO_KAGGLE.md) para configurar o notebook, ativar internet e GPU, aprovar demonstrações e recuperar os resultados. O notebook está em [notebooks/KLOD_Kaggle_Teacher_Distillation.ipynb](notebooks/KLOD_Kaggle_Teacher_Distillation.ipynb). Para automatizar o envio e as execuções remotas diretamente pelo GitHub Actions, consulte [docs/KAGGLE_AUTOMATION.md](docs/KAGGLE_AUTOMATION.md). O workflow é [`.github/workflows/klod-kaggle-remote.yml`](.github/workflows/klod-kaggle-remote.yml), e o coordenador local para Termux continua em [scripts/kaggle_remote_train.py](scripts/kaggle_remote_train.py).
+Consulte [docs/TREINAMENTO_KAGGLE.md](docs/TREINAMENTO_KAGGLE.md) para configurar o notebook, ativar internet e GPU, aprovar demonstrações e recuperar os resultados. O notebook está em [notebooks/KLOD_Kaggle_Teacher_Distillation.ipynb](notebooks/KLOD_Kaggle_Teacher_Distillation.ipynb). O treinamento remoto agora é dividido em cinco branches encadeadas: `training/20-percent`, `training/40-percent`, `training/60-percent`, `training/80-percent` e `training/100-percent`. Cada uma continua os pesos do adaptador anterior por mais uma época. O workflow GitHub Actions + Kaggle está em [`.github/workflows/klod-kaggle-remote.yml`](.github/workflows/klod-kaggle-remote.yml); instruções completas em [docs/KAGGLE_AUTOMATION.md](docs/KAGGLE_AUTOMATION.md).
 
 ## Important training distinction
 
