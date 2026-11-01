@@ -1,4 +1,3 @@
 {
-  "phase": "setup",
-  "note": "Ready for CPU SFTTrainer smoke test."
+  "phase": "cpu_smoke"
 }
