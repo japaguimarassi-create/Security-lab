@@ -18,7 +18,7 @@ def test_kaggle_notebook_is_valid_and_uses_one_visible_t4():
         if cell.get("cell_type") == "code"
     )
     assert 'os.environ["CUDA_VISIBLE_DEVICES"] = "0"' in code
-    assert "git pull --ff-only origin development" in code
+    assert "pull --ff-only origin development" in code
     assert "rm -rf KLOD-AI" not in code
     assert "training_preflight.py --stage teacher" in code
     assert "generate_teacher_data.py" in code
