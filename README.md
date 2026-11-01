@@ -68,7 +68,7 @@ The 48 prompts validate the pipeline; they are not enough to produce broad exper
 
 ## Treinamento no Kaggle
 
-Consulte [docs/TREINAMENTO_KAGGLE.md](docs/TREINAMENTO_KAGGLE.md) para configurar o notebook, ativar internet e GPU, aprovar demonstrações e recuperar os resultados. O notebook está em [notebooks/KLOD_Kaggle_Teacher_Distillation.ipynb](notebooks/KLOD_Kaggle_Teacher_Distillation.ipynb). Para automatizar o envio, as duas execuções remotas, a revisão no Termux e o download dos arquivos, consulte [docs/KAGGLE_AUTOMATION.md](docs/KAGGLE_AUTOMATION.md) e execute [scripts/kaggle_remote_train.py](scripts/kaggle_remote_train.py).
+Consulte [docs/TREINAMENTO_KAGGLE.md](docs/TREINAMENTO_KAGGLE.md) para configurar o notebook, ativar internet e GPU, aprovar demonstrações e recuperar os resultados. O notebook está em [notebooks/KLOD_Kaggle_Teacher_Distillation.ipynb](notebooks/KLOD_Kaggle_Teacher_Distillation.ipynb). Para automatizar o envio e as execuções remotas diretamente pelo GitHub Actions, consulte [docs/KAGGLE_AUTOMATION.md](docs/KAGGLE_AUTOMATION.md). O workflow é [`.github/workflows/klod-kaggle-remote.yml`](.github/workflows/klod-kaggle-remote.yml), e o coordenador local para Termux continua em [scripts/kaggle_remote_train.py](scripts/kaggle_remote_train.py).
 
 ## Important training distinction
 
