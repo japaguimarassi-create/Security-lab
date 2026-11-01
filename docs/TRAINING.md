@@ -2,7 +2,7 @@
 
 ## Teacher-student distillation (KLOD 0.6)
 
-The current instruct checkpoint is used as a frozen teacher. It generates candidate answers for a broad curriculum. A separate student starts from Qwen3-1.7B-Base and learns from reviewed teacher demonstrations through a new LoRA adapter. The teacher is not optimized and its weights are not copied into the student; the student receives gradients during SFT.
+The current instruct checkpoint is a frozen teacher. It generates candidate answers for a broad curriculum. A separate student starts from Qwen3-1.7B-Base and learns from reviewed teacher demonstrations through a new LoRA adapter. The teacher is not optimized and its weights are not copied into the student; the student receives gradients during SFT.
 
 Model roles:
 
@@ -25,11 +25,11 @@ Configured in \`configs/training/distillation.yaml\`:
 | Temperature | 0.65 |
 | Top-p | 0.90 |
 | Repetition penalty | 1.08 |
-| Maximum starter prompts | 48 |
+| Starter prompts | 48 |
 | Seed | 42 |
 | 4-bit teacher loading | Disabled |
 
-Generate the candidates:
+Generate candidates:
 
 \`\`\`bash
 pip install -e ".[training]"
@@ -37,15 +37,21 @@ python scripts/training_preflight.py --stage teacher
 python scripts/generate_teacher_data.py
 \`\`\`
 
-The script stores candidate conversations and provenance metadata at \`data/generated/teacher_candidates.jsonl\`. Automated checks detect empty answers, short/long answers, prompt echoes and excessive repetition. These checks cannot validate factual correctness, so every candidate begins with \`approved: false\`.
+The script saves candidate conversations and provenance metadata at \`data/generated/teacher_candidates.jsonl\`. Automated checks detect empty answers, short/long answers, prompt echoes and excessive repetition. These checks cannot validate factual correctness; every candidate starts with \`approved: false\`.
 
-Review candidate rows. Change \`approved\` to \`true\` only after checking the answer for accuracy, relevance, clarity, language, code correctness and unsupported claims. Keep rejected examples unapproved. Then export:
+Review candidates interactively:
+
+\`\`\`bash
+python scripts/review_teacher_data.py
+\`\`\`
+
+Approve only responses that are factually sound, relevant, clear, in the requested language and safe to use as teaching examples. The review command records approvals, rejections and pending records. Export only approved responses:
 
 \`\`\`bash
 python scripts/approve_teacher_data.py --minimum 20
 \`\`\`
 
-The export step includes only explicitly approved rows that passed the automated checks. It writes \`data/processed/teacher_approved.jsonl\`. The student training config requires approval metadata; pending examples cannot enter the student training run.
+The export writes \`data/processed/teacher_approved.jsonl\`. The student training config requires approval metadata; pending examples cannot enter the training run.
 
 ### Student QLoRA parameters
 
@@ -59,42 +65,40 @@ Configured in \`configs/training/distillation_sft.yaml\`:
 | LoRA dropout | 0.05 |
 | Learning rate | 0.00002 |
 | Maximum sequence length | 2048 |
-| Maximum steps | 300 |
+| Epochs | 5 |
 | Per-device batch size | 1 |
 | Gradient accumulation | 16 |
 | Effective batch size | 16 |
-| Validation ratio | 5% |
+| Validation ratio | 10% |
 | Quantization | NF4 4-bit |
 | Gradient checkpointing | Enabled |
 | Seed | 42 |
 
-Run the validation gate and SFT:
+Run preflight and SFT:
 
 \`\`\`bash
 python scripts/training_preflight.py --stage sft --config configs/training/distillation_sft.yaml
 python scripts/train_sft.py --config configs/training/distillation_sft.yaml
 \`\`\`
 
-The adapter will be saved to \`outputs/klod-teacher-distilled\`. To serve it, configure:
+The adapter is saved to \`outputs/klod-teacher-distilled\`. Serve it with:
 
 \`\`\`bash
 KLOD_MODEL_ID=Qwen/Qwen3-1.7B-Base
 KLOD_ADAPTER_PATH=outputs/klod-teacher-distilled
 \`\`\`
 
-The values above are a controlled starter experiment, not a claim of optimal hyperparameters. The 48 seed prompts are not enough for general-purpose mastery. Grow the dataset to thousands of diverse, reviewed examples, protect a held-out set from contamination, evaluate every major domain and check that the student does not regress against the teacher.
+These values are a starter experiment, not proven optimal hyperparameters. The 48 prompts are not enough for general-purpose mastery. Grow the dataset to thousands of diverse, reviewed examples, protect a held-out set from contamination, evaluate every major domain and check for regressions against the teacher.
 
-## Other dataset formats
+## Other training data
 
-Continued pretraining JSONL uses \`text\`, \`source_url\`, \`license\`, \`language\` and \`attribution\`.
+Continued-pretraining JSONL uses \`text\`, \`source_url\`, \`license\`, \`language\` and \`attribution\`.
 
-SFT JSONL uses \`messages\`, an array of role/content messages. The final message must be from the assistant. Assistant-only loss is used for conversational instruction data.
+SFT JSONL uses \`messages\`, an array of role/content messages. The final message must be from the assistant.
 
-DPO JSONL uses \`prompt\`, \`chosen\` and \`rejected\`. Each preference pair must be reviewed.
+DPO JSONL uses \`prompt\`, \`chosen\` and \`rejected\`; each pair must be reviewed.
 
-## Build a broad continued-pretraining corpus
-
-Prepare separate, licensed and quality-filtered corpora for Portuguese, English, Spanish, other languages, code, mathematics/science, humanities, general instruction/conversation and technical documents. The initial mixture is an experiment: Portuguese 30%, English 25%, Spanish 5%, other languages 5%, code 10%, mathematics/science 10%, humanities 5%, instruction/conversation 5% and technical documents 5%.
+For continued pretraining, prepare separate, licensed and quality-filtered corpora for Portuguese, English, Spanish, other languages, code, mathematics/science, humanities, general instruction/conversation and technical documents. Initial proportions are experimental and should be balanced using measured tokens and held-out evaluations.
 
 \`\`\`bash
 python scripts/build_mixture.py --config configs/data_mixture.yaml --output data/processed/mixture.jsonl --max-documents 500000
@@ -104,7 +108,7 @@ python scripts/train_pretrain.py
 
 ## Full training path
 
-After continued pretraining and SFT, prepare at least 100 human-reviewed preference pairs for DPO:
+After SFT, prepare at least 100 human-reviewed preference pairs for DPO:
 
 \`\`\`bash
 python scripts/training_preflight.py --stage dpo
@@ -112,7 +116,7 @@ python scripts/train_dpo.py
 python scripts/evaluate.py --model Qwen/Qwen3-1.7B-Base --adapter outputs/klod-dpo --dataset data/eval/heldout.jsonl
 \`\`\`
 
-The training scripts use 4-bit NF4 QLoRA and require an NVIDIA CUDA GPU with bitsandbytes support. A GPU with 16 GiB or more is a practical starting point, not a guarantee. Reduce sequence lengths and batch size if memory is insufficient.
+The training scripts use 4-bit NF4 QLoRA and require an NVIDIA CUDA GPU with bitsandbytes support. A GPU with 16 GiB or more is a practical starting point, not a guarantee.
 
 ## Release gate
 
