@@ -94,13 +94,17 @@ def run_checkpoint(model_id: str, adapter: str | None,
     tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=False)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-    cuda_available = torch.cuda.is_available()
+    force_cpu = __import__("os").environ.get("KLOD_FORCE_CPU") == "1"
+    cuda_available = torch.cuda.is_available() and not force_cpu
+    if force_cpu or not cuda_available:
+        torch.set_num_threads(max(1, int(__import__("os").environ.get("KLOD_CPU_THREADS", "4"))))
     bf16_supported = cuda_available and torch.cuda.is_bf16_supported()
     dtype_name = inference_dtype_name(cuda_available, bf16_supported)
     model = AutoModelForCausalLM.from_pretrained(
         model_id, torch_dtype=getattr(torch, dtype_name),
-        device_map=cfg.get("device_map", "auto"),
-        low_cpu_mem_usage=True, trust_remote_code=False)
+        device_map="cpu" if not cuda_available else cfg.get("device_map", "auto"),
+        low_cpu_mem_usage=True, trust_remote_code=False,
+        **({"attn_implementation": "eager"} if not cuda_available else {}))
     if adapter:
         adapter_path = Path(adapter)
         if not adapter_path.is_dir():
@@ -137,7 +141,7 @@ def main():
     seed = int(cfg.get("seed", 42))
     import torch
     torch.manual_seed(seed)
-    if torch.cuda.is_available():
+    if torch.cuda.is_available() and __import__("os").environ.get("KLOD_FORCE_CPU") != "1":
         torch.cuda.manual_seed_all(seed)
 
     print("Loading frozen teacher:", cfg["teacher_model"])
