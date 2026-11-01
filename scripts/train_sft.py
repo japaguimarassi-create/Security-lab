@@ -21,6 +21,8 @@ def read_rows(path: Path, require_approval: bool = False):
                 row = json.loads(line)
             except json.JSONDecodeError as exc:
                 raise ValueError(f"{path}:{line_number}: invalid JSON") from exc
+            if not isinstance(row, dict):
+                raise ValueError(f"{path}:{line_number}: expected a JSON object")
             if require_approval and row.get("approved") is not True:
                 raise ValueError(f"{path}:{line_number}: teacher example has not been approved")
             if require_approval and row.get("quality_passed") is not True:
@@ -28,6 +30,8 @@ def read_rows(path: Path, require_approval: bool = False):
             messages = row.get("messages")
             if not isinstance(messages, list) or len(messages) < 2:
                 raise ValueError(f"{path}:{line_number}: expected messages array")
+            if any(not isinstance(item, dict) for item in messages):
+                raise ValueError(f"{path}:{line_number}: messages must be JSON objects")
             if messages[-1].get("role") != "assistant":
                 raise ValueError(f"{path}:{line_number}: final message must be assistant")
             if any(item.get("role") not in {"system", "user", "assistant"}
