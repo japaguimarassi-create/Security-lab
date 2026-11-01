@@ -2,6 +2,7 @@ base_model: Qwen/Qwen3-1.7B-Base
 previous_adapter: null
 dataset_path: data/processed/teacher_approved.jsonl
 require_approval: true
+minimum_examples: 20
 output_dir: outputs/klod-teacher-distilled
 max_sequence_length: 2048
 num_train_epochs: 5
