@@ -4,6 +4,10 @@ on:
     branches: [main, development]
   pull_request:
     branches: [main]
+concurrency:
+  group: klod-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   tests:
     runs-on: ubuntu-latest
