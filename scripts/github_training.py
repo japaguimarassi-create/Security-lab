@@ -32,12 +32,15 @@ def _is_run_id(value):
 
 def validate_request(request, branch):
     phase = request.get("phase")
-    if phase not in ("setup", "generate", "train_stage"):
+    if phase not in ("setup", "generate", "train_stage", "cpu_smoke"):
         raise TrainingRequestError("phase must be setup, generate or train_stage.")
 
     stage = request.get("stage_percent")
     match = re.fullmatch(r"training/(20|40|60|80|100)-percent", branch or "")
     branch_stage = int(match.group(1)) if match else None
+
+    if phase == "cpu_smoke" and branch != "development":
+        raise TrainingRequestError("CPU smoke test must run from development.")
 
     if phase == "generate":
         if branch != "development":
