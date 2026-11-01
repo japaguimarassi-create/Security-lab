@@ -66,7 +66,11 @@ The training config rejects examples that have not passed the automated screen a
 
 The 48 prompts validate the pipeline; they are not enough to produce broad expert-level ability. Expand the curriculum substantially, use diverse reviewed examples, reserve a separate evaluation set and compare the student against the teacher before promoting a checkpoint.
 
-## Treinamento no GitHub\n\nConsulte [docs/GITHUB_TRAINING.md](docs/GITHUB_TRAINING.md) para a execução por GitHub Actions, revisão dos exemplos, sequência das cinco etapas e recuperação dos artefatos. O fluxo não usa Kaggle nem Colab. O treino Qwen3-1.7B/QLoRA exige um runner com GPU NVIDIA; em runner CPU, o workflow encerra com erro explícito e não declara treinamento.\n\n## Important training distinction
+## Treinamento no GitHub
+
+Consulte [docs/GITHUB_TRAINING.md](docs/GITHUB_TRAINING.md) para a execução por GitHub Actions, revisão dos exemplos, sequência das cinco etapas e recuperação dos artefatos. O fluxo não usa Kaggle nem Colab. O treino Qwen3-1.7B/QLoRA exige um runner com GPU NVIDIA; em runner CPU, o workflow encerra com erro explícito e não declara treinamento.
+
+## Important training distinction
 
 The teacher is frozen during generation; it does not update student weights directly. It supplies demonstrations. The student learns through supervised fine-tuning of its LoRA adapter. No trained adapter is included in GitHub, and no GPU training is claimed until the commands have actually run and evaluation has passed.
 
@@ -77,4 +81,3 @@ See `docs/TRAINING.md`, `docs/ARCHITECTURE.md`, `docs/API.md` and `docs/SPECIALI
 
 A separate eight-question held-out set is provided at `data/eval/distillation_heldout.jsonl`. It is not included in the training mixture or teacher prompt seeds. After training the adapter, run `python scripts/evaluate_teacher_student.py`. The tool generates both models' answers for the same held-out prompts, randomizes A/B order, and writes the mapping to `evaluation/distillation_answer_key.json`. Keep the answer key private until blind human review is complete. Do not train on the held-out prompts or their answers.
 
-Colab notebook: [Open KLOD Teacher Distillation](https://colab.research.google.com/github/japaguimarassi-create/Security-lab/blob/development/notebooks/KLOD_Teacher_Distillation.ipynb).
