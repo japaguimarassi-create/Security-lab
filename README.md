@@ -1,40 +1,46 @@
-# KLOD AI
+# KLOD AI 0.4.0
 
-Klod é uma plataforma modular de linguagem: motor de inferência, API REST, memória, recuperação de conhecimento, planejamento estruturado e pipelines de treinamento.
+Klod is a modular multilingual LLM platform with a REST API, persistent memory, semantic knowledge retrieval, specialist prompts and staged training.
 
-## Estado
+## Modules
 
-O repositório contém o software e os pipelines. A fundação é Qwen3-1.7B-Base (~1,7B parâmetros). Os pesos/adaptadores do Klod ainda dependem de treinamento real em GPU; o código não é apresentado como um modelo pré-treinado do zero.
+- Qwen3 1.7B inference engine with optional PEFT adapter.
+- SQLite memory with lexical + semantic recall.
+- Hybrid knowledge retrieval: FTS5 + multilingual embeddings + reciprocal-rank fusion.
+- Programming and Minecraft specialist modules.
+- Structured planner with caller-provided action allowlists.
+- Continued pretraining, SFT, DPO and evaluation pipeline.
 
-## Módulos
+## Quick start
 
-- Motor Qwen3 com adaptador PEFT opcional.
-- Memória SQLite por namespace.
-- Conhecimento com pesquisa lexical FTS5 e proveniência.
-- Planejador JSON com lista permitida de ações; não executa ações.
-- API autenticada para chat, memória, conhecimento, planos e carga do modelo.
-- Pipeline de pré-treino contínuo, SFT com perda somente nas respostas, DPO e avaliação.
-- Mistura de corpus por pesos para equilibrar português, inglês, espanhol, código, ciências e documentação.
-- QLoRA 4-bit para reduzir memória de treino.
-
-## Instalação
-
-Python 3.11+, PyTorch 2.6+, Transformers 4.51+.
+Python 3.11+:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[model,data,training,test]"
+pip install -e ".[model,embeddings]"
 cp .env.example .env
 uvicorn klod.api:app --host 127.0.0.1 --port 8000
 ```
 
-Configure uma chave forte em `.env`. Com `KLOD_LOAD_MODEL=false`, a API inicia sem carregar pesos; a geração retorna HTTP 503 até carregar o modelo. Consulte `docs/API.md`.
+Set a strong `KLOD_API_KEY`. Keep `KLOD_LOAD_MODEL=false` until the device has enough memory; generation returns 503 until model loading is enabled. The embedding model loads lazily on first semantic use and runs locally. Set `KLOD_SEMANTIC_SEARCH=false` to disable it.
 
-## Treinamento
+## Specialists
 
-Siga `docs/TRAINING.md` na ordem: importar e filtrar dados, construir mistura, pré-treinar LoRA, continuar no SFT, refinar no DPO e avaliar em dados separados. Checkpoints e corpora grandes ficam fora do Git.
+- `POST /v1/specialists/programming/chat`
+- `POST /v1/specialists/minecraft/chat`
+- `GET /v1/specialists`
 
-## Limites de hardware
+These are prompt and retrieval modules sharing one LLM; they are not separately trained model weights.
 
-O ambiente desta sessão tem PyTorch somente em CPU, sem CUDA e três CPUs lógicas. Não há GPU para treinar o modelo 1.7B aqui. QLoRA precisa de GPU NVIDIA e bitsandbytes; um smartphone não é uma máquina de treinamento adequada para esse modelo.
+## Semantic knowledge
+
+Documents keep source URL, license and attribution. They are split into passages and indexed with `intfloat/multilingual-e5-small`. The API performs hybrid lexical/semantic retrieval and returns source metadata. Local SQLite vector scanning suits small corpora; use a vector database as the corpus grows.
+
+The E5-small embedding model supports 94 languages, uses 384-dimensional vectors and is MIT licensed. It is separate from Klod's 1.7B language model. It is downloaded from Hugging Face on first use.
+
+## Training status
+
+This repository includes training code, configs and a Colab notebook. No KLOD-specific 1.7B adapter is claimed until an actual GPU run creates and evaluates it. A phone or ordinary GitHub CPU runner is not adequate training infrastructure.
+
+See `docs/API.md`, `docs/SPECIALISTS.md`, `docs/TRAINING.md` and `docs/ARCHITECTURE.md`.

@@ -1,8 +1,14 @@
-# Klod modules
+# KLOD 0.4 architecture
 
-- **Inference engine**: loads the selected base checkpoint and optional PEFT adapter, applies the model's official chat template, limits context and serializes generation access.
-- **Memory**: namespace-isolated SQLite key/value memory, intended for conversations or individual game entities.
-- **Knowledge**: SQLite FTS5 keyword retrieval with source URL, license and attribution retained. This is lexical retrieval, not embedding-based semantic search.
-- **Planner**: requests a JSON action plan and validates every action against the caller's allowlist. It never executes game actions.
-- **API**: authenticated REST interface. Minecraft mods and apps call this service; their own code validates and performs in-game effects.
-- **Training**: continued pretraining, supervised fine tuning, preference optimization and held-out evaluation. Training is separate from inference.
+- **Language model:** Qwen3-1.7B foundation with optional PEFT adapter.
+- **Embedding model:** multilingual-e5-small, independent from the language model; loaded lazily and executed locally.
+- **Inference engine:** official model chat template, input/output bounds, generation lock and optional PEFT adapter.
+- **Memory:** namespace-isolated SQLite records with optional normalized embedding vectors.
+- **Knowledge:** source-attributed documents, overlapping passages, FTS5 lexical search and vector similarity.
+- **Rank fusion:** reciprocal-rank fusion combines lexical and semantic candidates.
+- **Specialists:** programming/Minecraft system prompts and default knowledge namespaces.
+- **Planner:** JSON proposals checked against caller allowlists; no game action is executed by the API.
+- **API:** authenticated REST endpoints; mods call it asynchronously.
+- **Training:** continued pretraining, assistant-only SFT, DPO and held-out evaluation.
+
+SQLite's brute-force vector scan is for small and medium local collections. Use a vector DB/pgvector for large indexes.
