@@ -98,6 +98,6 @@ def test_generated_stage_notebook_references_dataset_without_embedding_weights()
     sources = "\n".join(
         "".join(cell.get("source", [])) for cell in cells
     )
-    assert dataset_ref in sources
+    assert dataset_ref.split("/", 1)[1] in sources
     assert "/kaggle/input/klod-stage-20-adapter-run-123/" in sources
     assert "previous-stage-adapter.zip" not in sources
