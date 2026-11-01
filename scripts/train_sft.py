@@ -101,8 +101,23 @@ def main():
     metrics = trainer.evaluate()
     trainer.save_model(cfg["output_dir"])
     tokenizer.save_pretrained(cfg["output_dir"])
-    print({"saved_to": cfg["output_dir"], "training_examples": len(rows),
-           "evaluation": metrics})
+    metrics_payload = {
+        "base_model": cfg["base_model"],
+        "adapter_path": cfg["output_dir"],
+        "training_examples": len(rows),
+        "train_examples": len(split["train"]),
+        "validation_examples": len(split["test"]),
+        "global_step": int(trainer.state.global_step),
+        "precision": precision,
+        "evaluation_metrics": metrics,
+    }
+    metrics_path = Path(cfg["output_dir"]) / "training_metrics.json"
+    metrics_path.write_text(
+        json.dumps(metrics_payload, ensure_ascii=False, indent=2, default=str) + "\\n",
+        encoding="utf-8",
+    )
+    print({"saved_to": cfg["output_dir"], "metrics_file": str(metrics_path),
+           "training_examples": len(rows), "evaluation": metrics})
 
 
 if __name__ == "__main__":
