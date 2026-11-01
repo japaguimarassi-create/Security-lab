@@ -1,46 +1,62 @@
-# KLOD AI 0.4.0
+# KLOD AI 0.5.0
 
-Klod is a modular multilingual LLM platform with a REST API, persistent memory, semantic knowledge retrieval, specialist prompts and staged training.
+KLOD is a general-purpose multilingual AI runtime. It is designed for open-domain conversation and work across everyday questions, programming, science, mathematics, research, education, writing, creative development, business and specialized technical subjects. Minecraft is one optional specialist, not the identity or limit of the system.
 
-## Modules
+## Core capabilities
 
-- Qwen3 1.7B inference engine with optional PEFT adapter.
-- SQLite memory with lexical + semantic recall.
+- One persistent general-purpose assistant prompt and a shared language-model runtime.
+- Conservative automatic domain routing with a general fallback for ambiguous or unfamiliar topics.
+- Optional specialist prompts for programming, science, mathematics, research, writing, education, creative development, business and Minecraft.
+- SQLite persistent memory with lexical and optional semantic recall.
 - Hybrid knowledge retrieval: FTS5 + multilingual embeddings + reciprocal-rank fusion.
-- Programming and Minecraft specialist modules.
-- Structured planner with caller-provided action allowlists.
+- Source/license/attribution metadata returned with retrieved answers.
+- Structured action planner with caller-provided allowlists; plans are not executed automatically.
 - Continued pretraining, SFT, DPO and evaluation pipeline.
 
 ## Quick start
 
 Python 3.11+:
 
-```bash
+\`\`\`bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[model,embeddings]"
 cp .env.example .env
 uvicorn klod.api:app --host 127.0.0.1 --port 8000
-```
+\`\`\`
 
-Set a strong `KLOD_API_KEY`. Keep `KLOD_LOAD_MODEL=false` until the device has enough memory; generation returns 503 until model loading is enabled. The embedding model loads lazily on first semantic use and runs locally. Set `KLOD_SEMANTIC_SEARCH=false` to disable it.
+Set a strong \`KLOD_API_KEY\`. Keep \`KLOD_LOAD_MODEL=false\` until the device has enough memory; generation returns 503 until the model is loaded. The embedding model loads lazily on first semantic use and runs locally. Set \`KLOD_SEMANTIC_SEARCH=false\` to disable it.
 
-## Specialists
+## General chat and automatic routing
 
-- `POST /v1/specialists/programming/chat`
-- `POST /v1/specialists/minecraft/chat`
-- `GET /v1/specialists`
+Use \`POST /v1/chat/completions\` for every subject. The router may select a focused prompt when the user's message clearly matches a domain. Unclear requests stay with the general assistant.
 
-These are prompt and retrieval modules sharing one LLM; they are not separately trained model weights.
+\`\`\`json
+{
+  "messages": [{"role": "user", "content": "Explique a relatividade geral."}],
+  "auto_route": true
+}
+\`\`\`
+
+Use \`"auto_route": false\` to force the general assistant, or set \`"specialist": "science"\` to choose a specialist explicitly. The response includes \`specialist\` and \`routing\` metadata. Check \`POST /v1/route\` to inspect a routing decision before sending a request.
+
+## Optional specialist modules
+
+Available modules: \`general\`, \`programming\`, \`science\`, \`mathematics\`, \`research\`, \`writing\`, \`education\`, \`creative\`, \`business\` and \`minecraft\`.
+
+- \`GET /v1/specialists\`
+- \`POST /v1/specialists/{name}/chat\`
+
+All modules use the same foundation language model. They are prompts and optional knowledge namespaces, not separate trained model weights.
 
 ## Semantic knowledge
 
-Documents keep source URL, license and attribution. They are split into passages and indexed with `intfloat/multilingual-e5-small`. The API performs hybrid lexical/semantic retrieval and returns source metadata. Local SQLite vector scanning suits small corpora; use a vector database as the corpus grows.
+Documents keep source URL, license and attribution. They are split into passages and indexed with \`intfloat/multilingual-e5-small\`. The API performs hybrid lexical/semantic retrieval and returns source metadata. Local SQLite vector scanning suits small corpora; use a vector database as the corpus grows.
 
-The E5-small embedding model supports 94 languages, uses 384-dimensional vectors and is MIT licensed. It is separate from Klod's 1.7B language model. It is downloaded from Hugging Face on first use.
+The E5-small embedding model supports multilingual retrieval and is separate from KLOD's language model. It is downloaded from Hugging Face on first use.
 
 ## Training status
 
-This repository includes training code, configs and a Colab notebook. No KLOD-specific 1.7B adapter is claimed until an actual GPU run creates and evaluates it. A phone or ordinary GitHub CPU runner is not adequate training infrastructure.
+This repository includes training code, configs and a Colab notebook. No KLOD-specific language-model adapter is claimed until an actual GPU run creates and evaluates it. The current runtime uses an external Qwen3 foundation model; adding specialist prompts does not create separately trained expert models.
 
-See `docs/API.md`, `docs/SPECIALISTS.md`, `docs/TRAINING.md` and `docs/ARCHITECTURE.md`.
+See \`docs/API.md\`, \`docs/SPECIALISTS.md\`, \`docs/TRAINING.md\` and \`docs/ARCHITECTURE.md\`.
