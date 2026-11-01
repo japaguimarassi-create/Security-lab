@@ -3,11 +3,13 @@ previous_adapter: outputs/previous-stage-adapter
 dataset_path: data/processed/teacher_approved.jsonl
 require_approval: true
 minimum_examples: 20
+require_cuda: false
+optim: adamw_torch
 stage_percent: 100
 stage_index: 5
 stage_total: 5
 output_dir: outputs/klod-stage-100
-max_sequence_length: 2048
+max_sequence_length: 512
 num_train_epochs: 1
 max_steps: -1
 learning_rate: 0.00002
@@ -19,13 +21,13 @@ validation_ratio: 0.10
 eval_strategy: epoch
 save_strategy: epoch
 save_total_limit: 2
-load_in_4bit: true
-bf16: true
+load_in_4bit: false
+bf16: false
 fp16: false
 packing: false
 seed: 46
 lora:
-  rank: 16
-  alpha: 32
+  rank: 8
+  alpha: 16
   dropout: 0.05
   target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
