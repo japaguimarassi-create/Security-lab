@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI):
         await run_in_threadpool(engine.load)
     yield
 
-app = FastAPI(title=APP_NAME, version=__version__, lifespan=lifespan)
+app = FastAPI(title=APP_NAME, version=__version__)
 
 async def require_key(x_api_key: str | None = Header(default=None)):
     if API_KEY.startswith("replace-") or not x_api_key or not hmac.compare_digest(x_api_key, API_KEY):
@@ -164,7 +164,8 @@ async def _run_chat(request: ChatRequest, specialist_name: str | None = None):
         if namespace is None:
             namespace = specialist.default_knowledge_namespace
         messages.insert(0, {"role": "system", "content": specialist.system_prompt})
-    query_vector = await run_in_threadpool(_query_embedding, query)
+    needs_retrieval = bool(request.memory_namespace or namespace)
+    query_vector = await run_in_threadpool(_query_embedding, query) if needs_retrieval else None
     messages, sources, _ = await run_in_threadpool(
         _augment_context, messages, request.memory_namespace, namespace,
         query, request.knowledge_limit, query_vector)
