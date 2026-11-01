@@ -500,7 +500,7 @@ def main():
         raise RunnerError("--max-wait-hours must be greater than 0 and at most 12.")
 
     root = repository_root()
-    username = (args.username or input("Kaggle username: ")).strip()
+    username = (args.username or input("Kaggle username: ")).strip().lower()
     if not re.fullmatch(r"[A-Za-z0-9_-]{2,64}", username):
         raise RunnerError("Invalid Kaggle username format.")
 
