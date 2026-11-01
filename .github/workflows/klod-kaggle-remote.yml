@@ -6,8 +6,6 @@ on:
       - development
     paths:
       - "data/kaggle/run-request.json"
-      - ".github/workflows/klod-kaggle-remote.yml"
-      - "scripts/kaggle_github_runner.py"
   workflow_dispatch:
     inputs:
       phase:
@@ -78,6 +76,12 @@ jobs:
           echo "source_run_id=$source_run_id" >> "$GITHUB_OUTPUT"
           echo "approved_ids=$approved_ids" >> "$GITHUB_OUTPUT"
           echo "KAGGLE_USERNAME=$username" >> "$GITHUB_ENV"
+          if [ "$phase" = "train" ]; then
+            if [ -z "$source_run_id" ] || [ -z "$approved_ids" ]; then
+              echo "Train phase requires source_run_id and approved_ids." >&2
+              exit 1
+            fi
+          fi
           if [ "$phase" = "setup" ]; then
             echo "Setup-only request; no Kaggle job will be started."
           elif [ "$phase" != "generate" ] && [ "$phase" != "train" ]; then
