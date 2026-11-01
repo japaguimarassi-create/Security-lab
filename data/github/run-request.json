@@ -1,4 +1,4 @@
 {
   "phase": "cpu_smoke",
-  "note": "Verify complete train_sft.py and SFTTrainer path on the free runner."
+  "note": "Run SFTTrainer after converting warmup_ratio to warmup_steps."
 }
