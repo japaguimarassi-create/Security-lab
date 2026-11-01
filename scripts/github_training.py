@@ -88,8 +88,8 @@ def validate_command(args):
             for key in ("phase", "stage_percent", "teacher_run_id",
                         "previous_stage_run_id", "previous_stage_percent"):
                 value = result[key]
-                output.write(f"{key}={'' if value is None else value}\\n")
-            output.write("approved_ids=" + json.dumps(result["approved_ids"], separators=(",", ":")) + "\\n")
+                output.write(f"{key}={'' if value is None else value}\n")
+            output.write("approved_ids=" + json.dumps(result["approved_ids"], separators=(",", ":")) + "\n")
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
@@ -163,7 +163,7 @@ def prepare_stage(args):
         if row["approved"]:
             row["review_notes"] = "Explicitly approved in the GitHub stage request."
     output.write_text(
-        "".join(json.dumps(row, ensure_ascii=False) + "\\n" for row in candidates),
+        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in candidates),
         encoding="utf-8",
     )
 
@@ -215,7 +215,7 @@ def record_generation(args):
         "candidate_sha256": hashlib.sha256(Path(args.candidate_file).read_bytes()).hexdigest(),
         "minimum_approved_examples": 20,
     }
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
@@ -254,16 +254,16 @@ def package_stage(args):
         "answer_key_published": False,
     }
     metadata_path = output_dir / f"stage-{stage}-metadata.json"
-    metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+    metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     report_path = output_dir / f"RELATORIO_KLOD_{stage}pct.md"
     report_path.write_text(
-        f"# KLOD training stage {stage}%\\n\\n"
-        f"- Stage: {stage // 20}/5\\n"
-        f"- GitHub run: {metadata['github_run_id']}\\n"
-        f"- Approved examples: {metadata['training_metrics'].get('training_examples', 'not reported')}\\n"
-        f"- Adapter: {adapter_zip.name}\\n"
-        f"- Blind evaluation: {evaluation.name}\\n"
-        "- The teacher/student answer key is intentionally excluded from public artifacts.\\n",
+        f"# KLOD training stage {stage}%\n\n"
+        f"- Stage: {stage // 20}/5\n"
+        f"- GitHub run: {metadata['github_run_id']}\n"
+        f"- Approved examples: {metadata['training_metrics'].get('training_examples', 'not reported')}\n"
+        f"- Adapter: {adapter_zip.name}\n"
+        f"- Blind evaluation: {evaluation.name}\n"
+        "- The teacher/student answer key is intentionally excluded from public artifacts.\n",
         encoding="utf-8",
     )
     results_zip = output_dir / f"klod-stage-{stage}-results.zip"
