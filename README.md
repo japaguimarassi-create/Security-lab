@@ -71,3 +71,10 @@ The 48 prompts validate the pipeline; they are not enough to produce broad exper
 The teacher is frozen during generation; it does not update student weights directly. It supplies demonstrations. The student learns through supervised fine-tuning of its LoRA adapter. No trained adapter is included in GitHub, and no GPU training is claimed until the commands have actually run and evaluation has passed.
 
 See \`docs/TRAINING.md\`, \`docs/ARCHITECTURE.md\`, \`docs/API.md\` and \`docs/SPECIALISTS.md\`.
+
+
+## Blinded teacher/student evaluation
+
+A separate eight-question held-out set is provided at `data/eval/distillation_heldout.jsonl`. It is not included in the training mixture or teacher prompt seeds. After training the adapter, run `python scripts/evaluate_teacher_student.py`. The tool generates both models' answers for the same held-out prompts, randomizes A/B order, and writes the mapping to `evaluation/distillation_answer_key.json`. Keep the answer key private until blind human review is complete. Do not train on the held-out prompts or their answers.
+
+Colab notebook: [Open KLOD Teacher Distillation](https://colab.research.google.com/github/japaguimarassi-create/Security-lab/blob/development/notebooks/KLOD_Teacher_Distillation.ipynb).
