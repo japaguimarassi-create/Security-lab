@@ -18,37 +18,94 @@ REQUIREMENTS = {
 }
 
 
+def validate_record(item: object, stage: str | None = None,
+                    require_approval: bool = False) -> str | None:
+    if not isinstance(item, dict):
+        return "expected a JSON object"
+    required = REQUIREMENTS[stage][2] if stage else set()
+    missing = sorted(required.difference(item))
+    if missing:
+        return "missing fields: " + ", ".join(missing)
+    if require_approval and (
+        item.get("approved") is not True or item.get("quality_passed") is not True
+    ):
+        return "teacher example is not both approved and quality-screened"
+    if stage == "teacher":
+        for field in ("prompt", "domain", "language"):
+            if not isinstance(item.get(field), str) or not item[field].strip():
+                return f"{field} must be non-empty text"
+    elif stage == "pretrain":
+        if not isinstance(item.get("text"), str) or not item["text"].strip():
+            return "text must be non-empty"
+    elif stage == "sft":
+        messages = item.get("messages")
+        if not isinstance(messages, list) or len(messages) < 2:
+            return "messages must contain at least two turns"
+        for index, message in enumerate(messages):
+            if not isinstance(message, dict):
+                return f"messages[{index}] must be an object"
+            if message.get("role") not in {"system", "user", "assistant"}:
+                return f"messages[{index}] has an unsupported role"
+            if not isinstance(message.get("content"), str) or not message["content"].strip():
+                return f"messages[{index}].content must be non-empty text"
+        if messages[-1].get("role") != "assistant":
+            return "the final message must have role assistant"
+    elif stage == "dpo":
+        for field in ("prompt", "chosen", "rejected"):
+            if not isinstance(item.get(field), str) or not item[field].strip():
+                return f"{field} must be non-empty text"
+        if item["chosen"].strip() == item["rejected"].strip():
+            return "chosen and rejected responses must differ"
+    return None
+
+
 def inspect_dataset(path: Path, required_fields: set[str], minimum: int,
-                    require_approval: bool = False):
+                    require_approval: bool = False, stage: str | None = None):
     if not path.is_file():
         return {"exists": False, "rows": 0, "valid": False,
                 "reason": f"Missing {path}"}
     rows = valid = invalid = unapproved = 0
+    invalid_examples = []
     with path.open(encoding="utf-8") as source:
-        for line in source:
+        for line_number, line in enumerate(source, 1):
             if not line.strip():
                 continue
             rows += 1
             try:
                 item = json.loads(line)
-                fields_ok = required_fields.issubset(item.keys())
-                approval_ok = (
-                    not require_approval
-                    or (item.get("approved") is True and item.get("quality_passed") is True)
-                )
-                if fields_ok and approval_ok:
+                reason = validate_record(item, stage, require_approval)
+                if reason is None and not required_fields.issubset(item):
+                    reason = "required fields are missing"
+                if reason is None:
                     valid += 1
                 else:
                     invalid += 1
-                    if fields_ok and not approval_ok:
+                    if require_approval and isinstance(item, dict) and (
+                        item.get("approved") is not True or item.get("quality_passed") is not True
+                    ):
                         unapproved += 1
-            except (ValueError, TypeError):
+                    if len(invalid_examples) < 5:
+                        invalid_examples.append({
+                            "line": line_number,
+                            "reason": reason,
+                        })
+            except json.JSONDecodeError:
                 invalid += 1
+                if len(invalid_examples) < 5:
+                    invalid_examples.append({
+                        "line": line_number,
+                        "reason": "invalid JSON",
+                    })
     return {
-        "exists": True, "rows": rows, "valid_rows": valid,
-        "invalid_rows": invalid, "unapproved_rows": unapproved,
+        "exists": True,
+        "rows": rows,
+        "valid_rows": valid,
+        "invalid_rows": invalid,
+        "unapproved_rows": unapproved,
+        "invalid_examples": invalid_examples,
         "valid": valid >= minimum and invalid == 0,
-        "minimum_rows": minimum, "approval_required": require_approval,
+        "minimum_rows": minimum,
+        "approval_required": require_approval,
     }
 
 
@@ -62,9 +119,12 @@ def inspect_gpu():
                 "torch": torch.__version__}
     device = torch.cuda.get_device_properties(0)
     return {
-        "available": True, "name": device.name,
+        "available": True,
+        "name": device.name,
         "vram_gib": round(device.total_memory / (1024 ** 3), 2),
-        "bf16": bool(torch.cuda.is_bf16_supported()), "torch": torch.__version__,
+        "bf16": bool(torch.cuda.is_bf16_supported()),
+        "torch": torch.__version__,
+        "visible_gpus": torch.cuda.device_count(),
     }
 
 
@@ -80,14 +140,19 @@ def main():
     if not config_path.is_file():
         raise SystemExit(f"Training config not found: {config_path}")
     cfg = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    if not isinstance(cfg, dict):
+        raise SystemExit(f"Training config must be a YAML object: {config_path}")
     configured_dataset = (
         cfg.get("seed_prompts_path", default_dataset)
         if args.stage == "teacher"
         else cfg.get("dataset_path", default_dataset)
     )
     dataset = inspect_dataset(
-        args.dataset or Path(configured_dataset), fields, minimum,
+        args.dataset or Path(configured_dataset),
+        fields,
+        minimum,
         require_approval=bool(cfg.get("require_approval", False)),
+        stage=args.stage,
     )
     gpu = inspect_gpu()
     quantized = bool(cfg.get("load_in_4bit", False))
@@ -105,10 +170,14 @@ def main():
         issues.append("Dataset is missing, malformed, unapproved or below the minimum row count.")
 
     result = {
-        "stage": args.stage, "dataset": dataset, "gpu": gpu,
-        "qlora_4bit": quantized, "bitsandbytes_installed": bnb_available,
+        "stage": args.stage,
+        "dataset": dataset,
+        "gpu": gpu,
+        "qlora_4bit": quantized,
+        "bitsandbytes_installed": bnb_available,
         "teacher_model": cfg.get("teacher_model") if args.stage == "teacher" else None,
-        "ready": not issues, "issues": issues,
+        "ready": not issues,
+        "issues": issues,
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))
     if issues:
