@@ -81,7 +81,7 @@ python scripts/training_preflight.py --stage sft --config configs/training/disti
 python scripts/train_sft.py --config configs/training/distillation_sft.yaml
 ```
 
-The adapter is saved to `outputs/klod-teacher-distilled`. Serve it with:
+The adapter is saved to `outputs/klod-teacher-distilled`. The trainer also writes `training_metrics.json` with the base model, data counts, precision and evaluation metrics. On GPUs without BF16 support (including Kaggle T4), generation and evaluation automatically use FP16; BF16 is selected only when the active CUDA device reports support. Serve the adapter with:
 
 ```bash
 KLOD_MODEL_ID=Qwen/Qwen3-1.7B-Base
