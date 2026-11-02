@@ -81,19 +81,31 @@ gpu-mesh-worker</pre>
         <div class="panel-head"><div><div class="eyebrow">TASK PLANNER</div><h2>Planejar trabalho</h2></div><span class="pill">Sem execução remota</span></div>
         <form id="job-form" class="stack">
           <label>Tipo de tarefa<select id="workload">
-            <option value="independent-render-frames">Quadros independentes de renderização</option>
-            <option value="batch-inference">Inferência em lote</option>
-            <option value="dataset-transform">Transformação de dataset</option>
-            <option value="evaluation">Avaliação</option>
+            <option value="gpu-matmul">Multiplicação de matrizes CUDA</option>
+            <option value="gpu-mandelbrot">Renderização Mandelbrot CUDA</option>
+            <option value="cpu-sha256">SHA-256 em CPU</option>
           </select></label>
+          <div id="matmul-fields" class="form-grid">
+            <label>Tamanho da matriz<input id="matrix-size" type="number" value="512" min="64" max="4096" step="64"></label>
+            <label>Semente<input id="matrix-seed" type="number" value="42" min="0" max="2147483647"></label>
+          </div>
+          <div id="mandelbrot-fields" class="form-grid hidden">
+            <label>Largura<input id="fractal-width" type="number" value="1024" min="128" max="2048" step="128"></label>
+            <label>Altura<input id="fractal-height" type="number" value="1024" min="128" max="2048" step="128"></label>
+            <label>Iterações máximas<input id="fractal-iterations" type="number" value="128" min="16" max="256"></label>
+          </div>
+          <div id="hash-fields" class="stack hidden">
+            <label>Texto de entrada<textarea id="hash-text" rows="3" maxlength="65536">GPU Mesh distributed work</textarea></label>
+            <label>Iterações SHA-256<input id="hash-iterations" type="number" value="10000" min="1" max="250000"></label>
+          </div>
           <div class="form-grid">
-            <label>Quantidade de tarefas<input id="task-count" type="number" value="4" min="1" max="1000" required></label>
-            <label>VRAM mínima por GPU (GiB)<input id="min-vram" type="number" value="4" min="0" max="512" step="0.5"></label>
+            <label>Quantidade de tarefas<input id="task-count" type="number" value="2" min="1" max="1000" required></label>
+            <label>VRAM mínima por GPU (GiB)<input id="min-vram" type="number" value="1" min="0" max="512" step="0.25"></label>
             <label>CPU por tarefa<input id="cpu-per-task" type="number" value="1" min="0.1" max="256" step="0.1"></label>
             <label>RAM por tarefa (GiB)<input id="ram-per-task" type="number" value="2" min="0.1" max="4096" step="0.1"></label>
           </div>
-          <label class="check-row"><input id="requires-gpu" type="checkbox" checked> Esta tarefa precisa de GPU</label>
-          <button class="button primary" type="submit">Gerar plano de distribuição</button>
+          <label class="check-row"><input id="requires-gpu" type="checkbox" checked disabled> Requisito calculado automaticamente pelo workload</label>
+          <button class="button primary" type="submit">Executar tarefas distribuídas</button>
         </form>
         <p id="job-message" class="message" role="status"></p>
       </section>
