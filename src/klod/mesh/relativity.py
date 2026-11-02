@@ -40,6 +40,9 @@ The Lie derivative along X is L_X T; for the metric,
 (L_X g)_(mu nu) = nabla_mu X_nu + nabla_nu X_mu.
 
 3. CURVATURE
+The Ricci tensor is the contraction of the Riemann curvature tensor;
+the Ricci scalar is its metric trace; the Einstein tensor is
+G_(mu nu) = R_(mu nu) - (1/2) R g_(mu nu).
 R^rho_(sigma mu nu) = partial_mu Gamma^rho_(nu sigma)
 - partial_nu Gamma^rho_(mu sigma)
 + Gamma^rho_(mu lambda) Gamma^lambda_(nu sigma)
