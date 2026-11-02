@@ -482,7 +482,8 @@ def complete_worker_task(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if result.get("completed") or result.get("cancelled"):
         registry.release_capacity(task_id)
-    return result
+    _refresh_job_state(result["job_id"], result["owner_id"])
+    return {key: value for key, value in result.items() if key not in ("owner_id",)}
 
 
 @router.post("/workers/{node_id}/tasks/{task_id}/fail")
@@ -500,7 +501,8 @@ def fail_worker_task(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if result["state"] in ("failed", "cancelled"):
         registry.release_capacity(task_id)
-    return result
+    _refresh_job_state(result["job_id"], result["owner_id"])
+    return {key: value for key, value in result.items() if key not in ("owner_id",)}
 
 
 @router.get("/jobs/{job_id}/results")
@@ -522,6 +524,8 @@ def jobs(limit: int = 50, user: dict[str, str] = Depends(require_user)):
     items = job_store.list(user["user_id"], limit)
     for item in items:
         item.update(task_store.summary(item["job_id"], user["user_id"]))
+        if item.get("queued_tasks", 0) and item["execution_status"] == "completed":
+            item["execution_status"] = "partially_completed"
     return {"jobs": items}
 
 
@@ -530,7 +534,7 @@ def job(job_id: str, user: dict[str, str] = Depends(require_user)):
     result = job_store.get(job_id, user["user_id"])
     if result is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    return result
+    return _refresh_job_state(job_id, user["user_id"]) or result
 
 
 
@@ -567,7 +571,7 @@ def cancel_job(job_id: str, user: dict[str, str] = Depends(require_user)):
     job_store.update(result)
     return {
         "cancel_requested": True,
-        "tasks_cancelled": cancelled["cancelled"],
+        "pending_tasks_cancelled": len(cancelled["releasable_task_ids"]),
         "running_tasks_stop_requested": before["running"],
         "quota_released": bool(released),
         "job_id": job_id,
