@@ -111,3 +111,23 @@ def test_gpu_maximum_runtime_rejects_fractional_and_boolean_values(tmp_path):
             "owner", "provider", 2, 4, 0,
             [{"total_vram_gib": 8, "available_vram_gib": 8, "max_task_seconds": True}],
         )
+
+
+
+def test_heartbeat_without_resource_payload_preserves_existing_base_capacity(tmp_path):
+    registry = ResourceRegistry(str(tmp_path / "mesh.sqlite"))
+    worker = registry.register(
+        owner_id="owner",
+        provider_id="volunteer-worker",
+        cpu_cores=4,
+        ram_gib=8,
+        storage_gib=0,
+        gpus=[{"name": "GPU", "total_vram_gib": 8, "available_vram_gib": 8}],
+        shared=True,
+    )
+    assert registry.reserve_capacity("task-hold", worker["node_id"], 0, 1, 2, 5, 600)
+    assert registry.heartbeat(worker["node_id"], worker["worker_token"], owner_id=None)
+    node = registry.list_schedulable("someone", include_shared=True)[0]
+    assert node["cpu_available"] == 3
+    assert node["ram_available_gib"] == 6
+    assert node["gpus"][0]["available_vram_gib"] == 3
