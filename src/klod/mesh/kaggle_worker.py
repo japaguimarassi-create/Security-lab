@@ -196,7 +196,11 @@ class KaggleKernelAdapter:
                 "--timeout", str(int(manifest["max_runtime_seconds"]))]
         if manifest["workload"] in ("gpu-matmul", "gpu-mandelbrot"):
             args.extend(["--accelerator", self.accelerator])
-        self._cli(args, timeout=180)
+        try:
+            self._cli(args, timeout=max(300, min(1800, int(manifest["max_runtime_seconds"]) + 180)))
+        except Exception:
+            shutil.rmtree(workspace, ignore_errors=True)
+            raise
         return metadata["id"], workspace
 
     def _poll(self, kernel_id: str, manifest: dict[str, Any],
@@ -261,6 +265,7 @@ class KaggleKernelAdapter:
         if not start.get("started"):
             return True
         workspace = None
+        kernel_id = None
         try:
             kernel_id, workspace = self._submit(manifest)
             state = self._poll(kernel_id, manifest, lease_token, profile)
@@ -289,6 +294,11 @@ class KaggleKernelAdapter:
             raise
         finally:
             if workspace is not None:
+                if kernel_id and os.getenv("GPU_MESH_KAGGLE_KEEP_KERNELS", "false").lower() != "true":
+                    try:
+                        self._cli(["kernels", "delete", kernel_id, "--yes"], timeout=60)
+                    except Exception:
+                        pass
                 shutil.rmtree(workspace, ignore_errors=True)
 
     def run_forever(self) -> None:
