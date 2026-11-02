@@ -131,6 +131,12 @@ class TaskStore:
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             try:
+                db.execute("""
+                    UPDATE mesh_tasks SET state='failed',error_code='lease_exhausted',
+                        lease_hash=NULL,lease_expires_at=NULL,finished_at=?
+                    WHERE node_id=? AND cancel_requested=0 AND attempts>=?
+                      AND state IN ('leased','running') AND lease_expires_at<?
+                """, (now, node_id, MAX_TASK_ATTEMPTS, now))
                 row = db.execute("""
                     SELECT * FROM mesh_tasks
                     WHERE node_id=? AND cancel_requested=0 AND attempts<?
@@ -253,6 +259,22 @@ class TaskStore:
                 row = self._authorized_task(db, task_id, node_id, lease_token)
                 if row["state"] != "running":
                     raise TaskError("Task is not running")
+                if str(row["workload"]) == "cpu-sha256":
+                    payload = json.loads(row["payload_json"])
+                    digest = hashlib.sha256(payload["text"].encode("utf-8")).digest()
+                    for index in range(int(payload["iterations"])):
+                        digest = hashlib.sha256(
+                            digest + index.to_bytes(8, "big") + payload["text"].encode("utf-8")
+                        ).digest()
+                    if not hmac.compare_digest(digest.hex(), str(result.get("sha256", ""))):
+                        raise TaskError("CPU result does not match deterministic verification")
+                    if int(result.get("iterations", -1)) != int(payload["iterations"]):
+                        raise TaskError("CPU result iteration count does not match the task manifest")
+                    result["result_validation"] = "server-verified"
+                elif result.get("workload") != row["workload"]:
+                    raise TaskError("Result workload does not match the task manifest")
+                elif not isinstance(result.get("sha256"), str) or len(result["sha256"]) != 64:
+                    raise TaskError("Result must include a 64-character SHA-256 digest")
                 now = time.time()
                 if row["cancel_requested"]:
                     db.execute("""
@@ -260,14 +282,20 @@ class TaskStore:
                             lease_expires_at=NULL,finished_at=? WHERE task_id=?
                     """, (now, task_id))
                     db.commit()
-                    return {"completed": False, "cancelled": True}
+                    return {
+                        "completed": False, "cancelled": True,
+                        "job_id": row["job_id"], "owner_id": row["owner_id"],
+                    }
                 db.execute("""
                     UPDATE mesh_tasks SET state='completed',result_json=?,
                         lease_hash=NULL,lease_expires_at=NULL,finished_at=?
                     WHERE task_id=?
                 """, (encoded.decode("utf-8"), now, task_id))
                 db.commit()
-                return {"completed": True, "cancelled": False}
+                return {
+                    "completed": True, "cancelled": False,
+                    "job_id": row["job_id"], "owner_id": row["owner_id"],
+                }
             except Exception:
                 db.rollback()
                 raise
@@ -294,7 +322,13 @@ class TaskStore:
                     WHERE task_id=?
                 """, (state, safe_code, now if state in ("failed", "cancelled") else None, task_id))
                 db.commit()
-                return {"failed": state == "failed", "retrying": state == "queued", "state": state}
+                return {
+                    "failed": state == "failed",
+                    "retrying": state == "queued",
+                    "state": state,
+                    "job_id": row["job_id"],
+                    "owner_id": row["owner_id"],
+                }
             except Exception:
                 db.rollback()
                 raise
