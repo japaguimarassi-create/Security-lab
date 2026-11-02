@@ -1,13 +1,16 @@
 import hmac
 import logging
 import os
+from pathlib import Path
 import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import Any, Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
 from klod import __version__
@@ -17,10 +20,11 @@ from klod.knowledge import ALLOWED_LICENSES, KnowledgeStore
 from klod.memory import MemoryStore
 from klod.planner import build_planner_messages, parse_action_plan
 from klod.specialists import get_specialist, list_specialists, route_message
+from klod.mesh.api import router as mesh_router
 
 logger = logging.getLogger("klod.api")
 APP_NAME = os.getenv("KLOD_APP_NAME", "Klod")
-API_KEY = os.getenv("KLOD_API_KEY", "replace-this-before-use")
+API_KEY = os.getenv("KLOD_API_KEY", "")
 MODEL_ID = os.getenv("KLOD_MODEL_ID", "Qwen/Qwen3-1.7B")
 ADAPTER_PATH = os.getenv("KLOD_ADAPTER_PATH") or None
 LOAD_MODEL = os.getenv("KLOD_LOAD_MODEL", "false").lower() == "true"
@@ -45,10 +49,34 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=APP_NAME, version=__version__)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+app.include_router(mesh_router, prefix="/v1/mesh")
+app.mount("/mesh-assets", StaticFiles(directory=PROJECT_ROOT / "web"), name="mesh-assets")
+
+
+@app.get("/mesh", include_in_schema=False)
+def mesh_dashboard():
+    return FileResponse(PROJECT_ROOT / "web" / "index.html")
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; "
+        "connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; "
+        "form-action 'self'"
+    )
+    return response
 
 
 async def require_key(x_api_key: str | None = Header(default=None)):
-    if API_KEY.startswith("replace-") or not x_api_key or not hmac.compare_digest(x_api_key, API_KEY):
+    if not API_KEY or not x_api_key or not hmac.compare_digest(x_api_key, API_KEY):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
