@@ -92,7 +92,7 @@ O adapter cria kernels privados com código fixo gerado a partir de `workloads.p
 
 ### Hugging Face ZeroGPU
 
-O projeto inclui uma aplicação Gradio em `examples/huggingface_zerogpu`. Publique essa pasta como um Space próprio; o bridge local chama os endpoints Gradio, verifica a cota ZeroGPU e devolve o resultado ao Mesh.
+O projeto inclui uma aplicação Gradio em `examples/huggingface_zerogpu`. Publique essa pasta como um Space próprio; configure as variáveis do Space `HF_ZEROGPU_SIZE` e `GPU_MESH_HF_MAX_TASK_SECONDS`. O bridge local chama os endpoints Gradio, lê `/mesh_profile` e valida tamanho, VRAM, multiplicador de quota e duração antes de registrar o worker.
 
 Instalação e execução do bridge:
 
@@ -107,7 +107,7 @@ export GPU_MESH_SHARE="true"
 gpu-mesh-hf-worker
 ```
 
-O perfil `large` anuncia 48 GiB e `xlarge` 96 GiB; a duração máxima de uma tarefa é configurada por `GPU_MESH_HF_MAX_TASK_SECONDS` (1–120 segundos). O scheduler não envia uma tarefa que exceda a duração cadastrada para aquela GPU. A quota ZeroGPU é por conta Hugging Face e é consultada pelo bridge antes do pedido; o token precisa da permissão de leitura de uso/faturamento. O perfil xlarge aplica multiplicador de consumo de quota 2x. Chamadas Gradio que ainda estão na fila podem ser canceladas; uma função que já começou pode continuar no provedor até terminar, mesmo após o Mesh registrar cancelamento. Quota gratuita não equivale a capacidade contínua ou garantida.
+Configure no Space `HF_ZEROGPU_SIZE` com o mesmo valor anunciado localmente por `GPU_MESH_HF_ZEROGPU_SIZE`. O worker consulta `/mesh_profile` antes do registro e recusa uma divergência. O perfil `large` anuncia 48 GiB e `xlarge` 96 GiB; a duração máxima de uma tarefa é configurada por `GPU_MESH_HF_MAX_TASK_SECONDS` (1–120 segundos). O scheduler não envia uma tarefa que exceda a duração cadastrada para aquela GPU. A quota ZeroGPU é por conta Hugging Face e é consultada pelo bridge antes do pedido; o token precisa da permissão de leitura de uso/faturamento. O perfil xlarge aplica multiplicador de consumo de quota 2x. Chamadas Gradio que ainda estão na fila podem ser canceladas; uma função que já começou pode continuar no provedor até terminar, mesmo após o Mesh registrar cancelamento. Quota gratuita não equivale a capacidade contínua ou garantida.
 
 ### Google Colab
 
