@@ -258,7 +258,8 @@ class TaskStore:
                 raise
 
     def _authorized_task(self, db: sqlite3.Connection, task_id: str,
-                         node_id: str, lease_token: str) -> sqlite3.Row:
+                         node_id: str, lease_token: str,
+                         allow_expired: bool = False) -> sqlite3.Row:
         if not lease_token or len(lease_token) > 512:
             raise TaskError("Invalid task lease")
         row = db.execute(
@@ -269,7 +270,9 @@ class TaskStore:
             raise TaskError("Task lease not found")
         if not hmac.compare_digest(row["lease_hash"], _token_hash(lease_token)):
             raise TaskError("Task lease rejected")
-        if row["lease_expires_at"] is None or float(row["lease_expires_at"]) < time.time():
+        if not allow_expired and (
+            row["lease_expires_at"] is None or float(row["lease_expires_at"]) < time.time()
+        ):
             raise TaskError("Task lease expired")
         return row
 
@@ -299,7 +302,9 @@ class TaskStore:
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             try:
-                row = self._authorized_task(db, task_id, node_id, lease_token)
+                row = self._authorized_task(
+                    db, task_id, node_id, lease_token, allow_expired=True
+                )
                 if row["state"] not in ("leased", "running"):
                     raise TaskError("Task is no longer active")
                 if row["cancel_requested"]:
