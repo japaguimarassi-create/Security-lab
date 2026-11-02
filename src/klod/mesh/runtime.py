@@ -173,6 +173,54 @@ class TaskStore:
                 raise
         return created
 
+    def recover_orphaned_tasks(self, job_id: str, owner_id: str,
+                               active_node_ids: set[str] | list[str],
+                               at: float | None = None) -> dict[str, list[str]]:
+        now = time.time() if at is None else float(at)
+        active = {str(node_id) for node_id in active_node_ids}
+        requeued: list[str] = []
+        cancelled: list[str] = []
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                rows = db.execute("""
+                    SELECT task_id,node_id,state,lease_expires_at,cancel_requested
+                    FROM mesh_tasks
+                    WHERE job_id=? AND owner_id=? AND node_id<>''
+                      AND state IN ('queued','leased','running')
+                """, (job_id, owner_id)).fetchall()
+                for row in rows:
+                    node_is_active = row["node_id"] in active
+                    lease_expired = (
+                        row["lease_expires_at"] is None
+                        or float(row["lease_expires_at"]) <= now
+                    )
+                    should_requeue = (
+                        row["state"] == "queued" and not node_is_active
+                    ) or (
+                        row["state"] in ("leased", "running")
+                        and not node_is_active and lease_expired
+                    )
+                    if should_requeue and row["cancel_requested"]:
+                        db.execute("""
+                            UPDATE mesh_tasks SET state='cancelled',lease_hash=NULL,
+                                lease_expires_at=NULL,finished_at=?,error_code='cancelled_worker_offline'
+                            WHERE task_id=?
+                        """, (now, row["task_id"]))
+                        cancelled.append(row["task_id"])
+                    elif should_requeue:
+                        db.execute("""
+                            UPDATE mesh_tasks SET state='queued',node_id='',gpu_index=NULL,
+                                lease_hash=NULL,lease_expires_at=NULL,error_code='worker_offline'
+                            WHERE task_id=?
+                        """, (row["task_id"],))
+                        requeued.append(row["task_id"])
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
+        return {"requeued": requeued, "cancelled": cancelled}
+
     def pending_for_job(self, job_id: str, owner_id: str,
                         limit: int = 1000) -> list[dict[str, Any]]:
         with self._connect() as db:
