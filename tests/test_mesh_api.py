@@ -321,3 +321,37 @@ def test_pending_task_is_persisted_then_reassigned_when_worker_joins(tmp_path, m
     latest = client.get(f"/v1/mesh/jobs/{job['job_id']}", headers=account_headers).json()
     assert latest["execution_status"] == "completed"
     assert latest["queued_tasks"] == 0
+
+
+
+def test_kaggle_and_zerogpu_provider_workers_can_register_with_declared_limits(tmp_path, monkeypatch):
+    client = configure_mesh(tmp_path, monkeypatch)
+    token = create_account(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    for provider, gpu, max_task in (
+        ("kaggle-notebooks", {
+            "name": "NvidiaTeslaT4",
+            "total_vram_gib": 16,
+            "available_vram_gib": 16,
+            "max_task_seconds": 3600,
+        }, 3600),
+        ("huggingface-zerogpu", {
+            "name": "ZeroGPU large",
+            "total_vram_gib": 48,
+            "available_vram_gib": 48,
+            "max_task_seconds": 120,
+        }, 120),
+    ):
+        registered = client.post("/v1/mesh/workers", headers=headers, json={
+            "provider_id": provider,
+            "cpu_cores": 2,
+            "ram_gib": 8,
+            "storage_gib": 0,
+            "gpus": [gpu],
+            "shared": False,
+        })
+        assert registered.status_code == 201
+        node_id = registered.json()["node_id"]
+        worker = mesh_api.registry.list_owned(mesh_api.auth_store.resolve_session(token)["user_id"])
+        item = next(node for node in worker if node["node_id"] == node_id)
+        assert item["gpus"][0]["max_task_seconds"] == max_task
