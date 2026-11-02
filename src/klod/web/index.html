@@ -65,20 +65,49 @@
     <div class="content-grid">
       <section class="panel">
         <div class="panel-head"><div><div class="eyebrow">VOLUNTEER NODES</div><h2>Workers conectados</h2></div><span id="worker-count" class="pill">0 nós</span></div>
+        <div class="job-actions"><button id="copy-account-token" class="button secondary" type="button">Copiar token da sessão</button></div>
+        <p id="token-message" class="message" role="status"></p>
         <div id="worker-list" class="empty-state">Nenhum worker registrado.</div>
         <details class="install-box">
-          <summary>Conectar uma máquina voluntária</summary>
-          <p>Execute o agente em uma máquina que você controla. A participação compartilhada só deve ser ativada com autorização do proprietário.</p>
-          <pre id="worker-command">pip install "klod-ai[worker] @ git+https://github.com/japaguimarassi-create/Security-lab.git"
+          <summary>Conectar uma máquina própria</summary>
+          <p>Execute o agente em hardware que você controla. O compartilhamento começa desativado e requer autorização do proprietário.</p>
+          <pre>pip install "klod-ai[worker] @ git+https://github.com/japaguimarassi-create/Security-lab.git"
 export GPU_MESH_API_URL="https://SEU-DOMINIO"
-export GPU_MESH_ACCESS_TOKEN="TOKEN_DA_CONTA"
+export GPU_MESH_ACCESS_TOKEN="TOKEN_COPIADO_NO_PAINEL"
 export GPU_MESH_SHARE="true"
 gpu-mesh-worker</pre>
-          <p class="fine-print">O worker atual anuncia hardware e envia heartbeats. Execução remota de código ainda não está habilitada.</p>
+          <p class="fine-print">O agente executa somente SHA-256 em CPU, multiplicação de matrizes CUDA e Mandelbrot CUDA. Não aceita scripts ou comandos arbitrários.</p>
+        </details>
+        <details class="install-box">
+          <summary>Conectar Kaggle Notebooks</summary>
+          <p>Cria kernels privados por tarefa. Configure o usuário e o token da sua conta Kaggle, além do acelerador realmente disponível na conta.</p>
+          <pre>pip install "klod-ai[kaggle] @ git+https://github.com/japaguimarassi-create/Security-lab.git"
+export GPU_MESH_API_URL="https://SEU-DOMINIO"
+export GPU_MESH_ACCESS_TOKEN="TOKEN_COPIADO_NO_PAINEL"
+export KAGGLE_USERNAME="SEU_USUARIO"
+export KAGGLE_API_TOKEN="SEU_TOKEN_KAGGLE"
+export GPU_MESH_KAGGLE_ACCELERATOR="NvidiaTeslaT4"
+export GPU_MESH_SHARE="true"
+gpu-mesh-kaggle-worker</pre>
+        </details>
+        <details class="install-box">
+          <summary>Conectar Hugging Face ZeroGPU</summary>
+          <p>Publique primeiro <code>examples/huggingface_zerogpu</code> como um Space Gradio privado e configure o token HF com leitura da quota de uso.</p>
+          <pre>pip install "klod-ai[huggingface] @ git+https://github.com/japaguimarassi-create/Security-lab.git"
+export GPU_MESH_API_URL="https://SEU-DOMINIO"
+export GPU_MESH_ACCESS_TOKEN="TOKEN_COPIADO_NO_PAINEL"
+export HF_TOKEN="SEU_TOKEN_HF"
+export GPU_MESH_HF_SPACE_ID="USUARIO/SPACE"
+export GPU_MESH_SHARE="true"
+gpu-mesh-hf-worker</pre>
+        </details>
+        <details class="install-box">
+          <summary>Conectar sessão Google Colab</summary>
+          <p>Abra o notebook <code>examples/colab/GPU_Mesh_Worker.ipynb</code> no Colab e execute as células. O worker fica online somente enquanto o runtime permanecer ativo.</p>
         </details>
       </section>
       <section class="panel">
-        <div class="panel-head"><div><div class="eyebrow">TASK PLANNER</div><h2>Planejar trabalho</h2></div><span class="pill">Sem execução remota</span></div>
+        <div class="panel-head"><div><div class="eyebrow">TASK PLANNER</div><h2>Executar trabalho</h2></div><span class="pill">Workloads permitidos</span></div>
         <form id="job-form" class="stack">
           <label>Tipo de tarefa<select id="workload">
             <option value="gpu-matmul">Multiplicação de matrizes CUDA</option>
