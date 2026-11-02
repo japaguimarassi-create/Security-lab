@@ -37,12 +37,18 @@ def seal_directory(source: str | Path, output: str | Path, master_secret: str | 
     destination = Path(output).resolve()
     if not root.is_dir():
         raise ValueError("Source directory does not exist")
-    if destination == root or root in destination.parents:
-        raise ValueError("Encrypted output must be outside the source tree")
+    if destination == root or destination.is_dir():
+        raise ValueError("Encrypted output must be a file path")
+    if root in destination.parents and destination.suffix.lower() != ".grmesh":
+        raise ValueError("An output inside the source tree must use the .grmesh extension")
+    temporary = destination.with_name(destination.name + ".tmp")
+    excluded_outputs = {destination, temporary}
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz", compresslevel=6) as archive:
         for item in sorted(root.rglob("*")):
             if item.is_symlink() or not item.is_file():
+                continue
+            if item.resolve() in excluded_outputs:
                 continue
             relative = item.relative_to(root)
             if _excluded(relative):
@@ -51,7 +57,6 @@ def seal_directory(source: str | Path, output: str | Path, master_secret: str | 
     raw_archive = buffer.getvalue()
     encrypted = encrypt_bytes(raw_archive, master_secret)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_name(destination.name + ".tmp")
     temporary.write_bytes(encrypted)
     os.chmod(temporary, 0o600)
     temporary.replace(destination)
