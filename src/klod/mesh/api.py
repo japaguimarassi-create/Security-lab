@@ -350,6 +350,8 @@ def create_job(request: JobRequest, user: dict[str, str] = Depends(require_user)
     except SchedulingError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    plan["cpu_cores_per_task"] = float(request.cpu_cores_per_task)
+    plan["ram_gib_per_task"] = float(request.ram_gib_per_task)
     scheduled = int(plan["scheduled_tasks"])
     quota_reservation = None
     task_records: list[dict[str, Any]] = []
