@@ -1,6 +1,8 @@
 import hashlib
 import re
 import sqlite3
+
+from klod.db import connect, prepare_database_path
 import struct
 from pathlib import Path
 from urllib.parse import urlparse
@@ -13,7 +15,7 @@ ALLOWED_LICENSES = {
 class KnowledgeStore:
     def __init__(self, path: str):
         self.path = str(path)
-        Path(self.path).parent.mkdir(parents=True, exist_ok=True)
+        prepare_database_path(self.path)
         with self._connect() as db:
             db.execute("PRAGMA journal_mode=WAL")
             db.execute("""CREATE TABLE IF NOT EXISTS knowledge_docs (
@@ -47,7 +49,7 @@ class KnowledgeStore:
                 self._has_fts = False
 
     def _connect(self):
-        connection = sqlite3.connect(self.path, timeout=20)
+        connection = connect(self.path, timeout=20)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys=ON")
         return connection
@@ -100,9 +102,9 @@ class KnowledgeStore:
                 return {"id": existing["id"], "duplicate": True, "content_hash": digest}
             cursor = db.execute("""INSERT INTO knowledge_docs
                 (namespace,title,body,source_url,license,attribution,content_hash)
-                VALUES(?,?,?,?,?,?,?)""",
+                VALUES(?,?,?,?,?,?,?) RETURNING id""",
                 (namespace, title, body, source_url, license_id, attribution, digest))
-            doc_id = cursor.lastrowid
+            doc_id = cursor.fetchone()["id"]
             if self._has_fts:
                 db.execute("INSERT INTO knowledge_fts(doc_id,title,body) VALUES(?,?,?)",
                            (str(doc_id), title, body))
@@ -157,10 +159,15 @@ class KnowledgeStore:
         result = []
         for row in rows:
             item = dict(row)
-            item["body"] = item["body"][:1600]
-            item["passage"] = item["body"]
-            result.append(item)
-        return result
+            searchable = (item["title"] + " " + item["body"]).casefold()
+            score = sum(searchable.count(term) for term in terms)
+            if score:
+                item["body"] = item["body"][:1600]
+                item["passage"] = item["body"]
+                item["lexical_score"] = score
+                result.append(item)
+        result.sort(key=lambda item: item["lexical_score"], reverse=True)
+        return result[:limit]
 
     def search(self, namespace: str, query: str, limit: int = 5) -> list[dict]:
         return self._lexical_search(namespace, query, max(1, min(int(limit), 10)))
