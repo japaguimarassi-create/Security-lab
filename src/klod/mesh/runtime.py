@@ -321,19 +321,29 @@ class TaskStore:
                 raise
         return {"cancelled": len(rows), "releasable_task_ids": releasable}
 
+    def delete_job(self, job_id: str, owner_id: str) -> int:
+        with self._connect() as db:
+            result = db.execute(
+                "DELETE FROM mesh_tasks WHERE job_id=? AND owner_id=?",
+                (job_id, owner_id),
+            )
+        return result.rowcount
+
     def summary(self, job_id: str, owner_id: str) -> dict[str, Any]:
         with self._connect() as db:
             rows = db.execute("""
-                SELECT state,COUNT(*) AS count,MAX(started_at) AS started
+                SELECT state,COUNT(*) AS count,MAX(started_at) AS started,
+                       SUM(cancel_requested) AS cancelling
                 FROM mesh_tasks WHERE job_id=? AND owner_id=? GROUP BY state
             """, (job_id, owner_id)).fetchall()
         counts = {row["state"]: int(row["count"]) for row in rows}
         total = sum(counts.values())
         started = any(row["started"] is not None for row in rows)
+        cancelling = any(int(row["cancelling"] or 0) > 0 for row in rows)
         if total and counts.get("completed", 0) == total:
             state = "completed"
         elif counts.get("running", 0):
-            state = "cancelling" if counts.get("running") and any(False for _ in ()) else "running"
+            state = "cancelling" if cancelling else "running"
         elif counts.get("queued", 0) or counts.get("leased", 0):
             state = "dispatched"
         elif counts.get("failed", 0):
