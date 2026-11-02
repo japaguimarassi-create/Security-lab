@@ -28,6 +28,16 @@ def _token_hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _matches_integer(value: Any, expected: int) -> bool:
+    if isinstance(value, bool):
+        return False
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return parsed == value and parsed == int(expected)
+
+
 class TaskError(ValueError):
     pass
 
@@ -346,7 +356,7 @@ class TaskStore:
                         ).digest()
                     if not hmac.compare_digest(digest.hex(), str(result.get("sha256", ""))):
                         raise TaskError("CPU result does not match deterministic verification")
-                    if int(result.get("iterations", -1)) != int(payload["iterations"]):
+                    if not _matches_integer(result.get("iterations"), int(payload["iterations"])):
                         raise TaskError("CPU result iteration count does not match the task manifest")
                     result["result_validation"] = "server-verified"
                     encoded = _json_bytes(result)
@@ -363,14 +373,14 @@ class TaskStore:
                         raise TaskError("GPU result must identify CUDA execution")
                     if result.get("result_validation") != "worker-reported-digest":
                         raise TaskError("GPU result must retain its worker-reported validation status")
-                    if int(result.get("device_index", -1)) != int(row["gpu_index"]):
+                    if not _matches_integer(result.get("device_index"), int(row["gpu_index"])):
                         raise TaskError("GPU result device index does not match the task assignment")
                     if str(row["workload"]) == "gpu-matmul":
-                        if int(result.get("matrix_size", -1)) != int(payload["matrix_size"]):
+                        if not _matches_integer(result.get("matrix_size"), int(payload["matrix_size"])):
                             raise TaskError("GPU matrix result size does not match the task payload")
                     else:
                         for field in ("width", "height", "max_iterations"):
-                            if int(result.get(field, -1)) != int(payload[field]):
+                            if not _matches_integer(result.get(field), int(payload[field])):
                                 raise TaskError(f"GPU fractal result {field} does not match the task payload")
                     result["result_validation"] = "worker-reported"
                     encoded = _json_bytes(result)
