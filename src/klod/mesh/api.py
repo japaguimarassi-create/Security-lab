@@ -212,13 +212,12 @@ def register_worker(request: WorkerRegisterRequest,
 
 @router.post("/workers/{node_id}/heartbeat")
 def worker_heartbeat(node_id: str, request: WorkerHeartbeatRequest,
-                     worker_token: str | None = Header(default=None, alias="X-Worker-Token"),
-                     user: dict[str, str] = Depends(require_user)):
+                     worker_token: str | None = Header(default=None, alias="X-Worker-Token")):
     try:
         accepted = registry.heartbeat(
             node_id=node_id,
             worker_token=worker_token or "",
-            owner_id=user["user_id"],
+            owner_id=None,
             cpu_available=request.cpu_available,
             ram_available_gib=request.ram_available_gib,
             storage_available_gib=request.storage_available_gib,
