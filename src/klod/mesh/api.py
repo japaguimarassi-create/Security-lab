@@ -311,6 +311,7 @@ def _refresh_job_state(job_id: str, owner_id: str) -> dict[str, Any] | None:
     job.update(summary)
     if job.get("queued_tasks", 0) and summary["execution_status"] == "completed":
         job["execution_status"] = "partially_completed"
+    job["status"] = job["execution_status"]
     job["execution_started"] = bool(job.get("execution_started") or summary["execution_started"])
     job_store.update(job)
     return job
@@ -410,6 +411,7 @@ def create_job(request: JobRequest, user: dict[str, str] = Depends(require_user)
     plan["quota_reservation"] = quota_reservation
     plan["execution_started"] = False
     plan["execution_status"] = "dispatched" if scheduled else "queued"
+    plan["status"] = plan["execution_status"]
     plan["execution_note"] = (
         "Allowlisted task manifests are assigned to authenticated workers. "
         "Workers verify the per-node HMAC, lease and fixed device before executing a built-in workload. "
@@ -526,6 +528,7 @@ def jobs(limit: int = 50, user: dict[str, str] = Depends(require_user)):
         item.update(task_store.summary(item["job_id"], user["user_id"]))
         if item.get("queued_tasks", 0) and item["execution_status"] == "completed":
             item["execution_status"] = "partially_completed"
+        item["status"] = item["execution_status"]
     return {"jobs": items}
 
 
