@@ -49,19 +49,21 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=APP_NAME, version=__version__)
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+WEB_ROOT = Path(__file__).resolve().parent / "web"
 app.include_router(mesh_router, prefix="/v1/mesh")
-app.mount("/mesh-assets", StaticFiles(directory=PROJECT_ROOT / "web"), name="mesh-assets")
+app.mount("/mesh-assets", StaticFiles(directory=WEB_ROOT), name="mesh-assets")
 
 
 @app.get("/mesh", include_in_schema=False)
 def mesh_dashboard():
-    return FileResponse(PROJECT_ROOT / "web" / "index.html")
+    return FileResponse(WEB_ROOT / "index.html")
 
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
