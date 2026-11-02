@@ -230,7 +230,7 @@ def workers(user: dict[str, str] = Depends(require_user)):
 @router.post("/workers", status_code=status.HTTP_201_CREATED)
 def register_worker(request: WorkerRegisterRequest,
                     user: dict[str, str] = Depends(require_user)):
-    if request.provider_id != "volunteer-worker":
+    if request.provider_id not in {"volunteer-worker", "kaggle-notebooks"}:
         raise HTTPException(status_code=422,
                             detail="This provider requires an implemented, authorized provider adapter")
     try:
