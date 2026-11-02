@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 import secrets
 import sqlite3
@@ -53,6 +54,13 @@ class AuthStore:
                 )
             """)
             db.execute("CREATE INDEX IF NOT EXISTS idx_mesh_sessions_expiry ON mesh_sessions(expires_at)")
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS mesh_auth_rate_limits (
+                    bucket TEXT PRIMARY KEY,
+                    window_started REAL NOT NULL,
+                    attempts INTEGER NOT NULL
+                )
+            """)
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.database_path, timeout=20)
@@ -60,6 +68,38 @@ class AuthStore:
         db.execute("PRAGMA foreign_keys=ON")
         db.execute("PRAGMA journal_mode=WAL")
         return db
+
+    def consume_rate_limit(self, bucket: str, limit: int, window_seconds: int) -> int:
+        if not bucket or len(bucket) > 256 or limit < 1 or window_seconds < 1:
+            raise ValueError("Invalid rate-limit parameters")
+        now = time.time()
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute(
+                "SELECT window_started,attempts FROM mesh_auth_rate_limits WHERE bucket=?",
+                (bucket,),
+            ).fetchone()
+            if row is None or now - float(row["window_started"]) >= window_seconds:
+                db.execute("""
+                    INSERT INTO mesh_auth_rate_limits(bucket,window_started,attempts)
+                    VALUES(?,?,1)
+                    ON CONFLICT(bucket) DO UPDATE SET
+                    window_started=excluded.window_started,attempts=1
+                """, (bucket, now))
+                retry_after = 0
+            elif int(row["attempts"]) >= limit:
+                retry_after = max(1, math.ceil(window_seconds - (now - float(row["window_started"]))))
+            else:
+                db.execute(
+                    "UPDATE mesh_auth_rate_limits SET attempts=attempts+1 WHERE bucket=?",
+                    (bucket,),
+                )
+                retry_after = 0
+            if retry_after:
+                db.rollback()
+                return retry_after
+            db.commit()
+        return 0
 
     @staticmethod
     def normalize_email(email: str) -> str:
