@@ -50,6 +50,7 @@ def test_kernel_script_bundles_only_allowlisted_workload_code_and_manifest():
     assert "task-abc123" in script
     assert "worker_token" not in script
     assert "lease_token" not in script
+    assert "_mesh_signal.alarm(int(_MESH_MANIFEST[\"max_runtime_seconds\"]))" in script
 
 
 def test_kernel_metadata_rejects_invalid_remote_identifiers():
