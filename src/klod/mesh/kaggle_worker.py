@@ -31,7 +31,7 @@ def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
 def _resource_profile() -> dict[str, Any]:
     cpu = _env_int("GPU_MESH_KAGGLE_CPU_CORES", 4, 1, 256)
     ram = _env_int("GPU_MESH_KAGGLE_RAM_GIB", 16, 1, 1024)
-    gpu_count = _env_int("GPU_MESH_KAGGLE_GPU_COUNT", 1, 0, 8)
+    gpu_count = _env_int("GPU_MESH_KAGGLE_GPU_COUNT", 2, 0, 8)
     vram = _env_int("GPU_MESH_KAGGLE_GPU_VRAM_GIB", 16, 1, 96)
     accelerator = os.environ.get("GPU_MESH_KAGGLE_ACCELERATOR", "NvidiaTeslaT4")
     max_task_seconds = _env_int("GPU_MESH_KAGGLE_MAX_TASK_SECONDS", 3600, 1, 86400)
@@ -96,13 +96,15 @@ def build_kernel_metadata(username: str, slug: str, workload: str,
         "code_file": "main.py",
         "language": "python",
         "kernel_type": "script",
-        "is_private": True,
-        "enable_gpu": is_gpu,
-        "enable_internet": False,
+        "is_private": "true",
+        "enable_gpu": "true" if is_gpu else "false",
+        "enable_internet": "false",
+        "machine_shape": accelerator if is_gpu else "",
         "keywords": ["gpu-mesh", "distributed-compute"],
         "dataset_sources": [],
         "competition_sources": [],
         "kernel_sources": [],
+        "model_sources": [],
     }
     if is_gpu and not accelerator:
         raise KaggleWorkerError("GPU tasks require a configured Kaggle accelerator")
