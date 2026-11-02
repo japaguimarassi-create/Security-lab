@@ -55,3 +55,31 @@ def test_zero_gpu_quota_reader_fails_closed_when_provider_quota_is_unavailable(m
     monkeypatch.setitem(sys.modules, "huggingface_hub", SimpleNamespace(HfApi=FakeApi))
     with pytest.raises(HuggingFaceWorkerError, match="remaining GPU quota"):
         _quota_remaining_seconds("hf-test-token")
+
+
+def test_gradio_client_receives_private_space_token(monkeypatch):
+    from klod.mesh.huggingface_worker import HuggingFaceZeroGPUWorker
+
+    captured = {}
+
+    class FakeClient:
+        def __init__(self, space_id, token, verbose):
+            captured["space_id"] = space_id
+            captured["token"] = token
+            captured["verbose"] = verbose
+
+    monkeypatch.setitem(sys.modules, "gradio_client", SimpleNamespace(Client=FakeClient))
+    worker = HuggingFaceZeroGPUWorker(
+        "https://mesh.example",
+        "node-1",
+        "worker-token",
+        "owner/private-space",
+        "hf-private-token",
+        _profile(),
+    )
+    worker._get_client()
+    assert captured == {
+        "space_id": "owner/private-space",
+        "token": "hf-private-token",
+        "verbose": False,
+    }
