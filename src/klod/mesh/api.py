@@ -550,14 +550,30 @@ def reschedule_job(job_id: str, user: dict[str, str] = Depends(require_user)):
     job = job_store.get(job_id, user["user_id"])
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
+
+    nodes = registry.list_schedulable(user["user_id"], include_shared=True)
+    active_node_ids = {node["node_id"] for node in nodes}
+    recovered = task_store.recover_orphaned_tasks(
+        job_id, user["user_id"], active_node_ids
+    )
+    for task_id in recovered["requeued"] + recovered["cancelled"]:
+        registry.release_capacity(task_id)
+
     pending = task_store.pending_for_job(job_id, user["user_id"])
     if not pending:
         job.update(task_store.summary(job_id, user["user_id"]))
-        job["queued_tasks"] = 0
+        job["queued_tasks"] = int(job.get("unassigned", 0))
+        job["scheduled_tasks"] = max(0, int(job.get("total_tasks", 0)) - job["queued_tasks"])
+        job["status"] = job["execution_status"]
         job_store.update(job)
-        return {"scheduled": 0, "queued": 0, "execution_status": job["execution_status"]}
+        return {
+            "scheduled": 0,
+            "queued": job["queued_tasks"],
+            "recovered": len(recovered["requeued"]),
+            "cancelled_offline": len(recovered["cancelled"]),
+            "execution_status": job["execution_status"],
+        }
 
-    nodes = registry.list_schedulable(user["user_id"], include_shared=True)
     try:
         allocation = scheduler.plan(
             owner_id=user["user_id"],
@@ -583,9 +599,15 @@ def reschedule_job(job_id: str, user: dict[str, str] = Depends(require_user)):
                 "gpu_index": gpu_index,
             })
 
+    already_reserved = {
+        task_id
+        for batch in job.get("quota_batches", [])
+        for task_id in batch.get("task_ids", [])
+    }
     assigned_ids = []
     quota_batches: dict[str, dict[str, Any]] = {}
     for task, placement in zip(pending, placements):
+        task_id = task["task_id"]
         duration = int(task["max_runtime_seconds"])
         amounts = {
             "cpu_core_seconds": duration * float(task["cpu_cores"]),
@@ -594,12 +616,14 @@ def reschedule_job(job_id: str, user: dict[str, str] = Depends(require_user)):
         if task["requires_gpu"]:
             amounts["gpu_seconds"] = duration
             amounts["vram_gib_seconds"] = duration * float(task["vram_gib"])
-        try:
-            reservation = quota_ledger.reserve(user["user_id"], amounts)
-        except QuotaExceeded:
-            break
 
-        task_id = task["task_id"]
+        reservation = None
+        if task_id not in already_reserved:
+            try:
+                reservation = quota_ledger.reserve(user["user_id"], amounts)
+            except QuotaExceeded:
+                break
+
         try:
             capacity_ok = registry.reserve_capacity(
                 task_id=task_id,
@@ -611,49 +635,49 @@ def reschedule_job(job_id: str, user: dict[str, str] = Depends(require_user)):
                 ttl_seconds=min(86400, max(600, duration + 300)),
             )
             if not capacity_ok:
-                _release_quota_reservation(user["user_id"], reservation)
+                if reservation:
+                    _release_quota_reservation(user["user_id"], reservation)
                 break
             assigned = task_store.assign_pending(
                 task_id, placement["node_id"], placement["gpu_index"]
             )
             if not assigned:
                 registry.release_capacity(task_id)
-                _release_quota_reservation(user["user_id"], reservation)
+                if reservation:
+                    _release_quota_reservation(user["user_id"], reservation)
                 continue
         except Exception:
             registry.release_capacity(task_id)
-            _release_quota_reservation(user["user_id"], reservation)
+            if reservation:
+                _release_quota_reservation(user["user_id"], reservation)
             raise
 
         assigned_ids.append(task_id)
-        week = str(reservation["week_start"])
-        batch = quota_batches.setdefault(week, {
-            "task_ids": [],
-            "reservation": {
-                "week_start": week,
-                "resources": {},
-            },
-        })
-        batch["task_ids"].append(task_id)
-        for metric, item in reservation["resources"].items():
-            aggregate = batch["reservation"]["resources"].setdefault(metric, {
-                "used": item["used"],
-                "reserved": 0.0,
-                "limit": item["limit"],
-                "remaining": item["remaining"],
+        if reservation:
+            week = str(reservation["week_start"])
+            batch = quota_batches.setdefault(week, {
+                "task_ids": [],
+                "reservation": {
+                    "week_start": week,
+                    "resources": {},
+                },
             })
-            aggregate["used"] = item["used"]
-            aggregate["reserved"] += float(item["reserved"])
-            aggregate["limit"] = item["limit"]
-            aggregate["remaining"] = item["remaining"]
+            batch["task_ids"].append(task_id)
+            for metric, item in reservation["resources"].items():
+                aggregate = batch["reservation"]["resources"].setdefault(metric, {
+                    "used": item["used"],
+                    "reserved": 0.0,
+                    "limit": item["limit"],
+                    "remaining": item["remaining"],
+                })
+                aggregate["used"] = item["used"]
+                aggregate["reserved"] += float(item["reserved"])
+                aggregate["limit"] = item["limit"]
+                aggregate["remaining"] = item["remaining"]
 
     batches = list(job.get("quota_batches", []))
     batches.extend(quota_batches.values())
     job["quota_batches"] = batches
-    job["scheduled_tasks"] = int(job.get("scheduled_tasks", 0)) + len(assigned_ids)
-    job["queued_tasks"] = max(0, len(pending) - len(assigned_ids))
-    job["status"] = "dispatched" if job["scheduled_tasks"] else "queued"
-    job["execution_status"] = job["status"]
     job["assignments"] = list(job.get("assignments", [])) + allocation["assignments"]
     job.update(task_store.summary(job_id, user["user_id"]))
     job["queued_tasks"] = int(job.get("unassigned", 0))
@@ -664,6 +688,8 @@ def reschedule_job(job_id: str, user: dict[str, str] = Depends(require_user)):
     return {
         "scheduled": len(assigned_ids),
         "queued": int(job["queued_tasks"]),
+        "recovered": len(recovered["requeued"]),
+        "cancelled_offline": len(recovered["cancelled"]),
         "execution_status": job["execution_status"],
         "task_ids": assigned_ids,
     }
