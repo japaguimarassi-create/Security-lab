@@ -81,6 +81,8 @@ def test_local_worker_advertises_configured_gpu_task_duration(monkeypatch):
     profile = detect_resources()
     assert profile["gpus"][0]["max_task_seconds"] == 1800
     assert profile["gpus"][0]["available_vram_gib"] == 6
+    assert profile["ram_gib"] == 4
+    assert profile["ram_available_gib"] == 2
 
 
 def test_local_worker_rejects_invalid_gpu_task_duration(monkeypatch):
