@@ -1,3 +1,5 @@
+import pytest
+
 from klod.mesh.registry import ResourceRegistry
 
 
