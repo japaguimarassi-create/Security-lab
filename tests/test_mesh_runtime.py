@@ -106,3 +106,35 @@ def test_queued_task_cancellation_returns_reservation_identifier(tmp_path):
     cancelled = store.cancel_job("job-runtime-test", "owner-1")
     assert cancelled["releasable_task_ids"] == [created[0]["task_id"]]
     assert store.summary("job-runtime-test", "owner-1")["cancelled"] == 1
+
+
+
+def test_worker_can_renew_its_unchanged_lease_after_deadline(tmp_path):
+    store = TaskStore(str(tmp_path / "tasks.sqlite"))
+    created = store.create_from_plan(cpu_plan(), {"text": "network-retry", "iterations": 4})
+    claim = store.claim("node-1", "worker-token")
+    task_id = created[0]["task_id"]
+    with store._connect() as db:
+        db.execute(
+            "UPDATE mesh_tasks SET lease_expires_at=? WHERE task_id=?",
+            (time.time() - 1, task_id),
+        )
+    renewed = store.renew(task_id, "node-1", claim["lease_token"])
+    assert renewed["renewed"] is True
+    assert renewed["cancel_requested"] is False
+
+
+def test_reclaimed_lease_invalidates_the_previous_worker_token(tmp_path):
+    store = TaskStore(str(tmp_path / "tasks.sqlite"))
+    created = store.create_from_plan(cpu_plan(), {"text": "lease-race", "iterations": 4})
+    task_id = created[0]["task_id"]
+    first = store.claim("node-1", "worker-token")
+    with store._connect() as db:
+        db.execute(
+            "UPDATE mesh_tasks SET lease_expires_at=? WHERE task_id=?",
+            (time.time() - 1, task_id),
+        )
+    second = store.claim("node-1", "worker-token")
+    assert second["manifest"]["attempt"] == 2
+    with pytest.raises(TaskError, match="lease rejected"):
+        store.renew(task_id, "node-1", first["lease_token"])
