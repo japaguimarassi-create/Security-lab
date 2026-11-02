@@ -88,3 +88,120 @@ def test_gradio_client_receives_private_space_token(monkeypatch):
         "token": "hf-private-token",
         "verbose": False,
     }
+
+
+def test_zero_gpu_bridge_uses_async_job_and_returns_verified_shape(monkeypatch):
+    from klod.mesh.huggingface_worker import HuggingFaceZeroGPUWorker
+    monkeypatch.setattr("klod.mesh.huggingface_worker._quota_remaining_seconds", lambda token: 300)
+    captured = {}
+
+    class FakeJob:
+        def done(self):
+            return True
+
+        def result(self):
+            return {"workload": "gpu-matmul", "sha256": "a" * 64}
+
+    class FakeClient:
+        def submit(self, *args, **kwargs):
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+            return FakeJob()
+
+    worker = HuggingFaceZeroGPUWorker(
+        "https://mesh.example", "node-1", "worker-token",
+        "owner/private-space", "hf-token", _profile(),
+    )
+    worker._client = FakeClient()
+    result = worker._invoke_space({
+        "workload": "gpu-matmul",
+        "payload": {"matrix_size": 512, "seed": 4},
+        "device_index": 0,
+        "max_runtime_seconds": 120,
+        "requires_gpu": True,
+    })
+    assert result["sha256"] == "a" * 64
+    assert captured["kwargs"]["api_name"] == "/run_gpu_task"
+
+
+def test_zero_gpu_bridge_cancels_a_job_that_is_still_queued(monkeypatch):
+    from threading import Event
+
+    from klod.mesh.huggingface_worker import HuggingFaceZeroGPUWorker
+
+    class FakeJob:
+        def done(self):
+            return False
+
+        def cancel(self):
+            return True
+
+    class FakeClient:
+        def submit(self, *args, **kwargs):
+            return FakeJob()
+
+    worker = HuggingFaceZeroGPUWorker(
+        "https://mesh.example", "node-1", "worker-token",
+        "owner/private-space", "hf-token", _profile(),
+    )
+    worker._client = FakeClient()
+    cancel = Event()
+    cancel.set()
+    with pytest.raises(HuggingFaceWorkerError, match="cancelled before execution"):
+        worker._invoke_space({
+            "workload": "gpu-matmul",
+            "payload": {"matrix_size": 512, "seed": 4},
+            "device_index": 0,
+            "max_runtime_seconds": 60,
+            "requires_gpu": True,
+        }, cancel_event=cancel)
+
+
+def test_zero_gpu_bridge_does_not_claim_running_provider_jobs_were_stopped(monkeypatch):
+    from threading import Event
+
+    from klod.mesh.huggingface_worker import HuggingFaceZeroGPUWorker
+
+    class FakeJob:
+        def done(self):
+            return False
+
+        def cancel(self):
+            return False
+
+    class FakeClient:
+        def submit(self, *args, **kwargs):
+            return FakeJob()
+
+    worker = HuggingFaceZeroGPUWorker(
+        "https://mesh.example", "node-1", "worker-token",
+        "owner/private-space", "hf-token", _profile(),
+    )
+    worker._client = FakeClient()
+    cancel = Event()
+    cancel.set()
+    with pytest.raises(HuggingFaceWorkerError, match="remote GPU call may continue"):
+        worker._invoke_space({
+            "workload": "gpu-matmul",
+            "payload": {"matrix_size": 512, "seed": 4},
+            "device_index": 0,
+            "max_runtime_seconds": 60,
+            "requires_gpu": True,
+        }, cancel_event=cancel)
+
+
+def test_zero_gpu_bridge_rejects_cpu_runtime_above_provider_limit():
+    from klod.mesh.huggingface_worker import HuggingFaceZeroGPUWorker
+
+    worker = HuggingFaceZeroGPUWorker(
+        "https://mesh.example", "node-1", "worker-token",
+        "owner/private-space", "hf-token", _profile(),
+    )
+    with pytest.raises(HuggingFaceWorkerError, match="duration limit"):
+        worker._invoke_space({
+            "workload": "cpu-sha256",
+            "payload": {"text": "test", "iterations": 10},
+            "device_index": None,
+            "max_runtime_seconds": 300,
+            "requires_gpu": False,
+        })
