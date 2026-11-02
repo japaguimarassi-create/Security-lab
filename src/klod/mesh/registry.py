@@ -100,13 +100,19 @@ class ResourceRegistry:
     def register(self, owner_id: str, provider_id: str, cpu_cores: float,
                  ram_gib: float, storage_gib: float,
                  gpus: list[dict[str, Any]] | None = None,
-                 shared: bool = False) -> dict[str, str]:
+                 shared: bool = False,
+                 ram_available_gib: float | None = None) -> dict[str, str]:
         owner = str(owner_id).strip()
         provider = str(provider_id).strip()
         if not owner or len(owner) > 128 or not provider or len(provider) > 80:
             raise ValueError("owner_id and provider_id are required and must be bounded")
         cpu = self._positive(cpu_cores, "cpu_cores")
         ram = self._positive(ram_gib, "ram_gib")
+        ram_available = ram if ram_available_gib is None else self._positive(
+            ram_available_gib, "ram_available_gib", True
+        )
+        if ram_available > ram:
+            raise ValueError("ram_available_gib cannot exceed ram_gib")
         storage = self._positive(storage_gib, "storage_gib", True)
         devices = self._normalize_gpus(gpus or [])
         now = time.time()
@@ -121,7 +127,7 @@ class ResourceRegistry:
                     storage_available_gib, gpus_json, token_hash, shared,
                     enabled, last_seen, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-            """, (node_id, owner, provider, cpu, cpu, ram, ram, storage, storage,
+            """, (node_id, owner, provider, cpu, cpu, ram, ram_available, storage, storage,
                   json.dumps(devices, separators=(",", ":")), token_hash,
                   int(shared), now, now))
         return {"node_id": node_id, "worker_token": token}
