@@ -33,10 +33,11 @@ MANIFEST = {
 def test_kernel_metadata_is_private_and_uses_gpu_only_for_gpu_workloads():
     gpu = build_kernel_metadata("meshowner", "gpu-mesh-abc123", "gpu-matmul", "NvidiaTeslaT4")
     cpu = build_kernel_metadata("meshowner", "gpu-mesh-def456", "cpu-sha256", "NvidiaTeslaT4")
-    assert gpu["is_private"] is True
-    assert gpu["enable_gpu"] is True
-    assert gpu["enable_internet"] is False
-    assert cpu["enable_gpu"] is False
+    assert gpu["is_private"] == "true"
+    assert gpu["enable_gpu"] == "true"
+    assert gpu["enable_internet"] == "false"
+    assert gpu["machine_shape"] == "NvidiaTeslaT4"
+    assert cpu["enable_gpu"] == "false"
 
 
 def test_kernel_script_bundles_only_allowlisted_workload_code_and_manifest():
