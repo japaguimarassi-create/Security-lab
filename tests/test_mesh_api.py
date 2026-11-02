@@ -361,3 +361,120 @@ def test_kaggle_and_zerogpu_provider_workers_can_register_with_declared_limits(t
         worker = mesh_api.registry.list_owned(mesh_api.auth_store.resolve_session(token)["user_id"])
         item = next(node for node in worker if node["node_id"] == node_id)
         assert item["gpus"][0]["max_task_seconds"] == max_task
+
+
+
+def test_expired_worker_task_is_reassigned_without_double_charging_quota(tmp_path, monkeypatch):
+    import time
+
+    client = configure_mesh(tmp_path, monkeypatch)
+    account_token = create_account(client)
+    account_headers = {"Authorization": f"Bearer {account_token}"}
+
+    def register_worker():
+        response = client.post("/v1/mesh/workers", headers=account_headers, json={
+            "provider_id": "volunteer-worker",
+            "cpu_cores": 2,
+            "ram_gib": 8,
+            "storage_gib": 0,
+            "gpus": [],
+            "shared": False,
+        })
+        assert response.status_code == 201
+        worker = response.json()
+        worker_headers = {"X-Worker-Token": worker["worker_token"]}
+        heartbeat = client.post(
+            f"/v1/mesh/workers/{worker['node_id']}/heartbeat",
+            headers=worker_headers,
+            json={
+                "cpu_available": 2,
+                "ram_available_gib": 8,
+                "storage_available_gib": 0,
+                "gpus": [],
+            },
+        )
+        assert heartbeat.status_code == 200
+        return worker, worker_headers
+
+    first, first_headers = register_worker()
+    created = client.post("/v1/mesh/jobs", headers=account_headers, json={
+        "workload": "cpu-sha256",
+        "payload": {"text": "recover-worker", "iterations": 24},
+        "task_count": 1,
+        "requires_gpu": False,
+        "min_vram_gib_per_task": 0,
+        "cpu_cores_per_task": 1,
+        "ram_gib_per_task": 1,
+        "max_runtime_seconds_per_task": 60,
+    })
+    assert created.status_code == 201
+    job = created.json()
+    task_id = job["task_ids"][0]
+
+    claim = client.post(
+        f"/v1/mesh/workers/{first['node_id']}/tasks/claim",
+        headers=first_headers,
+    ).json()["task"]
+    started = client.post(
+        f"/v1/mesh/workers/{first['node_id']}/tasks/{task_id}/start",
+        headers={**first_headers, "X-Task-Lease": claim["lease_token"]},
+    )
+    assert started.json()["started"] is True
+
+    with mesh_api.task_store._connect() as db:
+        db.execute(
+            "UPDATE mesh_tasks SET lease_expires_at=? WHERE task_id=?",
+            (time.time() - 1, task_id),
+        )
+
+    revoked = client.delete(
+        f"/v1/mesh/workers/{first['node_id']}",
+        headers=account_headers,
+    )
+    assert revoked.status_code == 200
+
+    quota_before = client.get("/v1/mesh/quota", headers=account_headers).json()
+    cpu_before = quota_before["resources"]["cpu_core_seconds"]["used"]
+    ram_before = quota_before["resources"]["ram_gib_seconds"]["used"]
+
+    second, second_headers = register_worker()
+    rescheduled = client.post(
+        f"/v1/mesh/jobs/{job['job_id']}/reschedule",
+        headers=account_headers,
+    )
+    assert rescheduled.status_code == 200
+    body = rescheduled.json()
+    assert body["recovered"] == 1
+    assert body["scheduled"] == 1
+    assert body["queued"] == 0
+
+    quota_after = client.get("/v1/mesh/quota", headers=account_headers).json()
+    assert quota_after["resources"]["cpu_core_seconds"]["used"] == cpu_before
+    assert quota_after["resources"]["ram_gib_seconds"]["used"] == ram_before
+
+    second_claim = client.post(
+        f"/v1/mesh/workers/{second['node_id']}/tasks/claim",
+        headers=second_headers,
+    ).json()["task"]
+    assert second_claim["manifest"]["task_id"] == task_id
+    assert second_claim["manifest"]["attempt"] == 2
+
+    second_start = client.post(
+        f"/v1/mesh/workers/{second['node_id']}/tasks/{task_id}/start",
+        headers={**second_headers, "X-Task-Lease": second_claim["lease_token"]},
+    )
+    assert second_start.json()["started"] is True
+
+    result = execute_workload("cpu-sha256", second_claim["manifest"]["payload"])
+    completed = client.post(
+        f"/v1/mesh/workers/{second['node_id']}/tasks/{task_id}/complete",
+        headers={**second_headers, "X-Task-Lease": second_claim["lease_token"]},
+        json={"result": result},
+    )
+    assert completed.status_code == 200
+    latest = client.get(
+        f"/v1/mesh/jobs/{job['job_id']}/results",
+        headers=account_headers,
+    ).json()
+    assert latest["summary"]["execution_status"] == "completed"
+    assert latest["tasks"][0]["state"] == "completed"
