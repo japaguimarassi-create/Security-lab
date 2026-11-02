@@ -352,12 +352,32 @@ class TaskStore:
                     encoded = _json_bytes(result)
                     if len(encoded) > MAX_RESULT_BYTES:
                         raise TaskError("Task result exceeds 64 KiB after server verification")
-                else:
+                elif str(row["workload"]) in ("gpu-matmul", "gpu-mandelbrot"):
+                    payload = json.loads(row["payload_json"])
                     digest = result.get("sha256")
                     if not isinstance(digest, str) or len(digest) != 64 or any(
                         char not in "0123456789abcdef" for char in digest.lower()
                     ):
-                        raise TaskError("Result must include a hexadecimal SHA-256 digest")
+                        raise TaskError("GPU result must include a hexadecimal SHA-256 digest")
+                    if result.get("execution_device") != "cuda":
+                        raise TaskError("GPU result must identify CUDA execution")
+                    if result.get("result_validation") != "worker-reported-digest":
+                        raise TaskError("GPU result must retain its worker-reported validation status")
+                    if int(result.get("device_index", -1)) != int(row["gpu_index"]):
+                        raise TaskError("GPU result device index does not match the task assignment")
+                    if str(row["workload"]) == "gpu-matmul":
+                        if int(result.get("matrix_size", -1)) != int(payload["matrix_size"]):
+                            raise TaskError("GPU matrix result size does not match the task payload")
+                    else:
+                        for field in ("width", "height", "max_iterations"):
+                            if int(result.get(field, -1)) != int(payload[field]):
+                                raise TaskError(f"GPU fractal result {field} does not match the task payload")
+                    result["result_validation"] = "worker-reported"
+                    encoded = _json_bytes(result)
+                    if len(encoded) > MAX_RESULT_BYTES:
+                        raise TaskError("GPU result exceeds 64 KiB")
+                else:
+                    raise TaskError("Unsupported task workload in result validation")
                 now = time.time()
                 if row["cancel_requested"]:
                     db.execute("""
