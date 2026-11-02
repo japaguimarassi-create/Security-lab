@@ -31,3 +31,12 @@ The 48-row curriculum is a starter experiment, not a broad capability dataset. S
 - **Web control plane:** packaged self-hosted dashboard at `/mesh`, strict content security policy and no-store responses.
 
 The first GPU Mesh milestone intentionally stops at inventory and allocation planning. Workers do not execute arbitrary remote commands, and an allocation plan is not a virtual machine. A later execution runtime must introduce signed job artifacts, isolated containers, resource cgroups, restricted networking, short-lived capabilities, cancellation, and output verification.
+
+
+## GPU Mesh 0.8 runtime
+
+GPU Mesh now persists queued tasks, reassigns pending tasks when workers join, reserves resources per physical GPU, and uses signed manifests plus expiring worker leases. Only the built-in CPU SHA-256, CUDA matrix multiplication and CUDA Mandelbrot workloads are accepted. Workers report results; CPU SHA-256 is recomputed server-side, while CUDA results are not remotely attested.
+
+Provider bridges include private Kaggle kernels and a Hugging Face ZeroGPU Gradio Space. Google Colab is supported through an interactive notebook template; its runtime is temporary. Provider limits and quotas remain separate from GPU Mesh quotas.
+
+The worker process applies OS resource limits where supported, but is not a container or microVM. The source vault remains separate: the general-relativity corpus and a private master secret derive keys for encrypted export bundles. Git objects in the public repository remain readable.
