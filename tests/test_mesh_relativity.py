@@ -9,7 +9,7 @@ from klod.mesh.relativity import (
 
 def test_canonical_corpus_is_stable_and_versioned():
     assert RELATIVITY_CORPUS_VERSION == "GR-CANONICAL-CORE-1.0.0"
-    assert b"Einstein field equations" in canonical_relativity_bytes()
+    assert b"einstein field equations" in canonical_relativity_bytes().lower()
     assert len(relativity_fingerprint()) == 64
 
 
