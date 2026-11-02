@@ -1,4 +1,4 @@
-# KLOD 0.6 architecture
+# KLOD + GPU Mesh Core 0.8 architecture
 
 - **General assistant:** open-domain system prompt and general fallback.
 - **Domain router:** deterministic, conservative routing; ambiguous and unfamiliar requests remain general.
