@@ -79,11 +79,15 @@ class ResourceRegistry:
             if available > total:
                 raise ValueError("available_vram_gib cannot exceed total_vram_gib")
             name = str(item.get("name", f"GPU-{index}"))[:120]
+            max_task_seconds = item.get("max_task_seconds", 86400)
+            if isinstance(max_task_seconds, bool) or not 1 <= int(max_task_seconds) <= 86400:
+                raise ValueError("max_task_seconds must be between 1 and 86400")
             normalized.append({
                 "index": index,
                 "name": name,
                 "total_vram_gib": total,
                 "available_vram_gib": available,
+                "max_task_seconds": int(max_task_seconds),
             })
         return normalized
 
@@ -150,6 +154,8 @@ class ResourceRegistry:
                     raise ValueError("Heartbeat cannot increase registered VRAM capacity")
                 if new["available_vram_gib"] > old["total_vram_gib"]:
                     raise ValueError("Heartbeat VRAM availability exceeds registered capacity")
+                if new["max_task_seconds"] != old.get("max_task_seconds", 86400):
+                    raise ValueError("Heartbeat cannot change the registered maximum task duration")
             db.execute("""
                 UPDATE mesh_workers SET cpu_available=?, ram_available_gib=?,
                     storage_available_gib=?, gpus_json=?, last_seen=?
