@@ -4,6 +4,8 @@ import hashlib
 import json
 import os
 import sqlite3
+
+from klod.db import connect, prepare_database_path
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,7 +22,7 @@ from klod.mesh.runtime import TaskError, TaskStore
 from klod.mesh.scheduler import SchedulingError, TaskScheduler
 from klod.mesh.workloads import WorkloadError, required_vram_gib, validate_workload
 
-DATABASE = os.getenv("GPU_MESH_DATABASE_PATH", "./data/gpu_mesh.sqlite3")
+DATABASE = os.getenv("GPU_MESH_DATABASE_PATH") or os.getenv("DATABASE_URL", "./data/gpu_mesh.sqlite3")
 SESSION_TTL = int(os.getenv("GPU_MESH_SESSION_TTL_SECONDS", "86400"))
 HEARTBEAT_TTL = int(os.getenv("GPU_MESH_HEARTBEAT_TTL_SECONDS", "120"))
 
@@ -34,7 +36,7 @@ task_store = TaskStore(DATABASE)
 class JobStore:
     def __init__(self, database_path: str):
         self.database_path = database_path
-        Path(database_path).parent.mkdir(parents=True, exist_ok=True)
+        prepare_database_path(database_path)
         with self._connect() as db:
             db.execute("""
                 CREATE TABLE IF NOT EXISTS mesh_jobs (
@@ -48,7 +50,7 @@ class JobStore:
             db.execute("CREATE INDEX IF NOT EXISTS idx_mesh_jobs_owner ON mesh_jobs(owner_id, created_at DESC)")
 
     def _connect(self):
-        db = sqlite3.connect(self.database_path, timeout=20)
+        db = connect(self.database_path, timeout=20)
         db.row_factory = sqlite3.Row
         return db
 

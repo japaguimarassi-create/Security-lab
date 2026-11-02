@@ -1,11 +1,13 @@
 import sqlite3
+
+from klod.db import connect, prepare_database_path
 import struct
 from pathlib import Path
 
 class MemoryStore:
     def __init__(self, path: str):
         self.path = str(path)
-        Path(self.path).parent.mkdir(parents=True, exist_ok=True)
+        prepare_database_path(self.path)
         with self._connect() as db:
             db.execute("""CREATE TABLE IF NOT EXISTS memories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,7 +27,7 @@ class MemoryStore:
             )""")
 
     def _connect(self):
-        db = sqlite3.connect(self.path, timeout=15)
+        db = connect(self.path, timeout=15)
         db.row_factory = sqlite3.Row
         return db
 

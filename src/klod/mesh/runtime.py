@@ -5,6 +5,8 @@ import hmac
 import json
 import secrets
 import sqlite3
+
+from klod.db import connect, prepare_database_path
 import time
 from pathlib import Path
 from typing import Any
@@ -45,7 +47,7 @@ class TaskError(ValueError):
 class TaskStore:
     def __init__(self, database_path: str):
         self.database_path = str(database_path)
-        Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
+        prepare_database_path(self.database_path)
         with self._connect() as db:
             db.execute("""
                 CREATE TABLE IF NOT EXISTS mesh_tasks (
@@ -77,7 +79,7 @@ class TaskStore:
             db.execute("CREATE INDEX IF NOT EXISTS idx_mesh_tasks_job ON mesh_tasks(job_id,owner_id,state)")
 
     def _connect(self) -> sqlite3.Connection:
-        db = sqlite3.connect(self.database_path, timeout=20, isolation_level=None)
+        db = connect(self.database_path, timeout=20, isolation_level=None)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA journal_mode=WAL")
         db.execute("PRAGMA foreign_keys=ON")

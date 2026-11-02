@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>GPU Mesh — Distributed Compute</title>
+<link rel="stylesheet" href="/styles.css">
+<script type="module" src="/app.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/mesh"><span class="brand-mark">GM</span><span>GPU MESH <small>CORE</small></span></a>
+  <div class="topbar-right"><span id="connection" class="connection"><i></i> API aguardando</span><button id="logout" class="button ghost hidden" type="button">Sair</button></div>
+</header>
+<main class="shell">
+  <section id="auth-view" class="auth-layout">
+    <div class="hero">
+      <div class="eyebrow">DISTRIBUTED COMPUTE NETWORK</div>
+      <h1>Seu trabalho.<br><span>Uma rede de recursos.</span></h1>
+      <p>Conecte máquinas autorizadas, acompanhe GPU, VRAM, CPU e RAM por dispositivo e planeje tarefas distribuídas.</p>
+      <div class="hero-points">
+        <div><b>01</b><span>Inventário real de hardware</span></div>
+        <div><b>02</b><span>Limites semanais por recurso</span></div>
+        <div><b>03</b><span>Planejamento distribuído</span></div>
+      </div>
+    </div>
+    <section class="panel auth-panel">
+      <div class="panel-head"><div><div class="eyebrow">CONTA GPU MESH</div><h2 id="auth-title">Entrar</h2></div><span class="status-dot"></span></div>
+      <form id="auth-form" class="stack">
+        <label>Email<input id="email" name="email" type="email" autocomplete="email" maxlength="254" required></label>
+        <label>Senha<input id="password" name="password" type="password" autocomplete="current-password" minlength="12" maxlength="1024" required></label>
+        <button id="auth-submit" class="button primary" type="submit">Entrar na plataforma</button>
+      </form>
+      <p class="switch-auth"><span id="auth-switch-copy">Ainda não tem conta?</span> <button id="auth-switch" class="text-button" type="button">Criar conta</button></p>
+      <p id="auth-message" class="message" role="status"></p>
+      <p class="fine-print">As sessões ficam armazenadas apenas na sessão atual do navegador. A senha nunca é armazenada pelo painel.</p>
+    </section>
+  </section>
+
+  <section id="dashboard" class="hidden">
+    <div class="dashboard-heading">
+      <div><div class="eyebrow">CONTROL PLANE / OVERVIEW</div><h1>Central de computação</h1><p id="welcome">Painel da rede</p></div>
+      <button id="refresh" class="button secondary" type="button">Atualizar dados</button>
+    </div>
+    <div class="stat-grid">
+      <article class="stat-card"><span>NÓS ONLINE</span><strong id="node-count">—</strong><small>Workers com heartbeat válido</small></article>
+      <article class="stat-card"><span>CPU DISPONÍVEL</span><strong id="cpu-count">—</strong><small>Núcleos alocáveis</small></article>
+      <article class="stat-card"><span>RAM DISPONÍVEL</span><strong id="ram-count">—</strong><small>GiB anunciados pelos nós</small></article>
+      <article class="stat-card"><span>DISPOSITIVOS GPU</span><strong id="gpu-count">—</strong><small>VRAM individual por GPU</small></article>
+    </div>
+
+    <div class="content-grid">
+      <section class="panel">
+        <div class="panel-head"><div><div class="eyebrow">LIVE INVENTORY</div><h2>Dispositivos GPU</h2></div><span class="pill">Por dispositivo</span></div>
+        <div id="gpu-list" class="empty-state">Nenhum recurso carregado.</div>
+        <p class="fine-print">A VRAM de placas diferentes nunca é somada como se fosse um único espaço de memória.</p>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><div><div class="eyebrow">WEEKLY FAIR USE</div><h2>Cotas semanais</h2></div><span id="quota-week" class="pill">UTC</span></div>
+        <div id="quota-list" class="quota-list"><p class="empty-state">Carregando cotas…</p></div>
+      </section>
+    </div>
+
+    <div class="content-grid">
+      <section class="panel">
+        <div class="panel-head"><div><div class="eyebrow">VOLUNTEER NODES</div><h2>Workers conectados</h2></div><span id="worker-count" class="pill">0 nós</span></div>
+        <div class="job-actions"><button id="copy-account-token" class="button secondary" type="button">Copiar token da sessão</button></div>
+        <p id="token-message" class="message" role="status"></p>
+        <div id="worker-list" class="empty-state">Nenhum worker registrado.</div>
+        <details class="install-box">
+          <summary>Conectar uma máquina própria</summary>
+          <p>Execute o agente em hardware que você controla. O compartilhamento começa desativado e requer autorização do proprietário.</p>
+          <pre>pip install "klod-ai[worker] @ git+https://github.com/japaguimarassi-create/Security-lab.git"
+export GPU_MESH_API_URL="https://SEU-DOMINIO"
+export GPU_MESH_ACCESS_TOKEN="TOKEN_COPIADO_NO_PAINEL"
+export GPU_MESH_SHARE="true"
+gpu-mesh-worker</pre>
+          <p class="fine-print">O agente executa somente SHA-256 em CPU, multiplicação de matrizes CUDA e Mandelbrot CUDA. Não aceita scripts ou comandos arbitrários.</p>
+        </details>
+        <details class="install-box">
+          <summary>Conectar Kaggle Notebooks</summary>
+          <p>Cria kernels privados por tarefa. Configure o usuário e o token da sua conta Kaggle, além do acelerador realmente disponível na conta.</p>
+          <pre>pip install "klod-ai[kaggle] @ git+https://github.com/japaguimarassi-create/Security-lab.git"
+export GPU_MESH_API_URL="https://SEU-DOMINIO"
+export GPU_MESH_ACCESS_TOKEN="TOKEN_COPIADO_NO_PAINEL"
+export KAGGLE_USERNAME="SEU_USUARIO"
+export KAGGLE_API_TOKEN="SEU_TOKEN_KAGGLE"
+export GPU_MESH_KAGGLE_ACCELERATOR="NvidiaTeslaT4"
+export GPU_MESH_SHARE="true"
+gpu-mesh-kaggle-worker</pre>
+        </details>
+        <details class="install-box">
+          <summary>Conectar Hugging Face ZeroGPU</summary>
+          <p>Publique primeiro <code>examples/huggingface_zerogpu</code> como um Space Gradio privado e configure o token HF com leitura da quota de uso.</p>
+          <pre>pip install "klod-ai[huggingface] @ git+https://github.com/japaguimarassi-create/Security-lab.git"
+export GPU_MESH_API_URL="https://SEU-DOMINIO"
+export GPU_MESH_ACCESS_TOKEN="TOKEN_COPIADO_NO_PAINEL"
+export HF_TOKEN="SEU_TOKEN_HF"
+export GPU_MESH_HF_SPACE_ID="USUARIO/SPACE"
+export GPU_MESH_SHARE="true"
+gpu-mesh-hf-worker</pre>
+        </details>
+        <details class="install-box">
+          <summary>Conectar sessão Google Colab</summary>
+          <p>Abra o notebook <code>examples/colab/GPU_Mesh_Worker.ipynb</code> no Colab e execute as células. O worker fica online somente enquanto o runtime permanecer ativo.</p>
+        </details>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><div><div class="eyebrow">TASK PLANNER</div><h2>Executar trabalho</h2></div><span class="pill">Workloads permitidos</span></div>
+        <form id="job-form" class="stack">
+          <label>Tipo de tarefa<select id="workload">
+            <option value="gpu-matmul">Multiplicação de matrizes CUDA</option>
+            <option value="gpu-mandelbrot">Renderização Mandelbrot CUDA</option>
+            <option value="cpu-sha256">SHA-256 em CPU</option>
+          </select></label>
+          <div id="matmul-fields" class="form-grid">
+            <label>Tamanho da matriz<input id="matrix-size" type="number" value="512" min="64" max="4096" step="64"></label>
+            <label>Semente<input id="matrix-seed" type="number" value="42" min="0" max="2147483647"></label>
+          </div>
+          <div id="mandelbrot-fields" class="form-grid hidden">
+            <label>Largura<input id="fractal-width" type="number" value="1024" min="128" max="2048" step="128"></label>
+            <label>Altura<input id="fractal-height" type="number" value="1024" min="128" max="2048" step="128"></label>
+            <label>Iterações máximas<input id="fractal-iterations" type="number" value="128" min="16" max="256"></label>
+          </div>
+          <div id="hash-fields" class="stack hidden">
+            <label>Texto de entrada<textarea id="hash-text" rows="3" maxlength="65536">GPU Mesh distributed work</textarea></label>
+            <label>Iterações SHA-256<input id="hash-iterations" type="number" value="10000" min="1" max="250000"></label>
+          </div>
+          <div class="form-grid">
+            <label>Quantidade de tarefas<input id="task-count" type="number" value="2" min="1" max="1000" required></label>
+            <label>VRAM mínima por GPU (GiB)<input id="min-vram" type="number" value="1" min="0" max="512" step="0.25"></label>
+            <label>CPU por tarefa<input id="cpu-per-task" type="number" value="1" min="0.1" max="256" step="0.1"></label>
+            <label>RAM por tarefa (GiB)<input id="ram-per-task" type="number" value="2" min="0.1" max="4096" step="0.1"></label>
+          </div>
+          <label class="check-row"><input id="requires-gpu" type="checkbox" checked disabled> Requisito calculado automaticamente pelo workload</label>
+          <button class="button primary" type="submit">Executar tarefas distribuídas</button>
+        </form>
+        <p id="job-message" class="message" role="status"></p>
+      </section>
+    </div>
+
+    <section class="panel">
+      <div class="panel-head"><div><div class="eyebrow">SCHEDULER HISTORY</div><h2>Trabalhos planejados</h2></div><span class="pill">Histórico da conta</span></div>
+      <div id="job-list" class="empty-state">Nenhum trabalho executado.</div>
+      <div id="job-results" class="task-results hidden"></div>
+    </section>
+    <p class="footnote">GPU Mesh Core · Somente workloads internos permitidos são executados. Resultados CUDA são relatórios dos workers, não provas criptográficas de execução.</p>
+  </section>
+</main>
+<footer><span>GPU MESH CORE</span><span>Distributed resource control plane</span></footer>
+</body>
+</html>

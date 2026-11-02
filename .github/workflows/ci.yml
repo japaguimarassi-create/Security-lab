@@ -11,6 +11,22 @@ concurrency:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: klod_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d klod_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      TEST_POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/klod_test
     permissions:
       contents: read
     steps:
@@ -20,8 +36,9 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e ".[test]"
-      - run: python -m compileall -q src scripts examples/huggingface_zerogpu
+      - run: python -m compileall -q src scripts examples/huggingface_zerogpu index.py
       - run: node --check src/klod/web/app.js
+      - run: node --check public/app.js
       - run: python -c "import json; json.load(open('examples/colab/GPU_Mesh_Worker.ipynb', encoding='utf-8'))"
       - run: pytest -q
       - run: docker build -t klod-gpu-mesh:ci .

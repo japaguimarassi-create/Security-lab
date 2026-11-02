@@ -164,3 +164,8 @@ CPU SHA-256 results are recomputed server-side. CUDA results are reported by the
 ### Encrypted source archive
 
 The canonical general-relativity corpus in `src/klod/mesh/relativity.py` is a mandatory component of Argon2id key derivation. AES-256-GCM encrypts the exported source bundle. A private random `GPU_MESH_MASTER_SECRET` (at least 32 bytes) is also mandatory; public mathematical formulas alone are not a secret. Configure that value as a GitHub Actions secret to run the encrypted archive workflow. Source files and Git history in this public repository remain readable; the vault encrypts the exported archive, not the public Git objects.
+
+
+## Vercel + Neon website deployment
+
+The GPU Mesh dashboard can run on Vercel's free personal Hobby plan with a Neon Free PostgreSQL database. The deployment uses the lightweight FastAPI entrypoint in `index.py` and static files in `public/`; it does not load Qwen or run a persistent worker process. See [docs/DEPLOY_VERCEL_NEON.md](docs/DEPLOY_VERCEL_NEON.md) for setup, secrets and verification.

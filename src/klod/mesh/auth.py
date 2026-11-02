@@ -5,6 +5,8 @@ import math
 import re
 import secrets
 import sqlite3
+
+from klod.db import connect, prepare_database_path
 import time
 import uuid
 from pathlib import Path
@@ -25,7 +27,7 @@ class AuthStore:
     def __init__(self, database_path: str, session_ttl_seconds: int = 86400):
         self.database_path = str(database_path)
         self.session_ttl_seconds = session_ttl_seconds
-        Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
+        prepare_database_path(self.database_path)
         self.password_hasher = PasswordHasher(
             time_cost=3,
             memory_cost=65536,
@@ -63,7 +65,7 @@ class AuthStore:
             """)
 
     def _connect(self) -> sqlite3.Connection:
-        db = sqlite3.connect(self.database_path, timeout=20)
+        db = connect(self.database_path, timeout=20)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA foreign_keys=ON")
         db.execute("PRAGMA journal_mode=WAL")
