@@ -17,9 +17,9 @@ PROVIDER_CATALOG: tuple[dict[str, Any], ...] = (
         "name": "Hugging Face ZeroGPU",
         "mode": "hosted-space-endpoint",
         "resource_types": ["gpu-inference"],
-        "status": "adapter-required",
+        "status": "supported",
         "free_capacity_guaranteed": False,
-        "notes": "User-authorized Spaces endpoints only; public quota and availability remain provider-controlled.",
+        "notes": "Requires a user-deployed Gradio ZeroGPU Space, HF token and provider quota; GPU time is allocated on demand.",
     },
     {
         "id": "kaggle-notebooks",
