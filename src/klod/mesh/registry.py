@@ -38,6 +38,19 @@ class ResourceRegistry:
             """)
             db.execute("CREATE INDEX IF NOT EXISTS idx_mesh_workers_online ON mesh_workers(enabled, shared, last_seen)")
             db.execute("CREATE INDEX IF NOT EXISTS idx_mesh_workers_owner ON mesh_workers(owner_id, enabled)")
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS mesh_resource_reservations (
+                    task_id TEXT PRIMARY KEY,
+                    node_id TEXT NOT NULL,
+                    gpu_index INTEGER,
+                    cpu_cores REAL NOT NULL,
+                    ram_gib REAL NOT NULL,
+                    vram_gib REAL NOT NULL,
+                    expires_at REAL NOT NULL,
+                    created_at REAL NOT NULL
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_mesh_reservations_node ON mesh_resource_reservations(node_id,expires_at)")
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.database_path, timeout=20, isolation_level=None)
@@ -146,7 +159,8 @@ class ResourceRegistry:
             return True
 
     def list_schedulable(self, owner_id: str, include_shared: bool = True) -> list[dict[str, Any]]:
-        cutoff = time.time() - self.heartbeat_ttl_seconds
+        now = time.time()
+        cutoff = now - self.heartbeat_ttl_seconds
         with self._connect() as db:
             if include_shared:
                 rows = db.execute("""
@@ -160,7 +174,117 @@ class ResourceRegistry:
                     WHERE enabled=1 AND last_seen>=? AND owner_id=?
                     ORDER BY last_seen DESC
                 """, (cutoff, owner_id)).fetchall()
-        return [self._public_row(row) for row in rows]
+            reservation_rows = db.execute("""
+                SELECT node_id,gpu_index,SUM(cpu_cores) AS cpu_cores,
+                       SUM(ram_gib) AS ram_gib,SUM(vram_gib) AS vram_gib
+                FROM mesh_resource_reservations
+                WHERE expires_at>? GROUP BY node_id,gpu_index
+            """, (now,)).fetchall()
+        reservations: dict[str, dict[str, Any]] = {}
+        for item in reservation_rows:
+            record = reservations.setdefault(item["node_id"], {
+                "cpu": 0.0, "ram": 0.0, "gpus": {},
+            })
+            record["cpu"] += float(item["cpu_cores"] or 0)
+            record["ram"] += float(item["ram_gib"] or 0)
+            if item["gpu_index"] is not None:
+                key = int(item["gpu_index"])
+                record["gpus"][key] = record["gpus"].get(key, 0.0) + float(item["vram_gib"] or 0)
+        result = []
+        for row in rows:
+            item = self._public_row(row)
+            held = reservations.get(row["node_id"], {})
+            item["cpu_available"] = max(0.0, item["cpu_available"] - held.get("cpu", 0.0))
+            item["ram_available_gib"] = max(0.0, item["ram_available_gib"] - held.get("ram", 0.0))
+            for gpu in item["gpus"]:
+                gpu["available_vram_gib"] = max(
+                    0.0,
+                    gpu["available_vram_gib"] - held.get("gpus", {}).get(gpu["index"], 0.0),
+                )
+            result.append(item)
+        return result
+
+    def authenticate_worker(self, node_id: str, worker_token: str) -> bool:
+        if not worker_token or len(worker_token) > 512:
+            return False
+        token_hash = hashlib.sha256(worker_token.encode("utf-8")).hexdigest()
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT token_hash FROM mesh_workers WHERE node_id=? AND enabled=1",
+                (node_id,),
+            ).fetchone()
+        return bool(row and secrets.compare_digest(row["token_hash"], token_hash))
+
+    def reserve_capacity(self, task_id: str, node_id: str, gpu_index: int | None,
+                         cpu_cores: float, ram_gib: float, vram_gib: float,
+                         ttl_seconds: int = 900) -> bool:
+        cpu = self._positive(cpu_cores, "reserved CPU")
+        ram = self._positive(ram_gib, "reserved RAM")
+        vram = self._positive(vram_gib, "reserved VRAM", True)
+        if gpu_index is None and vram > 0:
+            raise ValueError("A VRAM reservation requires a physical GPU index")
+        if gpu_index is not None and (isinstance(gpu_index, bool) or int(gpu_index) < 0):
+            raise ValueError("Invalid GPU index")
+        if not 60 <= int(ttl_seconds) <= 86400:
+            raise ValueError("Reservation TTL must be between 60 and 86400 seconds")
+        now = time.time()
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                worker = db.execute("""
+                    SELECT * FROM mesh_workers
+                    WHERE node_id=? AND enabled=1 AND last_seen>=?
+                """, (node_id, now - self.heartbeat_ttl_seconds)).fetchone()
+                if worker is None:
+                    db.rollback()
+                    return False
+                prior = db.execute("""
+                    SELECT COALESCE(SUM(cpu_cores),0) AS cpu,
+                           COALESCE(SUM(ram_gib),0) AS ram
+                    FROM mesh_resource_reservations
+                    WHERE node_id=? AND expires_at>?
+                """, (node_id, now)).fetchone()
+                if float(worker["cpu_available"]) - float(prior["cpu"]) < cpu:
+                    db.rollback()
+                    return False
+                if float(worker["ram_available_gib"]) - float(prior["ram"]) < ram:
+                    db.rollback()
+                    return False
+                if gpu_index is not None:
+                    devices = json.loads(worker["gpus_json"])
+                    if int(gpu_index) >= len(devices):
+                        db.rollback()
+                        return False
+                    device = devices[int(gpu_index)]
+                    held = db.execute("""
+                        SELECT COALESCE(SUM(vram_gib),0) AS vram
+                        FROM mesh_resource_reservations
+                        WHERE node_id=? AND gpu_index=? AND expires_at>?
+                    """, (node_id, int(gpu_index), now)).fetchone()
+                    if float(device["available_vram_gib"]) - float(held["vram"]) < vram:
+                        db.rollback()
+                        return False
+                db.execute("""
+                    INSERT INTO mesh_resource_reservations(
+                        task_id,node_id,gpu_index,cpu_cores,ram_gib,vram_gib,expires_at,created_at
+                    ) VALUES(?,?,?,?,?,?,?,?)
+                """, (task_id, node_id, gpu_index, cpu, ram, vram, now + ttl_seconds, now))
+                db.commit()
+                return True
+            except sqlite3.IntegrityError:
+                db.rollback()
+                return False
+            except Exception:
+                db.rollback()
+                raise
+
+    def release_capacity(self, task_id: str) -> bool:
+        with self._connect() as db:
+            result = db.execute(
+                "DELETE FROM mesh_resource_reservations WHERE task_id=?",
+                (task_id,),
+            )
+        return result.rowcount == 1
 
     def list_owned(self, owner_id: str) -> list[dict[str, Any]]:
         with self._connect() as db:
