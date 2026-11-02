@@ -164,7 +164,8 @@ ds^2 = -f(r)c^2dt^2 + f(r)^(-1)dr^2 + r^2 dOmega^2.
 The horizons are roots of f(r) = 0 when real.
 
 11. HOMOGENEOUS AND ISOTROPIC COSMOLOGY
-The FLRW metric is
+The Friedmann equations govern the scale factor in homogeneous and isotropic
+cosmology. The FLRW metric is
 ds^2 = -c^2 dt^2 + a(t)^2 [
 dr^2/(1-k r^2) + r^2 dOmega^2].
 H = dot(a)/a.
