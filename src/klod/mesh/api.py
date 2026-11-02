@@ -110,6 +110,7 @@ class WorkerRegisterRequest(BaseModel):
     provider_id: str = Field(default="volunteer-worker", min_length=1, max_length=80)
     cpu_cores: float = Field(gt=0, le=4096)
     ram_gib: float = Field(gt=0, le=65536)
+    ram_available_gib: float | None = Field(default=None, ge=0, le=65536)
     storage_gib: float = Field(ge=0, le=1048576)
     gpus: list[dict[str, Any]] = Field(default_factory=list, max_length=16)
     shared: bool = False
@@ -239,6 +240,7 @@ def register_worker(request: WorkerRegisterRequest,
             provider_id=request.provider_id,
             cpu_cores=request.cpu_cores,
             ram_gib=request.ram_gib,
+            ram_available_gib=request.ram_available_gib,
             storage_gib=request.storage_gib,
             gpus=request.gpus,
             shared=request.shared,
