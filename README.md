@@ -1,4 +1,4 @@
-# KLOD AI + GPU Mesh Core 0.7.0
+# KLOD AI + GPU Mesh Core 0.8.0
 
 KLOD is a general-purpose multilingual AI runtime for open-domain conversation and work across everyday questions, programming, science, mathematics, research, education, writing, creative development, business and specialized technical subjects. Minecraft is one optional specialist.
 
@@ -111,7 +111,55 @@ export GPU_MESH_SHARE="true"
 gpu-mesh-worker
 ```
 
-Sharing is disabled unless `GPU_MESH_SHARE=true` is explicitly set. After the first enrollment, the node uses its dedicated worker token for heartbeats. The current agent only reports resource capacity; remote job execution is not enabled.
+Sharing is disabled unless `GPU_MESH_SHARE=true` is explicitly set. After enrollment, the worker uses its dedicated node token. It claims signed task manifests and executes only the built-in `cpu-sha256`, `gpu-matmul` and `gpu-mandelbrot` workloads. Arbitrary scripts and shell commands are not accepted.
+
+
+
+### Kaggle private-kernel worker
+
+The optional adapter submits one private Kaggle kernel per task using the Kaggle CLI, polls status and downloads the output artifact. It needs the owner's Kaggle API token and an explicitly configured hardware profile:
+
+```bash
+pip install -e ".[kaggle]"
+export GPU_MESH_API_URL="https://your-domain"
+export GPU_MESH_ACCESS_TOKEN="account-session-token"
+export KAGGLE_USERNAME="your-kaggle-user"
+export KAGGLE_API_TOKEN="your-kaggle-api-token"
+export GPU_MESH_KAGGLE_ACCELERATOR="NvidiaTeslaT4"
+export GPU_MESH_KAGGLE_GPU_COUNT="1"
+export GPU_MESH_KAGGLE_GPU_VRAM_GIB="16"
+export GPU_MESH_SHARE="true"
+gpu-mesh-kaggle-worker
+```
+
+Private kernels are removed after their output is collected by default. Set `GPU_MESH_KAGGLE_KEEP_KERNELS=true` to preserve them. The declared hardware profile must match the accelerator your account can actually run.
+
+### Hugging Face ZeroGPU worker
+
+Deploy the contents of [examples/huggingface_zerogpu](examples/huggingface_zerogpu) as a Gradio Space. Then install the optional bridge and configure your own Space and HF token:
+
+```bash
+pip install -e ".[huggingface]"
+export GPU_MESH_API_URL="https://your-domain"
+export GPU_MESH_ACCESS_TOKEN="account-session-token"
+export HF_TOKEN="your-hf-token"
+export GPU_MESH_HF_SPACE_ID="your-user/your-space"
+export GPU_MESH_HF_ZEROGPU_SIZE="large"
+export GPU_MESH_SHARE="true"
+gpu-mesh-hf-worker
+```
+
+The default ZeroGPU worker profile is 48 GiB with a 120-second per-task limit; xlarge advertises 96 GiB. The bridge checks the user's ZeroGPU remaining quota before dispatch. Provider quota and queue availability are not guaranteed by GPU Mesh.
+
+### Google Colab
+
+Open [examples/colab/GPU_Mesh_Worker.ipynb](examples/colab/GPU_Mesh_Worker.ipynb) in Colab, select a runtime accelerator, enter the GPU Mesh HTTPS URL and account token, then run the cells. This is an interactive worker tied to that Colab session; it goes offline when the session ends.
+
+### Task dispatch and rebalancing
+
+The dashboard submits allowlisted task payloads, shows task results and supports cancellation. Jobs with no available worker remain in a persisted queue. When more workers join, use **Alocar pendentes** in the dashboard or call `POST /v1/mesh/jobs/{job_id}/reschedule`. The server reserves resources and weekly quota before assigning each pending task.
+
+CPU SHA-256 results are recomputed server-side. CUDA results are reported by the worker and are not remote hardware attestations. The worker process is bounded and uses OS resource limits where supported; it is not a container or microVM.
 
 ### Encrypted source archive
 

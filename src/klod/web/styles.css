@@ -19,3 +19,12 @@
 .quota-meter::-webkit-progress-bar{background:#26354b;border-radius:20px}
 .quota-meter::-webkit-progress-value{background:linear-gradient(90deg,#397fce,#65d6ae);border-radius:20px}
 .quota-meter::-moz-progress-bar{background:linear-gradient(90deg,#397fce,#65d6ae);border-radius:20px}
+
+textarea{width:100%;resize:vertical;border:1px solid #31415a;background:#091322;color:#f2f6ff;border-radius:9px;padding:12px 13px;font:13px/1.55 Manrope,sans-serif;outline:none}
+textarea:focus{border-color:#64a9ff;box-shadow:0 0 0 3px #64a9ff20}
+.job-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.job-actions .button{padding:8px 11px;font-size:10px}
+.task-results{margin-top:16px;padding-top:15px;border-top:1px solid #26364e}
+.task-result{border:1px solid #26364e;border-radius:9px;padding:12px;margin:8px 0;background:#0b1524}
+.task-result pre{max-height:220px;overflow:auto}
+.task-result-title{display:flex;justify-content:space-between;gap:8px;font-size:11px;font-weight:700}

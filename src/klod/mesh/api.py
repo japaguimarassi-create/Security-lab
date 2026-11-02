@@ -5,6 +5,7 @@ import json
 import os
 import sqlite3
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +16,9 @@ from klod.mesh.auth import AccountExists, AuthStore, AuthenticationError
 from klod.mesh.providers import list_providers
 from klod.mesh.quotas import QuotaExceeded, QuotaLedger
 from klod.mesh.registry import ResourceRegistry
+from klod.mesh.runtime import TaskError, TaskStore
 from klod.mesh.scheduler import SchedulingError, TaskScheduler
+from klod.mesh.workloads import WorkloadError, required_vram_gib, validate_workload
 
 DATABASE = os.getenv("GPU_MESH_DATABASE_PATH", "./data/gpu_mesh.sqlite3")
 SESSION_TTL = int(os.getenv("GPU_MESH_SESSION_TTL_SECONDS", "86400"))
@@ -25,6 +28,7 @@ auth_store = AuthStore(DATABASE, SESSION_TTL)
 registry = ResourceRegistry(DATABASE, HEARTBEAT_TTL)
 quota_ledger = QuotaLedger(DATABASE)
 scheduler = TaskScheduler()
+task_store = TaskStore(DATABASE)
 
 
 class JobStore:
@@ -86,10 +90,9 @@ job_store = JobStore(DATABASE)
 router = APIRouter(tags=["GPU Mesh"])
 
 WORKLOADS = {
-    "independent-render-frames",
-    "batch-inference",
-    "dataset-transform",
-    "evaluation",
+    "cpu-sha256",
+    "gpu-matmul",
+    "gpu-mandelbrot",
 }
 
 
@@ -107,6 +110,7 @@ class WorkerRegisterRequest(BaseModel):
     provider_id: str = Field(default="volunteer-worker", min_length=1, max_length=80)
     cpu_cores: float = Field(gt=0, le=4096)
     ram_gib: float = Field(gt=0, le=65536)
+    ram_available_gib: float | None = Field(default=None, ge=0, le=65536)
     storage_gib: float = Field(ge=0, le=1048576)
     gpus: list[dict[str, Any]] = Field(default_factory=list, max_length=16)
     shared: bool = False
@@ -122,11 +126,21 @@ class WorkerHeartbeatRequest(BaseModel):
 class JobRequest(BaseModel):
     workload: str = Field(min_length=1, max_length=80)
     task_count: int = Field(ge=1, le=1000)
-    requires_gpu: bool = True
+    payload: dict[str, Any] = Field(default_factory=dict)
+    requires_gpu: bool | None = None
     min_vram_gib_per_task: float = Field(default=1.0, ge=0, le=512)
     cpu_cores_per_task: float = Field(default=1.0, gt=0, le=256)
     ram_gib_per_task: float = Field(default=1.0, gt=0, le=4096)
     max_runtime_seconds_per_task: int = Field(default=300, ge=1, le=3600)
+
+
+class TaskResultRequest(BaseModel):
+    result: dict[str, Any]
+
+
+class TaskFailureRequest(BaseModel):
+    error_code: str = Field(default="worker_error", min_length=1, max_length=80)
+
 
 
 def _bearer_value(authorization: str | None) -> str | None:
@@ -217,7 +231,7 @@ def workers(user: dict[str, str] = Depends(require_user)):
 @router.post("/workers", status_code=status.HTTP_201_CREATED)
 def register_worker(request: WorkerRegisterRequest,
                     user: dict[str, str] = Depends(require_user)):
-    if request.provider_id != "volunteer-worker":
+    if request.provider_id not in {"volunteer-worker", "kaggle-notebooks", "huggingface-zerogpu"}:
         raise HTTPException(status_code=422,
                             detail="This provider requires an implemented, authorized provider adapter")
     try:
@@ -226,6 +240,7 @@ def register_worker(request: WorkerRegisterRequest,
             provider_id=request.provider_id,
             cpu_cores=request.cpu_cores,
             ram_gib=request.ram_gib,
+            ram_available_gib=request.ram_available_gib,
             storage_gib=request.storage_gib,
             gpus=request.gpus,
             shared=request.shared,
@@ -291,12 +306,36 @@ def resources(user: dict[str, str] = Depends(require_user)):
     }
 
 
+def _refresh_job_state(job_id: str, owner_id: str) -> dict[str, Any] | None:
+    job = job_store.get(job_id, owner_id)
+    if job is None:
+        return None
+    summary = task_store.summary(job_id, owner_id)
+    job.update(summary)
+    job["queued_tasks"] = int(summary.get("unassigned", 0))
+    job["scheduled_tasks"] = max(0, int(summary.get("total_tasks", 0)) - job["queued_tasks"])
+    if job["queued_tasks"] and summary["execution_status"] == "completed":
+        job["execution_status"] = "partially_completed"
+    job["status"] = job["execution_status"]
+    job["execution_started"] = bool(job.get("execution_started") or summary["execution_started"])
+    job_store.update(job)
+    return job
+
+
 @router.post("/jobs", status_code=status.HTTP_201_CREATED)
 def create_job(request: JobRequest, user: dict[str, str] = Depends(require_user)):
     if request.workload not in WORKLOADS:
-        raise HTTPException(status_code=422, detail="Unsupported workload type")
-    if request.requires_gpu and request.min_vram_gib_per_task <= 0:
-        raise HTTPException(status_code=422, detail="GPU jobs require positive VRAM per device")
+        raise HTTPException(status_code=422, detail="Unsupported executable workload")
+    try:
+        payload = validate_workload(request.workload, request.payload)
+        required_vram = required_vram_gib(request.workload, payload)
+    except WorkloadError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    requires_gpu = required_vram > 0
+    if request.requires_gpu is not None and request.requires_gpu != requires_gpu:
+        raise HTTPException(status_code=422, detail="GPU requirement is fixed by the selected workload")
+    min_vram = max(required_vram, request.min_vram_gib_per_task) if requires_gpu else 0.0
     nodes = registry.list_schedulable(user["user_id"], include_shared=True)
     try:
         plan = scheduler.plan(
@@ -304,8 +343,8 @@ def create_job(request: JobRequest, user: dict[str, str] = Depends(require_user)
             workload=request.workload,
             task_count=request.task_count,
             nodes=nodes,
-            requires_gpu=request.requires_gpu,
-            min_vram_gib_per_task=request.min_vram_gib_per_task,
+            requires_gpu=requires_gpu,
+            min_vram_gib_per_task=min_vram,
             cpu_cores_per_task=request.cpu_cores_per_task,
             ram_gib_per_task=request.ram_gib_per_task,
             max_runtime_seconds_per_task=request.max_runtime_seconds_per_task,
@@ -313,20 +352,41 @@ def create_job(request: JobRequest, user: dict[str, str] = Depends(require_user)
     except SchedulingError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    plan["cpu_cores_per_task"] = float(request.cpu_cores_per_task)
+    plan["ram_gib_per_task"] = float(request.ram_gib_per_task)
     scheduled = int(plan["scheduled_tasks"])
     quota_reservation = None
+    task_records: list[dict[str, Any]] = []
+    reserved_ids: list[str] = []
     if scheduled:
         duration = scheduled * request.max_runtime_seconds_per_task
         amounts = {
             "cpu_core_seconds": duration * request.cpu_cores_per_task,
             "ram_gib_seconds": duration * request.ram_gib_per_task,
         }
-        if request.requires_gpu:
+        if requires_gpu:
             amounts["gpu_seconds"] = duration
-            amounts["vram_gib_seconds"] = duration * request.min_vram_gib_per_task
+            amounts["vram_gib_seconds"] = duration * min_vram
         try:
             quota_reservation = quota_ledger.reserve(user["user_id"], amounts)
+            task_records = task_store.create_from_plan(plan, payload)
+            for record in task_records:
+                accepted = registry.reserve_capacity(
+                    task_id=record["task_id"],
+                    node_id=record["node_id"],
+                    gpu_index=record["gpu_index"],
+                    cpu_cores=record["cpu_cores"],
+                    ram_gib=record["ram_gib"],
+                    vram_gib=record["vram_gib"],
+                    ttl_seconds=min(86400, max(600, record["max_runtime_seconds"] + 300)),
+                )
+                if not accepted:
+                    raise TaskError("Worker capacity changed during reservation; refresh resources and retry")
+                reserved_ids.append(record["task_id"])
         except QuotaExceeded as exc:
+            for task_id in reserved_ids:
+                registry.release_capacity(task_id)
+            task_store.delete_job(plan["job_id"], user["user_id"])
             raise HTTPException(status_code=429, detail={
                 "error": "weekly_quota_exceeded",
                 "metric": exc.metric,
@@ -334,23 +394,332 @@ def create_job(request: JobRequest, user: dict[str, str] = Depends(require_user)
                 "requested": exc.requested,
                 "limit": exc.limit,
             }) from exc
+        except (TaskError, ValueError) as exc:
+            for task_id in reserved_ids:
+                registry.release_capacity(task_id)
+            task_store.delete_job(plan["job_id"], user["user_id"])
+            if quota_reservation:
+                quota_ledger.release(
+                    user["user_id"],
+                    {metric: item["reserved"] for metric, item in quota_reservation["resources"].items()},
+                )
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except Exception:
+            for task_id in reserved_ids:
+                registry.release_capacity(task_id)
+            task_store.delete_job(plan["job_id"], user["user_id"])
+            if quota_reservation:
+                quota_ledger.release(
+                    user["user_id"],
+                    {metric: item["reserved"] for metric, item in quota_reservation["resources"].items()},
+                )
+            raise
 
     plan["quota_reservation"] = quota_reservation
     plan["execution_started"] = False
-    plan["execution_status"] = "planning_only"
+    plan["execution_status"] = "dispatched" if scheduled else "queued"
+    plan["status"] = plan["execution_status"]
+    plan["queued_tasks"] = int(plan["queued_tasks"])
     plan["execution_note"] = (
-        "The scheduler generated a resource plan. No remote process was started. "
-        "A sandboxed, attested worker execution protocol is a separate deployment stage."
+        "Allowlisted task manifests are assigned to authenticated workers. "
+        "Workers verify the per-node HMAC, lease and fixed device before executing a built-in workload. "
+        "No arbitrary user-supplied code is accepted."
     )
+    pending_task_ids = task_store.create_pending_from_plan(plan, payload)
+    plan["task_ids"] = [record["task_id"] for record in task_records] + pending_task_ids
+    if quota_reservation and task_records:
+        plan["quota_batches"] = [{
+            "task_ids": [record["task_id"] for record in task_records],
+            "reservation": quota_reservation,
+        }]
+    else:
+        plan["quota_batches"] = []
+    plan["task_summary"] = task_store.summary(plan["job_id"], user["user_id"])
     job_store.save(plan)
     return plan
+
+
+def _require_worker(node_id: str, worker_token: str | None) -> None:
+    if not registry.authenticate_worker(node_id, worker_token or ""):
+        raise HTTPException(status_code=401, detail="Worker token rejected")
+
+
+@router.post("/workers/{node_id}/tasks/claim")
+def claim_worker_task(
+    node_id: str,
+    worker_token: str | None = Header(default=None, alias="X-Worker-Token"),
+):
+    _require_worker(node_id, worker_token)
+    try:
+        claimed = task_store.claim(node_id, worker_token or "")
+    except TaskError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    return {"task": claimed}
+
+
+@router.post("/workers/{node_id}/tasks/{task_id}/start")
+def start_worker_task(
+    node_id: str,
+    task_id: str,
+    worker_token: str | None = Header(default=None, alias="X-Worker-Token"),
+    lease_token: str | None = Header(default=None, alias="X-Task-Lease"),
+):
+    _require_worker(node_id, worker_token)
+    try:
+        return task_store.start(task_id, node_id, lease_token or "")
+    except TaskError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/workers/{node_id}/tasks/{task_id}/renew")
+def renew_worker_task(
+    node_id: str,
+    task_id: str,
+    worker_token: str | None = Header(default=None, alias="X-Worker-Token"),
+    lease_token: str | None = Header(default=None, alias="X-Task-Lease"),
+):
+    _require_worker(node_id, worker_token)
+    try:
+        state = task_store.renew(task_id, node_id, lease_token or "")
+        if state.get("renewed"):
+            registry.renew_capacity(task_id, ttl_seconds=900)
+        return state
+    except TaskError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/workers/{node_id}/tasks/{task_id}/complete")
+def complete_worker_task(
+    node_id: str,
+    task_id: str,
+    request: TaskResultRequest,
+    worker_token: str | None = Header(default=None, alias="X-Worker-Token"),
+    lease_token: str | None = Header(default=None, alias="X-Task-Lease"),
+):
+    _require_worker(node_id, worker_token)
+    try:
+        result = task_store.complete(task_id, node_id, lease_token or "", request.result)
+    except TaskError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if result.get("completed") or result.get("cancelled"):
+        registry.release_capacity(task_id)
+    _refresh_job_state(result["job_id"], result["owner_id"])
+    return {key: value for key, value in result.items() if key not in ("owner_id",)}
+
+
+@router.post("/workers/{node_id}/tasks/{task_id}/fail")
+def fail_worker_task(
+    node_id: str,
+    task_id: str,
+    request: TaskFailureRequest,
+    worker_token: str | None = Header(default=None, alias="X-Worker-Token"),
+    lease_token: str | None = Header(default=None, alias="X-Task-Lease"),
+):
+    _require_worker(node_id, worker_token)
+    try:
+        result = task_store.fail(task_id, node_id, lease_token or "", request.error_code)
+    except TaskError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if result["state"] in ("failed", "cancelled"):
+        registry.release_capacity(task_id)
+    _refresh_job_state(result["job_id"], result["owner_id"])
+    return {key: value for key, value in result.items() if key not in ("owner_id",)}
+
+
+def _release_quota_reservation(user_id: str, reservation: dict[str, Any],
+                              scale: float = 1.0) -> dict[str, Any] | None:
+    if scale <= 0:
+        return None
+    resources = reservation.get("resources", {})
+    amounts = {
+        metric: float(item.get("reserved", 0)) * scale
+        for metric, item in resources.items()
+        if float(item.get("reserved", 0)) > 0
+    }
+    if not amounts:
+        return None
+    week_start = reservation.get("week_start")
+    at = None
+    if week_start:
+        at = datetime.fromisoformat(str(week_start)).replace(tzinfo=timezone.utc).timestamp()
+    return quota_ledger.release(user_id, amounts, at=at)
+
+
+@router.post("/jobs/{job_id}/reschedule")
+def reschedule_job(job_id: str, user: dict[str, str] = Depends(require_user)):
+    job = job_store.get(job_id, user["user_id"])
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    nodes = registry.list_schedulable(user["user_id"], include_shared=True)
+    active_node_ids = {node["node_id"] for node in nodes}
+    recovered = task_store.recover_orphaned_tasks(
+        job_id, user["user_id"], active_node_ids
+    )
+    for task_id in recovered["requeued"] + recovered["cancelled"]:
+        registry.release_capacity(task_id)
+
+    pending = task_store.pending_for_job(job_id, user["user_id"])
+    if not pending:
+        job.update(task_store.summary(job_id, user["user_id"]))
+        job["queued_tasks"] = int(job.get("unassigned", 0))
+        job["scheduled_tasks"] = max(0, int(job.get("total_tasks", 0)) - job["queued_tasks"])
+        job["status"] = job["execution_status"]
+        job_store.update(job)
+        return {
+            "scheduled": 0,
+            "queued": job["queued_tasks"],
+            "recovered": len(recovered["requeued"]),
+            "cancelled_offline": len(recovered["cancelled"]),
+            "execution_status": job["execution_status"],
+        }
+
+    try:
+        allocation = scheduler.plan(
+            owner_id=user["user_id"],
+            workload=job["workload"],
+            task_count=len(pending),
+            nodes=nodes,
+            requires_gpu=bool(job["requires_gpu"]),
+            min_vram_gib_per_task=float(job["min_vram_gib_per_task"]),
+            cpu_cores_per_task=float(job["cpu_cores_per_task"]),
+            ram_gib_per_task=float(job["ram_gib_per_task"]),
+            max_runtime_seconds_per_task=int(job["max_runtime_seconds_per_task"]),
+        )
+    except SchedulingError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    placements = []
+    for assignment in allocation["assignments"]:
+        devices = assignment.get("gpu_devices", [])
+        for offset in range(int(assignment["task_count"])):
+            gpu_index = int(devices[offset]["index"]) if job["requires_gpu"] else None
+            placements.append({
+                "node_id": assignment["node_id"],
+                "gpu_index": gpu_index,
+            })
+
+    already_reserved = {
+        task_id
+        for batch in job.get("quota_batches", [])
+        for task_id in batch.get("task_ids", [])
+    }
+    assigned_ids = []
+    quota_batches: dict[str, dict[str, Any]] = {}
+    for task, placement in zip(pending, placements):
+        task_id = task["task_id"]
+        duration = int(task["max_runtime_seconds"])
+        amounts = {
+            "cpu_core_seconds": duration * float(task["cpu_cores"]),
+            "ram_gib_seconds": duration * float(task["ram_gib"]),
+        }
+        if task["requires_gpu"]:
+            amounts["gpu_seconds"] = duration
+            amounts["vram_gib_seconds"] = duration * float(task["vram_gib"])
+
+        reservation = None
+        if task_id not in already_reserved:
+            try:
+                reservation = quota_ledger.reserve(user["user_id"], amounts)
+            except QuotaExceeded:
+                break
+
+        try:
+            capacity_ok = registry.reserve_capacity(
+                task_id=task_id,
+                node_id=placement["node_id"],
+                gpu_index=placement["gpu_index"],
+                cpu_cores=float(task["cpu_cores"]),
+                ram_gib=float(task["ram_gib"]),
+                vram_gib=float(task["vram_gib"]),
+                ttl_seconds=min(86400, max(600, duration + 300)),
+            )
+            if not capacity_ok:
+                if reservation:
+                    _release_quota_reservation(user["user_id"], reservation)
+                break
+            assigned = task_store.assign_pending(
+                task_id, placement["node_id"], placement["gpu_index"]
+            )
+            if not assigned:
+                registry.release_capacity(task_id)
+                if reservation:
+                    _release_quota_reservation(user["user_id"], reservation)
+                continue
+        except Exception:
+            registry.release_capacity(task_id)
+            if reservation:
+                _release_quota_reservation(user["user_id"], reservation)
+            raise
+
+        assigned_ids.append(task_id)
+        if reservation:
+            week = str(reservation["week_start"])
+            batch = quota_batches.setdefault(week, {
+                "task_ids": [],
+                "reservation": {
+                    "week_start": week,
+                    "resources": {},
+                },
+            })
+            batch["task_ids"].append(task_id)
+            for metric, item in reservation["resources"].items():
+                aggregate = batch["reservation"]["resources"].setdefault(metric, {
+                    "used": item["used"],
+                    "reserved": 0.0,
+                    "limit": item["limit"],
+                    "remaining": item["remaining"],
+                })
+                aggregate["used"] = item["used"]
+                aggregate["reserved"] += float(item["reserved"])
+                aggregate["limit"] = item["limit"]
+                aggregate["remaining"] = item["remaining"]
+
+    batches = list(job.get("quota_batches", []))
+    batches.extend(quota_batches.values())
+    job["quota_batches"] = batches
+    job["assignments"] = list(job.get("assignments", [])) + allocation["assignments"]
+    job.update(task_store.summary(job_id, user["user_id"]))
+    job["queued_tasks"] = int(job.get("unassigned", 0))
+    job["scheduled_tasks"] = max(0, int(job.get("total_tasks", 0)) - job["queued_tasks"])
+    job["status"] = job["execution_status"]
+    if not job_store.update(job):
+        raise HTTPException(status_code=409, detail="Job changed while tasks were being assigned")
+    return {
+        "scheduled": len(assigned_ids),
+        "queued": int(job["queued_tasks"]),
+        "recovered": len(recovered["requeued"]),
+        "cancelled_offline": len(recovered["cancelled"]),
+        "execution_status": job["execution_status"],
+        "task_ids": assigned_ids,
+    }
+
+
+@router.get("/jobs/{job_id}/results")
+def job_results(job_id: str, user: dict[str, str] = Depends(require_user)):
+    job = job_store.get(job_id, user["user_id"])
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {
+        "job_id": job_id,
+        "summary": task_store.summary(job_id, user["user_id"]),
+        "tasks": task_store.list_results(job_id, user["user_id"]),
+    }
 
 
 @router.get("/jobs")
 def jobs(limit: int = 50, user: dict[str, str] = Depends(require_user)):
     if not 1 <= limit <= 100:
         raise HTTPException(status_code=422, detail="limit must be between 1 and 100")
-    return {"jobs": job_store.list(user["user_id"], limit)}
+    items = job_store.list(user["user_id"], limit)
+    for item in items:
+        item.update(task_store.summary(item["job_id"], user["user_id"]))
+        item["queued_tasks"] = int(item.get("unassigned", 0))
+        item["scheduled_tasks"] = max(0, int(item.get("total_tasks", 0)) - item["queued_tasks"])
+        if item["queued_tasks"] and item["execution_status"] == "completed":
+            item["execution_status"] = "partially_completed"
+        item["status"] = item["execution_status"]
+    return {"jobs": items}
 
 
 @router.get("/jobs/{job_id}")
@@ -358,7 +727,7 @@ def job(job_id: str, user: dict[str, str] = Depends(require_user)):
     result = job_store.get(job_id, user["user_id"])
     if result is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    return result
+    return _refresh_job_state(job_id, user["user_id"]) or result
 
 
 
@@ -367,25 +736,53 @@ def cancel_job(job_id: str, user: dict[str, str] = Depends(require_user)):
     result = job_store.get(job_id, user["user_id"])
     if result is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    if result.get("execution_started"):
-        raise HTTPException(status_code=409, detail="An executing job cannot be cancelled by the planning API")
-    if result.get("execution_status") == "cancelled":
-        return {"cancelled": True, "quota_released": True, "job_id": job_id}
+    before = task_store.summary(job_id, user["user_id"])
+    states_before = {
+        task["task_id"]: task
+        for task in task_store.list_results(job_id, user["user_id"])
+    }
+    cancelled = task_store.cancel_job(job_id, user["user_id"])
+    for task_id in cancelled["releasable_task_ids"]:
+        registry.release_capacity(task_id)
 
-    reservation = result.get("quota_reservation")
-    released = None
-    if reservation:
-        amounts = {
-            metric: float(item["reserved"])
-            for metric, item in reservation.get("resources", {}).items()
-            if float(item.get("reserved", 0)) > 0
-        }
-        if amounts:
-            released = quota_ledger.release(user["user_id"], amounts)
+    quota_releases = []
+    for batch in result.get("quota_batches", []):
+        task_ids = batch.get("task_ids", [])
+        releasable_ids = [
+            task_id for task_id in task_ids
+            if task_id in states_before and states_before[task_id]["state"] in ("queued", "leased")
+        ]
+        if releasable_ids and task_ids:
+            released = _release_quota_reservation(
+                user["user_id"],
+                batch["reservation"],
+                scale=len(releasable_ids) / len(task_ids),
+            )
+            if released:
+                quota_releases.append(released)
+    if not result.get("quota_batches") and result.get("quota_reservation"):
+        releasable_count = before["queued"] + before["leased"]
+        if releasable_count:
+            released = _release_quota_reservation(
+                user["user_id"],
+                result["quota_reservation"],
+                scale=releasable_count / max(1, int(result.get("scheduled_tasks", 1))),
+            )
+            if released:
+                quota_releases.append(released)
 
-    result["status"] = "cancelled"
-    result["execution_status"] = "cancelled"
-    result["quota_release"] = released
-    if not job_store.update(result):
-        raise HTTPException(status_code=409, detail="Job state changed; refresh and retry")
-    return {"cancelled": True, "quota_released": bool(released), "job_id": job_id}
+    result["queued_cancelled"] = int(result.get("queued_tasks", 0))
+    result["queued_tasks"] = 0
+    result["status"] = "cancellation_requested"
+    result["quota_release"] = quota_releases
+    result.update(task_store.summary(job_id, user["user_id"]))
+    if result["execution_status"] == "planning_only":
+        result["execution_status"] = "cancelled"
+    job_store.update(result)
+    return {
+        "cancel_requested": True,
+        "pending_tasks_cancelled": len(cancelled["releasable_task_ids"]),
+        "running_tasks_stop_requested": before["running"],
+        "quota_released": bool(released),
+        "job_id": job_id,
+    }

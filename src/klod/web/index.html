@@ -65,35 +65,76 @@
     <div class="content-grid">
       <section class="panel">
         <div class="panel-head"><div><div class="eyebrow">VOLUNTEER NODES</div><h2>Workers conectados</h2></div><span id="worker-count" class="pill">0 nós</span></div>
+        <div class="job-actions"><button id="copy-account-token" class="button secondary" type="button">Copiar token da sessão</button></div>
+        <p id="token-message" class="message" role="status"></p>
         <div id="worker-list" class="empty-state">Nenhum worker registrado.</div>
         <details class="install-box">
-          <summary>Conectar uma máquina voluntária</summary>
-          <p>Execute o agente em uma máquina que você controla. A participação compartilhada só deve ser ativada com autorização do proprietário.</p>
-          <pre id="worker-command">pip install "klod-ai[worker] @ git+https://github.com/japaguimarassi-create/Security-lab.git"
+          <summary>Conectar uma máquina própria</summary>
+          <p>Execute o agente em hardware que você controla. O compartilhamento começa desativado e requer autorização do proprietário.</p>
+          <pre>pip install "klod-ai[worker] @ git+https://github.com/japaguimarassi-create/Security-lab.git"
 export GPU_MESH_API_URL="https://SEU-DOMINIO"
-export GPU_MESH_ACCESS_TOKEN="TOKEN_DA_CONTA"
+export GPU_MESH_ACCESS_TOKEN="TOKEN_COPIADO_NO_PAINEL"
 export GPU_MESH_SHARE="true"
 gpu-mesh-worker</pre>
-          <p class="fine-print">O worker atual anuncia hardware e envia heartbeats. Execução remota de código ainda não está habilitada.</p>
+          <p class="fine-print">O agente executa somente SHA-256 em CPU, multiplicação de matrizes CUDA e Mandelbrot CUDA. Não aceita scripts ou comandos arbitrários.</p>
+        </details>
+        <details class="install-box">
+          <summary>Conectar Kaggle Notebooks</summary>
+          <p>Cria kernels privados por tarefa. Configure o usuário e o token da sua conta Kaggle, além do acelerador realmente disponível na conta.</p>
+          <pre>pip install "klod-ai[kaggle] @ git+https://github.com/japaguimarassi-create/Security-lab.git"
+export GPU_MESH_API_URL="https://SEU-DOMINIO"
+export GPU_MESH_ACCESS_TOKEN="TOKEN_COPIADO_NO_PAINEL"
+export KAGGLE_USERNAME="SEU_USUARIO"
+export KAGGLE_API_TOKEN="SEU_TOKEN_KAGGLE"
+export GPU_MESH_KAGGLE_ACCELERATOR="NvidiaTeslaT4"
+export GPU_MESH_SHARE="true"
+gpu-mesh-kaggle-worker</pre>
+        </details>
+        <details class="install-box">
+          <summary>Conectar Hugging Face ZeroGPU</summary>
+          <p>Publique primeiro <code>examples/huggingface_zerogpu</code> como um Space Gradio privado e configure o token HF com leitura da quota de uso.</p>
+          <pre>pip install "klod-ai[huggingface] @ git+https://github.com/japaguimarassi-create/Security-lab.git"
+export GPU_MESH_API_URL="https://SEU-DOMINIO"
+export GPU_MESH_ACCESS_TOKEN="TOKEN_COPIADO_NO_PAINEL"
+export HF_TOKEN="SEU_TOKEN_HF"
+export GPU_MESH_HF_SPACE_ID="USUARIO/SPACE"
+export GPU_MESH_SHARE="true"
+gpu-mesh-hf-worker</pre>
+        </details>
+        <details class="install-box">
+          <summary>Conectar sessão Google Colab</summary>
+          <p>Abra o notebook <code>examples/colab/GPU_Mesh_Worker.ipynb</code> no Colab e execute as células. O worker fica online somente enquanto o runtime permanecer ativo.</p>
         </details>
       </section>
       <section class="panel">
-        <div class="panel-head"><div><div class="eyebrow">TASK PLANNER</div><h2>Planejar trabalho</h2></div><span class="pill">Sem execução remota</span></div>
+        <div class="panel-head"><div><div class="eyebrow">TASK PLANNER</div><h2>Executar trabalho</h2></div><span class="pill">Workloads permitidos</span></div>
         <form id="job-form" class="stack">
           <label>Tipo de tarefa<select id="workload">
-            <option value="independent-render-frames">Quadros independentes de renderização</option>
-            <option value="batch-inference">Inferência em lote</option>
-            <option value="dataset-transform">Transformação de dataset</option>
-            <option value="evaluation">Avaliação</option>
+            <option value="gpu-matmul">Multiplicação de matrizes CUDA</option>
+            <option value="gpu-mandelbrot">Renderização Mandelbrot CUDA</option>
+            <option value="cpu-sha256">SHA-256 em CPU</option>
           </select></label>
+          <div id="matmul-fields" class="form-grid">
+            <label>Tamanho da matriz<input id="matrix-size" type="number" value="512" min="64" max="4096" step="64"></label>
+            <label>Semente<input id="matrix-seed" type="number" value="42" min="0" max="2147483647"></label>
+          </div>
+          <div id="mandelbrot-fields" class="form-grid hidden">
+            <label>Largura<input id="fractal-width" type="number" value="1024" min="128" max="2048" step="128"></label>
+            <label>Altura<input id="fractal-height" type="number" value="1024" min="128" max="2048" step="128"></label>
+            <label>Iterações máximas<input id="fractal-iterations" type="number" value="128" min="16" max="256"></label>
+          </div>
+          <div id="hash-fields" class="stack hidden">
+            <label>Texto de entrada<textarea id="hash-text" rows="3" maxlength="65536">GPU Mesh distributed work</textarea></label>
+            <label>Iterações SHA-256<input id="hash-iterations" type="number" value="10000" min="1" max="250000"></label>
+          </div>
           <div class="form-grid">
-            <label>Quantidade de tarefas<input id="task-count" type="number" value="4" min="1" max="1000" required></label>
-            <label>VRAM mínima por GPU (GiB)<input id="min-vram" type="number" value="4" min="0" max="512" step="0.5"></label>
+            <label>Quantidade de tarefas<input id="task-count" type="number" value="2" min="1" max="1000" required></label>
+            <label>VRAM mínima por GPU (GiB)<input id="min-vram" type="number" value="1" min="0" max="512" step="0.25"></label>
             <label>CPU por tarefa<input id="cpu-per-task" type="number" value="1" min="0.1" max="256" step="0.1"></label>
             <label>RAM por tarefa (GiB)<input id="ram-per-task" type="number" value="2" min="0.1" max="4096" step="0.1"></label>
           </div>
-          <label class="check-row"><input id="requires-gpu" type="checkbox" checked> Esta tarefa precisa de GPU</label>
-          <button class="button primary" type="submit">Gerar plano de distribuição</button>
+          <label class="check-row"><input id="requires-gpu" type="checkbox" checked disabled> Requisito calculado automaticamente pelo workload</label>
+          <button class="button primary" type="submit">Executar tarefas distribuídas</button>
         </form>
         <p id="job-message" class="message" role="status"></p>
       </section>
@@ -101,9 +142,10 @@ gpu-mesh-worker</pre>
 
     <section class="panel">
       <div class="panel-head"><div><div class="eyebrow">SCHEDULER HISTORY</div><h2>Trabalhos planejados</h2></div><span class="pill">Histórico da conta</span></div>
-      <div id="job-list" class="empty-state">Nenhum trabalho planejado.</div>
+      <div id="job-list" class="empty-state">Nenhum trabalho executado.</div>
+      <div id="job-results" class="task-results hidden"></div>
     </section>
-    <p class="footnote">GPU Mesh Core · Plano de recursos não equivale a execução. Cada provedor mantém seus próprios limites e disponibilidade.</p>
+    <p class="footnote">GPU Mesh Core · Somente workloads internos permitidos são executados. Resultados CUDA são relatórios dos workers, não provas criptográficas de execução.</p>
   </section>
 </main>
 <footer><span>GPU MESH CORE</span><span>Distributed resource control plane</span></footer>

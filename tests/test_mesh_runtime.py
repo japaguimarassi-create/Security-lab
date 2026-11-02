@@ -1,0 +1,280 @@
+import hashlib
+import hmac
+import json
+import time
+
+import pytest
+
+from klod.mesh.runtime import TaskError, TaskStore
+from klod.mesh.workloads import execute_workload
+
+
+def cpu_plan():
+    return {
+        "job_id": "job-runtime-test",
+        "owner_id": "owner-1",
+        "workload": "cpu-sha256",
+        "requires_gpu": False,
+        "min_vram_gib_per_task": 0.0,
+        "max_runtime_seconds_per_task": 60,
+        "assignments": [{
+            "node_id": "node-1",
+            "provider_id": "volunteer-worker",
+            "task_count": 1,
+            "gpu_devices": [],
+            "cpu_cores_per_task": 1.0,
+            "ram_gib_per_task": 1.0,
+        }],
+    }
+
+
+def test_task_manifest_is_signed_and_lease_is_required(tmp_path):
+    store = TaskStore(str(tmp_path / "tasks.sqlite"))
+    created = store.create_from_plan(cpu_plan(), {"text": "secure", "iterations": 10})
+    assert len(created) == 1
+    worker_token = "worker-token-with-enough-entropy"
+    claim = store.claim("node-1", worker_token)
+    assert claim["manifest"]["task_id"] == created[0]["task_id"]
+    expected = hmac.new(
+        worker_token.encode(),
+        json.dumps(claim["manifest"], ensure_ascii=False, sort_keys=True,
+                   separators=(",", ":"), allow_nan=False).encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    assert hmac.compare_digest(expected, claim["manifest_signature"])
+    with pytest.raises(TaskError):
+        store.start(created[0]["task_id"], "node-1", "wrong-lease")
+    assert store.start(created[0]["task_id"], "node-1", claim["lease_token"])["started"] is True
+
+
+def test_cpu_task_result_is_recomputed_before_acceptance(tmp_path):
+    store = TaskStore(str(tmp_path / "tasks.sqlite"))
+    created = store.create_from_plan(cpu_plan(), {"text": "verified", "iterations": 32})
+    claim = store.claim("node-1", "worker-token")
+    store.start(created[0]["task_id"], "node-1", claim["lease_token"])
+    expected = execute_workload("cpu-sha256", claim["manifest"]["payload"])
+    done = store.complete(created[0]["task_id"], "node-1", claim["lease_token"], expected)
+    assert done["completed"] is True
+    task = store.list_results("job-runtime-test", "owner-1")[0]
+    assert task["state"] == "completed"
+    assert task["result"]["result_validation"] == "server-verified"
+
+
+def test_cpu_task_rejects_forged_digest(tmp_path):
+    store = TaskStore(str(tmp_path / "tasks.sqlite"))
+    created = store.create_from_plan(cpu_plan(), {"text": "verify", "iterations": 4})
+    claim = store.claim("node-1", "worker-token")
+    store.start(created[0]["task_id"], "node-1", claim["lease_token"])
+    with pytest.raises(TaskError, match="deterministic verification"):
+        store.complete(
+            created[0]["task_id"], "node-1", claim["lease_token"],
+            {"workload": "cpu-sha256", "sha256": "0" * 64, "iterations": 4},
+        )
+
+
+def test_failed_task_is_requeued_and_attempt_count_increases(tmp_path):
+    store = TaskStore(str(tmp_path / "tasks.sqlite"))
+    created = store.create_from_plan(cpu_plan(), {"text": "retry", "iterations": 2})
+    first = store.claim("node-1", "worker-token")
+    store.start(created[0]["task_id"], "node-1", first["lease_token"])
+    failed = store.fail(created[0]["task_id"], "node-1", first["lease_token"], "temporary_error")
+    assert failed["retrying"] is True
+    second = store.claim("node-1", "worker-token")
+    assert second["manifest"]["attempt"] == 2
+    assert second["manifest"]["task_id"] == created[0]["task_id"]
+
+
+def test_running_task_cancel_is_cooperative_and_lease_renewal_reports_it(tmp_path):
+    store = TaskStore(str(tmp_path / "tasks.sqlite"))
+    created = store.create_from_plan(cpu_plan(), {"text": "cancel", "iterations": 2})
+    claim = store.claim("node-1", "worker-token")
+    store.start(created[0]["task_id"], "node-1", claim["lease_token"])
+    cancelled = store.cancel_job("job-runtime-test", "owner-1")
+    assert cancelled["cancelled"] == 1
+    renewed = store.renew(created[0]["task_id"], "node-1", claim["lease_token"])
+    assert renewed["cancel_requested"] is True
+    result = execute_workload("cpu-sha256", claim["manifest"]["payload"])
+    completed = store.complete(
+        created[0]["task_id"], "node-1", claim["lease_token"], result,
+    )
+    assert completed["cancelled"] is True
+
+
+def test_queued_task_cancellation_returns_reservation_identifier(tmp_path):
+    store = TaskStore(str(tmp_path / "tasks.sqlite"))
+    created = store.create_from_plan(cpu_plan(), {"text": "queued", "iterations": 2})
+    cancelled = store.cancel_job("job-runtime-test", "owner-1")
+    assert cancelled["releasable_task_ids"] == [created[0]["task_id"]]
+    assert store.summary("job-runtime-test", "owner-1")["cancelled"] == 1
+
+
+
+def test_worker_can_renew_its_unchanged_lease_after_deadline(tmp_path):
+    store = TaskStore(str(tmp_path / "tasks.sqlite"))
+    created = store.create_from_plan(cpu_plan(), {"text": "network-retry", "iterations": 4})
+    claim = store.claim("node-1", "worker-token")
+    task_id = created[0]["task_id"]
+    with store._connect() as db:
+        db.execute(
+            "UPDATE mesh_tasks SET lease_expires_at=? WHERE task_id=?",
+            (time.time() - 1, task_id),
+        )
+    renewed = store.renew(task_id, "node-1", claim["lease_token"])
+    assert renewed["renewed"] is True
+    assert renewed["cancel_requested"] is False
+
+
+def test_reclaimed_lease_invalidates_the_previous_worker_token(tmp_path):
+    store = TaskStore(str(tmp_path / "tasks.sqlite"))
+    created = store.create_from_plan(cpu_plan(), {"text": "lease-race", "iterations": 4})
+    task_id = created[0]["task_id"]
+    first = store.claim("node-1", "worker-token")
+    with store._connect() as db:
+        db.execute(
+            "UPDATE mesh_tasks SET lease_expires_at=? WHERE task_id=?",
+            (time.time() - 1, task_id),
+        )
+    second = store.claim("node-1", "worker-token")
+    assert second["manifest"]["attempt"] == 2
+    with pytest.raises(TaskError, match="lease rejected"):
+        store.renew(task_id, "node-1", first["lease_token"])
+
+
+
+def test_gpu_results_must_match_signed_device_and_workload_dimensions(tmp_path):
+    store = TaskStore(str(tmp_path / "tasks.sqlite"))
+    plan = {
+        "job_id": "gpu-result-verify",
+        "owner_id": "owner-1",
+        "workload": "gpu-matmul",
+        "requires_gpu": True,
+        "min_vram_gib_per_task": 1.0,
+        "max_runtime_seconds_per_task": 120,
+        "assignments": [{
+            "node_id": "gpu-node",
+            "provider_id": "volunteer-worker",
+            "task_count": 1,
+            "gpu_devices": [{"index": 1}],
+            "cpu_cores_per_task": 1.0,
+            "ram_gib_per_task": 2.0,
+        }],
+    }
+    created = store.create_from_plan(plan, {"matrix_size": 64, "seed": 9})
+    task_id = created[0]["task_id"]
+    claim = store.claim("gpu-node", "gpu-worker-token")
+    store.start(task_id, "gpu-node", claim["lease_token"])
+    forged = {
+        "workload": "gpu-matmul",
+        "sha256": "a" * 64,
+        "matrix_size": 128,
+        "device_index": 1,
+        "execution_device": "cuda",
+        "result_validation": "worker-reported-digest",
+    }
+    with pytest.raises(TaskError, match="matrix result size"):
+        store.complete(task_id, "gpu-node", claim["lease_token"], forged)
+
+    correct = {
+        **forged,
+        "matrix_size": 64,
+    }
+    done = store.complete(task_id, "gpu-node", claim["lease_token"], correct)
+    assert done["completed"] is True
+    saved = store.list_results("gpu-result-verify", "owner-1")[0]["result"]
+    assert saved["result_validation"] == "worker-reported"
+
+
+def test_gpu_result_rejects_wrong_physical_device_index(tmp_path):
+    store = TaskStore(str(tmp_path / "tasks.sqlite"))
+    plan = {
+        "job_id": "gpu-index-verify",
+        "owner_id": "owner-1",
+        "workload": "gpu-mandelbrot",
+        "requires_gpu": True,
+        "min_vram_gib_per_task": 1.0,
+        "max_runtime_seconds_per_task": 120,
+        "assignments": [{
+            "node_id": "gpu-node",
+            "provider_id": "volunteer-worker",
+            "task_count": 1,
+            "gpu_devices": [{"index": 0}],
+            "cpu_cores_per_task": 1.0,
+            "ram_gib_per_task": 2.0,
+        }],
+    }
+    created = store.create_from_plan(
+        plan, {"width": 128, "height": 128, "max_iterations": 32}
+    )
+    task_id = created[0]["task_id"]
+    claim = store.claim("gpu-node", "gpu-worker-token")
+    store.start(task_id, "gpu-node", claim["lease_token"])
+    result = {
+        "workload": "gpu-mandelbrot",
+        "sha256": "b" * 64,
+        "width": 128,
+        "height": 128,
+        "max_iterations": 32,
+        "device_index": 1,
+        "execution_device": "cuda",
+        "result_validation": "worker-reported-digest",
+    }
+    with pytest.raises(TaskError, match="device index"):
+        store.complete(task_id, "gpu-node", claim["lease_token"], result)
+
+
+
+def test_orphan_recovery_waits_for_expired_lease_and_requeues_offline_worker(tmp_path):
+    store = TaskStore(str(tmp_path / "tasks.sqlite"))
+    created = store.create_from_plan(cpu_plan(), {"text": "orphan", "iterations": 8})
+    task_id = created[0]["task_id"]
+    claim = store.claim("node-1", "old-worker-token")
+    store.start(task_id, "node-1", claim["lease_token"])
+
+    online = store.recover_orphaned_tasks(
+        "job-runtime-test", "owner-1", {"node-1"}
+    )
+    assert online["requeued"] == []
+    assert online["cancelled"] == []
+
+    early = store.recover_orphaned_tasks(
+        "job-runtime-test", "owner-1", set(), at=time.time() + 1
+    )
+    assert early["requeued"] == []
+
+    expired_at = time.time() + 1000
+    recovered = store.recover_orphaned_tasks(
+        "job-runtime-test", "owner-1", set(), at=expired_at
+    )
+    assert recovered["requeued"] == [task_id]
+
+    with store._connect() as db:
+        row = db.execute(
+            "SELECT node_id,state,lease_hash,lease_expires_at FROM mesh_tasks WHERE task_id=?",
+            (task_id,),
+        ).fetchone()
+    assert row["node_id"] == ""
+    assert row["state"] == "queued"
+    assert row["lease_hash"] is None
+    assert row["lease_expires_at"] is None
+
+    assert store.assign_pending(task_id, "node-2", None)
+    replacement = store.claim("node-2", "new-worker-token")
+    assert replacement["manifest"]["attempt"] == 2
+    with pytest.raises(TaskError):
+        store.renew(task_id, "node-1", claim["lease_token"])
+
+
+def test_orphan_recovery_cancels_offline_task_with_cancel_request(tmp_path):
+    store = TaskStore(str(tmp_path / "tasks.sqlite"))
+    created = store.create_from_plan(cpu_plan(), {"text": "orphan-cancel", "iterations": 8})
+    task_id = created[0]["task_id"]
+    claim = store.claim("node-1", "worker-token")
+    store.start(task_id, "node-1", claim["lease_token"])
+    store.cancel_job("job-runtime-test", "owner-1")
+
+    recovered = store.recover_orphaned_tasks(
+        "job-runtime-test", "owner-1", set(), at=time.time() + 1000
+    )
+    assert recovered["cancelled"] == [task_id]
+    assert recovered["requeued"] == []
+    assert store.summary("job-runtime-test", "owner-1")["cancelled"] == 1

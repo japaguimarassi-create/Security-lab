@@ -6,6 +6,8 @@ from klod.mesh.auth import AuthStore
 from klod.mesh.quotas import QuotaLedger
 from klod.mesh.registry import ResourceRegistry
 from klod.mesh.api import JobStore
+from klod.mesh.runtime import TaskStore
+from klod.mesh.workloads import execute_workload
 
 
 PASSWORD = "GPU-Mesh-Passphrase-2026"
@@ -17,6 +19,7 @@ def configure_mesh(tmp_path, monkeypatch):
     monkeypatch.setattr(mesh_api, "registry", ResourceRegistry(database))
     monkeypatch.setattr(mesh_api, "quota_ledger", QuotaLedger(database))
     monkeypatch.setattr(mesh_api, "job_store", JobStore(database))
+    monkeypatch.setattr(mesh_api, "task_store", TaskStore(database))
     return TestClient(core_api.app)
 
 
@@ -80,7 +83,7 @@ def test_worker_heartbeat_uses_node_token_without_account_session(tmp_path, monk
     assert heartbeat.json()["accepted"] is True
 
 
-def test_job_planning_reserves_weekly_capacity_but_does_not_execute(tmp_path, monkeypatch):
+def test_job_dispatch_reserves_weekly_capacity_and_cancels_pending_tasks(tmp_path, monkeypatch):
     client = configure_mesh(tmp_path, monkeypatch)
     token = create_account(client)
     headers = {"Authorization": f"Bearer {token}"}
@@ -98,25 +101,29 @@ def test_job_planning_reserves_weekly_capacity_but_does_not_execute(tmp_path, mo
     })
     assert worker.status_code == 201
     planned = client.post("/v1/mesh/jobs", headers=headers, json={
-        "workload": "independent-render-frames",
+        "workload": "gpu-matmul",
+        "payload": {"matrix_size": 64, "seed": 7},
         "task_count": 1,
         "requires_gpu": True,
-        "min_vram_gib_per_task": 4,
+        "min_vram_gib_per_task": 1,
         "cpu_cores_per_task": 1,
         "ram_gib_per_task": 2,
         "max_runtime_seconds_per_task": 60,
     })
     assert planned.status_code == 201
     result = planned.json()
-    assert result["status"] == "planned"
+    assert result["status"] == "dispatched"
     assert result["scheduled_tasks"] == 1
     assert result["execution_started"] is False
-    assert result["execution_status"] == "planning_only"
+    assert result["execution_status"] == "dispatched"
+    assert len(result["task_ids"]) == 1
     assert client.get("/v1/mesh/jobs", headers=headers).json()["jobs"]
     cancelled = client.delete(f"/v1/mesh/jobs/{result['job_id']}", headers=headers)
     assert cancelled.status_code == 200
+    assert cancelled.json()["pending_tasks_cancelled"] == 1
     assert cancelled.json()["quota_released"] is True
-    assert client.get("/v1/mesh/jobs/" + result["job_id"], headers=headers).json()["status"] == "cancelled"
+    refreshed = client.get("/v1/mesh/jobs/" + result["job_id"], headers=headers).json()
+    assert refreshed["execution_status"] == "cancelled"
     quota = client.get("/v1/mesh/quota", headers=headers).json()
     assert quota["resources"]["gpu_seconds"]["used"] == 0
 
@@ -126,6 +133,348 @@ def test_dashboard_is_served_with_security_headers(tmp_path, monkeypatch):
     response = client.get("/mesh")
     assert response.status_code == 200
     assert "GPU MESH" in response.text
+    assert 'id="copy-account-token"' in response.text
+    assert "gpu-mesh-kaggle-worker" in response.text
+    asset = client.get("/mesh-assets/app.js")
+    assert asset.status_code == 200
+    assert "rescheduleJob" in asset.text
+    assert asset.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-frame-options"] == "DENY"
     assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
+
+
+
+def test_worker_claims_executes_and_completes_server_verified_cpu_task(tmp_path, monkeypatch):
+    client = configure_mesh(tmp_path, monkeypatch)
+    account_token = create_account(client)
+    account_headers = {"Authorization": f"Bearer {account_token}"}
+    registered = client.post("/v1/mesh/workers", headers=account_headers, json={
+        "provider_id": "volunteer-worker",
+        "cpu_cores": 2,
+        "ram_gib": 4,
+        "storage_gib": 0,
+        "gpus": [],
+        "shared": True,
+    })
+    assert registered.status_code == 201
+    worker = registered.json()
+    worker_headers = {"X-Worker-Token": worker["worker_token"]}
+    heartbeat = client.post(
+        f"/v1/mesh/workers/{worker['node_id']}/heartbeat",
+        headers=worker_headers,
+        json={
+            "cpu_available": 2,
+            "ram_available_gib": 4,
+            "storage_available_gib": 0,
+            "gpus": [],
+        },
+    )
+    assert heartbeat.status_code == 200
+
+    created = client.post("/v1/mesh/jobs", headers=account_headers, json={
+        "workload": "cpu-sha256",
+        "payload": {"text": "end-to-end", "iterations": 32},
+        "task_count": 1,
+        "requires_gpu": False,
+        "min_vram_gib_per_task": 0,
+        "cpu_cores_per_task": 1,
+        "ram_gib_per_task": 1,
+        "max_runtime_seconds_per_task": 60,
+    })
+    assert created.status_code == 201
+    job = created.json()
+    claimed = client.post(
+        f"/v1/mesh/workers/{worker['node_id']}/tasks/claim",
+        headers=worker_headers,
+    )
+    assert claimed.status_code == 200
+    task = claimed.json()["task"]
+    assert task["manifest"]["job_id"] == job["job_id"]
+    assert task["manifest"]["node_id"] == worker["node_id"]
+
+    started = client.post(
+        f"/v1/mesh/workers/{worker['node_id']}/tasks/{task['manifest']['task_id']}/start",
+        headers={**worker_headers, "X-Task-Lease": task["lease_token"]},
+    )
+    assert started.status_code == 200
+    result = execute_workload("cpu-sha256", task["manifest"]["payload"])
+    completed = client.post(
+        f"/v1/mesh/workers/{worker['node_id']}/tasks/{task['manifest']['task_id']}/complete",
+        headers={**worker_headers, "X-Task-Lease": task["lease_token"]},
+        json={"result": result},
+    )
+    assert completed.status_code == 200
+    assert completed.json()["completed"] is True
+
+    results = client.get(f"/v1/mesh/jobs/{job['job_id']}/results", headers=account_headers)
+    assert results.status_code == 200
+    assert results.json()["summary"]["execution_status"] == "completed"
+    assert results.json()["tasks"][0]["result"]["result_validation"] == "server-verified"
+
+
+def test_worker_cannot_claim_another_workers_tasks_with_wrong_token(tmp_path, monkeypatch):
+    client = configure_mesh(tmp_path, monkeypatch)
+    token = create_account(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    registered = client.post("/v1/mesh/workers", headers=headers, json={
+        "provider_id": "volunteer-worker",
+        "cpu_cores": 2,
+        "ram_gib": 4,
+        "storage_gib": 0,
+        "gpus": [],
+        "shared": False,
+    })
+    node_id = registered.json()["node_id"]
+    rejected = client.post(
+        f"/v1/mesh/workers/{node_id}/tasks/claim",
+        headers={"X-Worker-Token": "invalid-token"},
+    )
+    assert rejected.status_code == 401
+
+
+def test_job_rejects_gpu_requirement_mismatch_and_unknown_code_payload(tmp_path, monkeypatch):
+    client = configure_mesh(tmp_path, monkeypatch)
+    token = create_account(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    mismatch = client.post("/v1/mesh/jobs", headers=headers, json={
+        "workload": "cpu-sha256",
+        "payload": {"text": "x", "iterations": 1},
+        "task_count": 1,
+        "requires_gpu": True,
+    })
+    assert mismatch.status_code == 422
+    arbitrary = client.post("/v1/mesh/jobs", headers=headers, json={
+        "workload": "python",
+        "payload": {"code": "import os; os.system('id')"},
+        "task_count": 1,
+    })
+    assert arbitrary.status_code == 422
+
+
+
+def test_pending_task_is_persisted_then_reassigned_when_worker_joins(tmp_path, monkeypatch):
+    client = configure_mesh(tmp_path, monkeypatch)
+    account_token = create_account(client)
+    account_headers = {"Authorization": f"Bearer {account_token}"}
+
+    created = client.post("/v1/mesh/jobs", headers=account_headers, json={
+        "workload": "cpu-sha256",
+        "payload": {"text": "wait-for-worker", "iterations": 16},
+        "task_count": 1,
+        "requires_gpu": False,
+        "min_vram_gib_per_task": 0,
+        "cpu_cores_per_task": 1,
+        "ram_gib_per_task": 1,
+        "max_runtime_seconds_per_task": 60,
+    })
+    assert created.status_code == 201
+    job = created.json()
+    assert job["status"] == "queued"
+    assert job["queued_tasks"] == 1
+    assert len(job["task_ids"]) == 1
+
+    registered = client.post("/v1/mesh/workers", headers=account_headers, json={
+        "provider_id": "volunteer-worker",
+        "cpu_cores": 2,
+        "ram_gib": 4,
+        "storage_gib": 0,
+        "gpus": [],
+        "shared": False,
+    })
+    assert registered.status_code == 201
+    worker = registered.json()
+    worker_headers = {"X-Worker-Token": worker["worker_token"]}
+    heartbeat = client.post(
+        f"/v1/mesh/workers/{worker['node_id']}/heartbeat",
+        headers=worker_headers,
+        json={
+            "cpu_available": 2,
+            "ram_available_gib": 4,
+            "storage_available_gib": 0,
+            "gpus": [],
+        },
+    )
+    assert heartbeat.status_code == 200
+
+    rescheduled = client.post(
+        f"/v1/mesh/jobs/{job['job_id']}/reschedule",
+        headers=account_headers,
+    )
+    assert rescheduled.status_code == 200
+    assert rescheduled.json()["scheduled"] == 1
+    assert rescheduled.json()["queued"] == 0
+
+    claimed = client.post(
+        f"/v1/mesh/workers/{worker['node_id']}/tasks/claim",
+        headers=worker_headers,
+    )
+    task = claimed.json()["task"]
+    assert task["manifest"]["task_id"] == job["task_ids"][0]
+    started = client.post(
+        f"/v1/mesh/workers/{worker['node_id']}/tasks/{job['task_ids'][0]}/start",
+        headers={**worker_headers, "X-Task-Lease": task["lease_token"]},
+    )
+    assert started.json()["started"] is True
+
+    result = execute_workload("cpu-sha256", task["manifest"]["payload"])
+    complete = client.post(
+        f"/v1/mesh/workers/{worker['node_id']}/tasks/{job['task_ids'][0]}/complete",
+        headers={**worker_headers, "X-Task-Lease": task["lease_token"]},
+        json={"result": result},
+    )
+    assert complete.status_code == 200
+    latest = client.get(f"/v1/mesh/jobs/{job['job_id']}", headers=account_headers).json()
+    assert latest["execution_status"] == "completed"
+    assert latest["queued_tasks"] == 0
+
+
+
+def test_kaggle_and_zerogpu_provider_workers_can_register_with_declared_limits(tmp_path, monkeypatch):
+    client = configure_mesh(tmp_path, monkeypatch)
+    token = create_account(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    for provider, gpu, max_task in (
+        ("kaggle-notebooks", {
+            "name": "NvidiaTeslaT4",
+            "total_vram_gib": 16,
+            "available_vram_gib": 16,
+            "max_task_seconds": 3600,
+        }, 3600),
+        ("huggingface-zerogpu", {
+            "name": "ZeroGPU large",
+            "total_vram_gib": 48,
+            "available_vram_gib": 48,
+            "max_task_seconds": 120,
+        }, 120),
+    ):
+        registered = client.post("/v1/mesh/workers", headers=headers, json={
+            "provider_id": provider,
+            "cpu_cores": 2,
+            "ram_gib": 8,
+            "storage_gib": 0,
+            "gpus": [gpu],
+            "shared": False,
+        })
+        assert registered.status_code == 201
+        node_id = registered.json()["node_id"]
+        worker = mesh_api.registry.list_owned(mesh_api.auth_store.resolve_session(token)["user_id"])
+        item = next(node for node in worker if node["node_id"] == node_id)
+        assert item["gpus"][0]["max_task_seconds"] == max_task
+
+
+
+def test_expired_worker_task_is_reassigned_without_double_charging_quota(tmp_path, monkeypatch):
+    import time
+
+    client = configure_mesh(tmp_path, monkeypatch)
+    account_token = create_account(client)
+    account_headers = {"Authorization": f"Bearer {account_token}"}
+
+    def register_worker():
+        response = client.post("/v1/mesh/workers", headers=account_headers, json={
+            "provider_id": "volunteer-worker",
+            "cpu_cores": 2,
+            "ram_gib": 8,
+            "storage_gib": 0,
+            "gpus": [],
+            "shared": False,
+        })
+        assert response.status_code == 201
+        worker = response.json()
+        worker_headers = {"X-Worker-Token": worker["worker_token"]}
+        heartbeat = client.post(
+            f"/v1/mesh/workers/{worker['node_id']}/heartbeat",
+            headers=worker_headers,
+            json={
+                "cpu_available": 2,
+                "ram_available_gib": 8,
+                "storage_available_gib": 0,
+                "gpus": [],
+            },
+        )
+        assert heartbeat.status_code == 200
+        return worker, worker_headers
+
+    first, first_headers = register_worker()
+    created = client.post("/v1/mesh/jobs", headers=account_headers, json={
+        "workload": "cpu-sha256",
+        "payload": {"text": "recover-worker", "iterations": 24},
+        "task_count": 1,
+        "requires_gpu": False,
+        "min_vram_gib_per_task": 0,
+        "cpu_cores_per_task": 1,
+        "ram_gib_per_task": 1,
+        "max_runtime_seconds_per_task": 60,
+    })
+    assert created.status_code == 201
+    job = created.json()
+    task_id = job["task_ids"][0]
+
+    claim = client.post(
+        f"/v1/mesh/workers/{first['node_id']}/tasks/claim",
+        headers=first_headers,
+    ).json()["task"]
+    started = client.post(
+        f"/v1/mesh/workers/{first['node_id']}/tasks/{task_id}/start",
+        headers={**first_headers, "X-Task-Lease": claim["lease_token"]},
+    )
+    assert started.json()["started"] is True
+
+    with mesh_api.task_store._connect() as db:
+        db.execute(
+            "UPDATE mesh_tasks SET lease_expires_at=? WHERE task_id=?",
+            (time.time() - 1, task_id),
+        )
+
+    revoked = client.delete(
+        f"/v1/mesh/workers/{first['node_id']}",
+        headers=account_headers,
+    )
+    assert revoked.status_code == 200
+
+    quota_before = client.get("/v1/mesh/quota", headers=account_headers).json()
+    cpu_before = quota_before["resources"]["cpu_core_seconds"]["used"]
+    ram_before = quota_before["resources"]["ram_gib_seconds"]["used"]
+
+    second, second_headers = register_worker()
+    rescheduled = client.post(
+        f"/v1/mesh/jobs/{job['job_id']}/reschedule",
+        headers=account_headers,
+    )
+    assert rescheduled.status_code == 200
+    body = rescheduled.json()
+    assert body["recovered"] == 1
+    assert body["scheduled"] == 1
+    assert body["queued"] == 0
+
+    quota_after = client.get("/v1/mesh/quota", headers=account_headers).json()
+    assert quota_after["resources"]["cpu_core_seconds"]["used"] == cpu_before
+    assert quota_after["resources"]["ram_gib_seconds"]["used"] == ram_before
+
+    second_claim = client.post(
+        f"/v1/mesh/workers/{second['node_id']}/tasks/claim",
+        headers=second_headers,
+    ).json()["task"]
+    assert second_claim["manifest"]["task_id"] == task_id
+    assert second_claim["manifest"]["attempt"] == 2
+
+    second_start = client.post(
+        f"/v1/mesh/workers/{second['node_id']}/tasks/{task_id}/start",
+        headers={**second_headers, "X-Task-Lease": second_claim["lease_token"]},
+    )
+    assert second_start.json()["started"] is True
+
+    result = execute_workload("cpu-sha256", second_claim["manifest"]["payload"])
+    completed = client.post(
+        f"/v1/mesh/workers/{second['node_id']}/tasks/{task_id}/complete",
+        headers={**second_headers, "X-Task-Lease": second_claim["lease_token"]},
+        json={"result": result},
+    )
+    assert completed.status_code == 200
+    latest = client.get(
+        f"/v1/mesh/jobs/{job['job_id']}/results",
+        headers=account_headers,
+    ).json()
+    assert latest["summary"]["execution_status"] == "completed"
+    assert latest["tasks"][0]["state"] == "completed"
