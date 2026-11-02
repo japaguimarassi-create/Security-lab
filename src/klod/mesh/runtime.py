@@ -123,6 +123,77 @@ class TaskStore:
                 raise
         return created
 
+    def create_pending_from_plan(self, plan: dict[str, Any], payload: dict[str, Any]) -> list[str]:
+        pending_count = int(plan.get("queued_tasks", 0))
+        if pending_count <= 0:
+            return []
+        start_index = int(plan.get("scheduled_tasks", 0))
+        now = time.time()
+        created = []
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                for offset in range(pending_count):
+                    task_index = start_index + offset
+                    task_payload = dict(payload)
+                    if "seed" in task_payload:
+                        task_payload["seed"] = int(task_payload["seed"]) + task_index
+                    if "text" in task_payload and plan["workload"] == "cpu-sha256":
+                        task_payload["text"] = f"{task_payload['text']}|task:{task_index}"
+                    task_id = secrets.token_hex(16)
+                    db.execute("""
+                        INSERT INTO mesh_tasks(
+                            task_id,job_id,owner_id,node_id,workload,payload_json,
+                            gpu_index,requires_gpu,cpu_cores,ram_gib,vram_gib,
+                            max_runtime_seconds,state,created_at
+                        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    """, (
+                        task_id, plan["job_id"], plan["owner_id"], "",
+                        plan["workload"], _json_bytes(task_payload).decode("utf-8"),
+                        None, int(plan["requires_gpu"]),
+                        float(plan["cpu_cores_per_task"]),
+                        float(plan["ram_gib_per_task"]),
+                        float(plan["min_vram_gib_per_task"]) if plan["requires_gpu"] else 0.0,
+                        int(plan["max_runtime_seconds_per_task"]), "queued", now,
+                    ))
+                    created.append(task_id)
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
+        return created
+
+    def pending_for_job(self, job_id: str, owner_id: str,
+                        limit: int = 1000) -> list[dict[str, Any]]:
+        with self._connect() as db:
+            rows = db.execute("""
+                SELECT task_id,workload,requires_gpu,cpu_cores,ram_gib,vram_gib,
+                       max_runtime_seconds,attempts
+                FROM mesh_tasks
+                WHERE job_id=? AND owner_id=? AND node_id='' AND state='queued'
+                ORDER BY created_at,task_id LIMIT ?
+            """, (job_id, owner_id, limit)).fetchall()
+        return [dict(row) for row in rows]
+
+    def assign_pending(self, task_id: str, node_id: str,
+                       gpu_index: int | None) -> bool:
+        if not node_id or len(node_id) > 128:
+            raise TaskError("Invalid target worker")
+        if gpu_index is not None and (isinstance(gpu_index, bool) or int(gpu_index) < 0):
+            raise TaskError("Invalid physical GPU index")
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                result = db.execute("""
+                    UPDATE mesh_tasks SET node_id=?,gpu_index=?
+                    WHERE task_id=? AND node_id='' AND state='queued' AND cancel_requested=0
+                """, (node_id, gpu_index, task_id))
+                db.commit()
+                return result.rowcount == 1
+            except Exception:
+                db.rollback()
+                raise
+
     def claim(self, node_id: str, worker_token: str) -> dict[str, Any] | None:
         if not worker_token or len(worker_token) > 512:
             raise TaskError("Invalid worker token")
@@ -378,33 +449,49 @@ class TaskStore:
         with self._connect() as db:
             rows = db.execute("""
                 SELECT state,COUNT(*) AS count,MAX(started_at) AS started,
-                       SUM(cancel_requested) AS cancelling
+                       SUM(cancel_requested) AS cancelling,
+                       SUM(CASE WHEN node_id='' AND state='queued' THEN 1 ELSE 0 END) AS unassigned
                 FROM mesh_tasks WHERE job_id=? AND owner_id=? GROUP BY state
             """, (job_id, owner_id)).fetchall()
         counts = {row["state"]: int(row["count"]) for row in rows}
         total = sum(counts.values())
         started = any(row["started"] is not None for row in rows)
         cancelling = any(int(row["cancelling"] or 0) > 0 for row in rows)
-        if total and counts.get("completed", 0) == total:
+        unassigned = sum(int(row["unassigned"] or 0) for row in rows)
+        assigned_queued = max(0, counts.get("queued", 0) - unassigned)
+        completed = counts.get("completed", 0)
+        failed = counts.get("failed", 0)
+        running = counts.get("running", 0)
+        leased = counts.get("leased", 0)
+        cancelled = counts.get("cancelled", 0)
+
+        if total and completed == total:
             state = "completed"
-        elif counts.get("running", 0):
+        elif running:
             state = "cancelling" if cancelling else "running"
-        elif counts.get("queued", 0) or counts.get("leased", 0):
+        elif assigned_queued or leased:
             state = "dispatched"
-        elif counts.get("failed", 0):
-            state = "failed" if counts["failed"] == total else "partially_failed"
-        elif counts.get("cancelled", 0):
-            state = "cancelled" if counts["cancelled"] == total else "partially_cancelled"
+        elif unassigned and completed:
+            state = "partially_completed"
+        elif unassigned and failed:
+            state = "partially_failed"
+        elif unassigned:
+            state = "queued"
+        elif failed:
+            state = "failed" if failed == total else "partially_failed"
+        elif cancelled:
+            state = "cancelled" if cancelled == total else "partially_cancelled"
         else:
             state = "planning_only"
         return {
             "total_tasks": total,
-            "completed": counts.get("completed", 0),
-            "running": counts.get("running", 0),
-            "leased": counts.get("leased", 0),
-            "queued": counts.get("queued", 0),
-            "failed": counts.get("failed", 0),
-            "cancelled": counts.get("cancelled", 0),
+            "completed": completed,
+            "running": running,
+            "leased": leased,
+            "queued": assigned_queued,
+            "unassigned": unassigned,
+            "failed": failed,
+            "cancelled": cancelled,
             "execution_started": started,
             "execution_status": state,
         }
