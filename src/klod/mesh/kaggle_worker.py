@@ -64,14 +64,23 @@ def render_kernel_script(manifest: dict[str, Any]) -> str:
     footer = f"""
 
 import json as _mesh_json
+import signal as _mesh_signal
 from pathlib import Path as _mesh_path
 
+def _mesh_timeout(_signum, _frame):
+    raise TimeoutError("GPU Mesh task deadline exceeded")
+
 _MESH_MANIFEST = _mesh_json.loads({serialized!r})
-_MESH_RESULT = execute_workload(
-    _MESH_MANIFEST["workload"],
-    _MESH_MANIFEST["payload"],
-    _MESH_MANIFEST.get("device_index"),
-)
+_mesh_signal.signal(_mesh_signal.SIGALRM, _mesh_timeout)
+_mesh_signal.alarm(int(_MESH_MANIFEST["max_runtime_seconds"]))
+try:
+    _MESH_RESULT = execute_workload(
+        _MESH_MANIFEST["workload"],
+        _MESH_MANIFEST["payload"],
+        _MESH_MANIFEST.get("device_index"),
+    )
+finally:
+    _mesh_signal.alarm(0)
 _mesh_output = _mesh_path("/kaggle/working/gpu_mesh_result.json")
 _mesh_output.parent.mkdir(parents=True, exist_ok=True)
 _mesh_output.write_text(
