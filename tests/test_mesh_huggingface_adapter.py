@@ -7,6 +7,7 @@ from klod.mesh.huggingface_worker import (
     HuggingFaceWorkerError,
     _profile,
     _quota_remaining_seconds,
+    required_quota_seconds,
 )
 
 
@@ -16,10 +17,14 @@ def test_zero_gpu_profile_advertises_provider_specific_vram_and_duration(monkeyp
     large = _profile()
     assert large["gpus"][0]["total_vram_gib"] == 48
     assert large["gpus"][0]["max_task_seconds"] == 120
+    assert large["quota_multiplier"] == 1
+    assert required_quota_seconds(120, large) == 120
 
     monkeypatch.setenv("GPU_MESH_HF_ZEROGPU_SIZE", "xlarge")
     xlarge = _profile()
     assert xlarge["gpus"][0]["total_vram_gib"] == 96
+    assert xlarge["quota_multiplier"] == 2
+    assert required_quota_seconds(120, xlarge) == 240
 
 
 def test_zero_gpu_profile_rejects_unsupported_duration_and_size(monkeypatch):
