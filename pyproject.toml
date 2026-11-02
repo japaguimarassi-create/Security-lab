@@ -23,6 +23,7 @@ training = ["torch>=2.6", "transformers>=4.56.2,<6", "accelerate>=1.11.0", "data
 training-cpu = ["transformers>=4.56.2,<6", "accelerate>=1.11.0", "datasets>=4.7.0", "peft>=0.17.0", "trl>=1.17.1,<2", "PyYAML>=6"]
 worker = ["psutil>=6.1,<8", "torch>=2.6"]
 kaggle = ["kaggle>=1.6,<3"]
+huggingface = ["gradio_client>=1.0,<2", "huggingface_hub>=0.30,<2"]
 security = ["argon2-cffi>=23.1,<26", "cryptography>=42,<47"]
 test = ["pytest>=8.3", "httpx>=0.27", "ruff>=0.9", "PyYAML>=6"]
 all = ["torch>=2.6", "transformers>=4.56.2,<6", "accelerate>=1.11.0", "safetensors>=0.4", "peft>=0.17.0", "sentence-transformers>=4.1,<6", "datasets>=4.7.0", "ftfy>=6.3", "trl>=1.17.1,<2", "bitsandbytes>=0.45.2", "PyYAML>=6"]
@@ -31,6 +32,7 @@ all = ["torch>=2.6", "transformers>=4.56.2,<6", "accelerate>=1.11.0", "safetenso
 gpu-mesh-vault = "klod.mesh.vault:main"
 gpu-mesh-worker = "klod.mesh.agent:run_agent"
 gpu-mesh-kaggle-worker = "klod.mesh.kaggle_worker:main"
+gpu-mesh-hf-worker = "klod.mesh.huggingface_worker:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
