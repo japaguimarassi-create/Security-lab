@@ -127,6 +127,7 @@ def test_zero_gpu_bridge_uses_async_job_and_returns_verified_shape(monkeypatch):
 def test_zero_gpu_bridge_cancels_a_job_that_is_still_queued(monkeypatch):
     from threading import Event
 
+    monkeypatch.setattr("klod.mesh.huggingface_worker._quota_remaining_seconds", lambda token: 300)
     from klod.mesh.huggingface_worker import HuggingFaceZeroGPUWorker
 
     class FakeJob:
@@ -160,6 +161,7 @@ def test_zero_gpu_bridge_cancels_a_job_that_is_still_queued(monkeypatch):
 def test_zero_gpu_bridge_does_not_claim_running_provider_jobs_were_stopped(monkeypatch):
     from threading import Event
 
+    monkeypatch.setattr("klod.mesh.huggingface_worker._quota_remaining_seconds", lambda token: 300)
     from klod.mesh.huggingface_worker import HuggingFaceZeroGPUWorker
 
     class FakeJob:
