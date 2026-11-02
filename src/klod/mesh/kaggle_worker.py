@@ -34,12 +34,14 @@ def _resource_profile() -> dict[str, Any]:
     gpu_count = _env_int("GPU_MESH_KAGGLE_GPU_COUNT", 1, 0, 8)
     vram = _env_int("GPU_MESH_KAGGLE_GPU_VRAM_GIB", 16, 1, 96)
     accelerator = os.environ.get("GPU_MESH_KAGGLE_ACCELERATOR", "NvidiaTeslaT4")
+    max_task_seconds = _env_int("GPU_MESH_KAGGLE_MAX_TASK_SECONDS", 3600, 1, 86400)
     if not re.fullmatch(r"[A-Za-z0-9_-]{2,40}", accelerator):
         raise KaggleWorkerError("GPU_MESH_KAGGLE_ACCELERATOR has an invalid format")
     gpus = [{
         "name": accelerator,
         "total_vram_gib": float(vram),
         "available_vram_gib": float(vram),
+        "max_task_seconds": max_task_seconds,
     } for _ in range(gpu_count)]
     return {
         "cpu_cores": float(cpu),
