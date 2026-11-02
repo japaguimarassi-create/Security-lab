@@ -207,3 +207,58 @@ def test_zero_gpu_bridge_rejects_cpu_runtime_above_provider_limit():
             "max_runtime_seconds": 300,
             "requires_gpu": False,
         })
+
+
+
+def test_worker_validates_the_deployed_space_profile_before_registration(monkeypatch):
+    from klod.mesh.huggingface_worker import connect_and_validate_space
+
+    expected = _profile()
+    captured = {}
+
+    class FakeClient:
+        def __init__(self, space_id, token, verbose):
+            captured["space_id"] = space_id
+            captured["token"] = token
+            captured["verbose"] = verbose
+
+        def predict(self, api_name):
+            captured["api_name"] = api_name
+            return {
+                "size": "large",
+                "vram_gib": 48,
+                "max_task_seconds": 120,
+                "quota_multiplier": 1,
+            }
+
+    monkeypatch.setitem(sys.modules, "gradio_client", SimpleNamespace(Client=FakeClient))
+    client = connect_and_validate_space("owner/private-space", "hf-token", expected)
+    assert isinstance(client, FakeClient)
+    assert captured["api_name"] == "/mesh_profile"
+    assert captured["token"] == "hf-token"
+
+
+def test_worker_rejects_space_profile_mismatch_before_registration(monkeypatch):
+    from klod.mesh.huggingface_worker import connect_and_validate_space
+
+    class FakeClient:
+        def __init__(self, space_id, token, verbose):
+            pass
+
+        def predict(self, api_name):
+            return {
+                "size": "large",
+                "vram_gib": 48,
+                "max_task_seconds": 120,
+                "quota_multiplier": 1,
+            }
+
+    monkeypatch.setitem(sys.modules, "gradio_client", SimpleNamespace(Client=FakeClient))
+    expected = {
+        "size": "xlarge",
+        "vram_gib": 96,
+        "max_task_seconds": 120,
+        "quota_multiplier": 2,
+    }
+    with pytest.raises(HuggingFaceWorkerError, match="size does not match"):
+        connect_and_validate_space("owner/private-space", "hf-token", expected)
