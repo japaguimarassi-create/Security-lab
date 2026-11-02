@@ -80,6 +80,7 @@ export KAGGLE_API_TOKEN="TOKEN_KAGGLE"
 export GPU_MESH_KAGGLE_ACCELERATOR="NvidiaTeslaT4"
 export GPU_MESH_KAGGLE_GPU_COUNT="1"
 export GPU_MESH_KAGGLE_GPU_VRAM_GIB="16"
+export GPU_MESH_KAGGLE_GPU_COUNT="2"
 export GPU_MESH_SHARE="true"
 gpu-mesh-kaggle-worker
 ```
