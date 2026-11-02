@@ -79,8 +79,14 @@ class ResourceRegistry:
             if available > total:
                 raise ValueError("available_vram_gib cannot exceed total_vram_gib")
             name = str(item.get("name", f"GPU-{index}"))[:120]
-            max_task_seconds = item.get("max_task_seconds", 86400)
-            if isinstance(max_task_seconds, bool) or not 1 <= int(max_task_seconds) <= 86400:
+            raw_max_task_seconds = item.get("max_task_seconds", 86400)
+            if isinstance(raw_max_task_seconds, bool):
+                raise ValueError("max_task_seconds must be an integer")
+            try:
+                max_task_seconds = int(raw_max_task_seconds)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("max_task_seconds must be an integer") from exc
+            if max_task_seconds != raw_max_task_seconds or not 1 <= max_task_seconds <= 86400:
                 raise ValueError("max_task_seconds must be between 1 and 86400")
             normalized.append({
                 "index": index,
