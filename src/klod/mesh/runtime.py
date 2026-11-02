@@ -271,6 +271,7 @@ class TaskStore:
                     if int(result.get("iterations", -1)) != int(payload["iterations"]):
                         raise TaskError("CPU result iteration count does not match the task manifest")
                     result["result_validation"] = "server-verified"
+                    encoded = _json_bytes(result)
                 elif result.get("workload") != row["workload"]:
                     raise TaskError("Result workload does not match the task manifest")
                 elif not isinstance(result.get("sha256"), str) or len(result["sha256"]) != 64:
