@@ -103,7 +103,7 @@ class ResourceRegistry:
                   int(shared), now, now))
         return {"node_id": node_id, "worker_token": token}
 
-    def heartbeat(self, node_id: str, worker_token: str, owner_id: str,
+    def heartbeat(self, node_id: str, worker_token: str, owner_id: str | None = None,
                   cpu_available: float | None = None,
                   ram_available_gib: float | None = None,
                   storage_available_gib: float | None = None,
@@ -112,10 +112,16 @@ class ResourceRegistry:
             return False
         token_hash = hashlib.sha256(worker_token.encode("utf-8")).hexdigest()
         with self._connect() as db:
-            row = db.execute(
-                "SELECT * FROM mesh_workers WHERE node_id=? AND owner_id=? AND enabled=1",
-                (node_id, owner_id)
-            ).fetchone()
+            if owner_id is None:
+                row = db.execute(
+                    "SELECT * FROM mesh_workers WHERE node_id=? AND enabled=1",
+                    (node_id,)
+                ).fetchone()
+            else:
+                row = db.execute(
+                    "SELECT * FROM mesh_workers WHERE node_id=? AND owner_id=? AND enabled=1",
+                    (node_id, owner_id)
+                ).fetchone()
             if row is None or not secrets.compare_digest(row["token_hash"], token_hash):
                 return False
             cpu = row["cpu_available"] if cpu_available is None else self._positive(cpu_available, "cpu_available", True)

@@ -1,34 +1,45 @@
-# KLOD REST API v0.5
+# KLOD and GPU Mesh REST API v0.7
 
-Every /v1 endpoint requires the X-API-Key header. Set KLOD_API_KEY to a strong secret before running the server.
+## Authentication
 
-## Endpoints
+The legacy KLOD endpoints use the `X-API-Key` header. Configure `KLOD_API_KEY` before exposing those routes; the service fails closed when the value is absent.
 
-- GET /health: runtime, model and embedding status.
-- GET /v1/models and POST /v1/models/load: model metadata and loading.
-- POST /v1/chat/completions: default general chat with optional automatic domain routing.
-- GET /v1/specialists: available optional modules.
-- POST /v1/route: inspect a message's route.
-- POST /v1/specialists/{name}/chat: explicitly select a module.
-- POST /v1/actions/plan: allowlist-validated plans; the API does not execute them.
-- POST /v1/memory and /v1/memory/search: persistent memory.
-- POST /v1/knowledge/documents, /v1/knowledge/index and /v1/knowledge/search: sourced retrieval.
+GPU Mesh routes use account sessions. Register and log in at `/v1/mesh/auth/register` and `/v1/mesh/auth/login`; send the opaque session as `Authorization: Bearer <token>`. Sessions can be revoked with `POST /v1/mesh/auth/logout`. Passwords use Argon2id, session tokens are random and only their SHA-256 hashes are stored. Registration and login have database-backed attempt limits.
 
-Chat accepts specialist (optional explicit module) and auto_route (default true). Explicit specialist selection wins. Set auto_route=false to force the general-purpose prompt. The router selects a module only when it detects clear subject signals; vague and unfamiliar topics remain general. Responses include specialist and routing metadata.
+A worker uses a separate per-node secret in the `X-Worker-Token` header for heartbeats. After a worker is enrolled, it does not need to keep the account session alive. The owner can revoke a node.
 
-Example request:
+## Legacy KLOD endpoints
 
-```json
-{"messages":[{"role":"user","content":"Explique a relatividade geral."}],"auto_route":true}
-```
+- `GET /health`: runtime, model and embedding status.
+- `GET /v1/models` and `POST /v1/models/load`: model metadata and loading.
+- `POST /v1/chat/completions`: general chat.
+- `GET /v1/specialists`, `POST /v1/route`.
+- `POST /v1/specialists/{name}/chat`.
+- `POST /v1/actions/plan`: allowlist-validated proposals; no action is executed.
+- `POST /v1/memory`, `POST /v1/memory/search`.
+- `POST /v1/knowledge/documents`, `POST /v1/knowledge/index`, `POST /v1/knowledge/search`.
 
-Install and run:
+## GPU Mesh routes
+
+- `GET /mesh`: browser dashboard.
+- `GET /v1/mesh/providers`: provider capability catalog; public.
+- `POST /v1/mesh/auth/register`, `POST /v1/mesh/auth/login`, `POST /v1/mesh/auth/logout`.
+- `GET /v1/mesh/account`, `GET /v1/mesh/quota`.
+- `POST /v1/mesh/workers`, `GET /v1/mesh/workers`, `DELETE /v1/mesh/workers/{node_id}`.
+- `POST /v1/mesh/workers/{node_id}/heartbeat`: per-node token only.
+- `GET /v1/mesh/resources`: online resource inventory, per physical GPU.
+- `POST /v1/mesh/jobs`: create a resource allocation plan.
+- `GET /v1/mesh/jobs`, `GET /v1/mesh/jobs/{job_id}`, `DELETE /v1/mesh/jobs/{job_id}`.
+
+A planned job reserves estimated weekly quota. Cancelling a planning-only job releases that reservation. Job planning does not execute a program, create a VM, or start a remote process.
+
+## Example
 
 ```bash
-pip install -e ".[model,embeddings]"
-KLOD_API_KEY='replace-with-secret' KLOD_LOAD_MODEL=true uvicorn klod.api:app --host 127.0.0.1 --port 8000
+curl https://your-domain/v1/mesh/providers
+curl -X POST https://your-domain/v1/mesh/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"user@example.com","password":"a-strong-password"}'
 ```
 
-The embedding model is loaded locally on first semantic use. Set KLOD_SEMANTIC_SEARCH=false to disable semantic retrieval. Documents retain source URL, license and attribution. SQLite vector scanning is intended for modest corpora; consider Qdrant or pgvector for large indexes.
-
-All domain modules use the same language model. They are prompt and retrieval configurations, not separately trained model weights. Retrieved documents are evidence, not executable instructions. The action planner only returns proposals; client applications must validate permissions and state before acting.
+For resource registration, job planning and encrypted-source commands, consult [GPU_MESH.md](GPU_MESH.md). Serve the API through HTTPS and configure rate limits at the reverse proxy as an additional defense.

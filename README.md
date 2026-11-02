@@ -1,4 +1,4 @@
-# KLOD AI 0.6.0
+# KLOD AI + GPU Mesh Core 0.7.0
 
 KLOD is a general-purpose multilingual AI runtime for open-domain conversation and work across everyday questions, programming, science, mathematics, research, education, writing, creative development, business and specialized technical subjects. Minecraft is one optional specialist.
 
@@ -81,3 +81,38 @@ See `docs/TRAINING.md`, `docs/ARCHITECTURE.md`, `docs/API.md` and `docs/SPECIALI
 
 A separate eight-question held-out set is provided at `data/eval/distillation_heldout.jsonl`. It is not included in the training mixture or teacher prompt seeds. After training the adapter, run `python scripts/evaluate_teacher_student.py`. The tool generates both models' answers for the same held-out prompts, randomizes A/B order, and writes the mapping to `evaluation/distillation_answer_key.json`. Keep the answer key private until blind human review is complete. Do not train on the held-out prompts or their answers.
 
+
+## GPU Mesh Core
+
+GPU Mesh adds a protected resource-control dashboard at `/mesh`, with account registration, per-device GPU/VRAM inventory, CPU/RAM visibility, voluntary worker heartbeats, weekly quotas and task-allocation planning.
+
+Read [docs/GPU_MESH.md](docs/GPU_MESH.md) for the full branch architecture, provider limits, deployment model and cryptographic design.
+
+### Start the API and dashboard
+
+Install the base package and start the service:
+
+```bash
+python -m pip install -e .
+KLOD_API_KEY='use-a-long-random-secret' uvicorn klod.api:app --host 127.0.0.1 --port 8000
+```
+
+Open `/mesh` in the browser. The dashboard uses separate account sessions; KLOD's legacy endpoints continue to require `X-API-Key`.
+
+### Volunteer worker
+
+On a machine you own, install the worker extra and run it with an account access token:
+
+```bash
+python -m pip install -e ".[worker]"
+export GPU_MESH_API_URL="https://your-domain"
+export GPU_MESH_ACCESS_TOKEN="account-session-token"
+export GPU_MESH_SHARE="true"
+gpu-mesh-worker
+```
+
+Sharing is disabled unless `GPU_MESH_SHARE=true` is explicitly set. After the first enrollment, the node uses its dedicated worker token for heartbeats. The current agent only reports resource capacity; remote job execution is not enabled.
+
+### Encrypted source archive
+
+The canonical general-relativity corpus in `src/klod/mesh/relativity.py` is a mandatory component of Argon2id key derivation. AES-256-GCM encrypts the exported source bundle. A private random `GPU_MESH_MASTER_SECRET` (at least 32 bytes) is also mandatory; public mathematical formulas alone are not a secret. Configure that value as a GitHub Actions secret to run the encrypted archive workflow. Source files and Git history in this public repository remain readable; the vault encrypts the exported archive, not the public Git objects.

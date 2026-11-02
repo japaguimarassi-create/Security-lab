@@ -124,3 +124,47 @@ class QuotaLedger:
                 "remaining": max(0.0, float(limit) - current),
             }
         return {"week_start": week, "reset": "next Monday 00:00 UTC", "resources": resources}
+
+
+    def release(self, user_id: str, amounts: Mapping[str, float],
+                at: float | None = None) -> dict[str, dict[str, float]]:
+        if not user_id or len(user_id) > 128 or not amounts:
+            raise ValueError("user_id and at least one quota amount are required")
+        week = self.week_start(at)
+        normalized = {}
+        for metric, amount in amounts.items():
+            if metric not in self.limits:
+                raise ValueError(f"Unknown quota metric: {metric}")
+            value = float(amount)
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError(f"Quota release for {metric} must be finite and positive")
+            normalized[metric] = value
+
+        results = {}
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                for metric, amount in normalized.items():
+                    row = db.execute("""
+                        SELECT used FROM mesh_quota_usage
+                        WHERE user_id=? AND week_start=? AND metric=?
+                    """, (user_id, week, metric)).fetchone()
+                    used = float(row["used"]) if row else 0.0
+                    new_used = max(0.0, used - amount)
+                    db.execute("""
+                        INSERT INTO mesh_quota_usage(user_id,week_start,metric,used)
+                        VALUES(?,?,?,?)
+                        ON CONFLICT(user_id,week_start,metric)
+                        DO UPDATE SET used=excluded.used
+                    """, (user_id, week, metric, new_used))
+                    results[metric] = {
+                        "released": min(used, amount),
+                        "used": new_used,
+                        "limit": float(self.limits[metric]),
+                        "remaining": max(0.0, float(self.limits[metric]) - new_used),
+                    }
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
+        return {"week_start": week, "resources": results}

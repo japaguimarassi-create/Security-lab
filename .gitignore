@@ -27,3 +27,7 @@ evaluation/distillation_blind.jsonl
 evaluation/distillation_answer_key.json
 evaluation/*.tmp
 .ipynb_checkpoints/
+
+*.grmesh
+*.token
+.gpu-mesh/

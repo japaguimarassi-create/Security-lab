@@ -13,7 +13,9 @@ from typing import Any
 def _request(url: str, access_token: str, method: str = "GET",
              worker_token: str | None = None, body: dict[str, Any] | None = None) -> dict:
     payload = json.dumps(body).encode("utf-8") if body is not None else None
-    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+    headers = {"Accept": "application/json"}
+    if access_token:
+        headers["Authorization"] = f"Bearer {access_token}"
     if payload is not None:
         headers["Content-Type"] = "application/json"
     if worker_token:
@@ -77,13 +79,13 @@ def run_agent() -> None:
     interval = max(15, int(os.environ.get("GPU_MESH_HEARTBEAT_SECONDS", "30")))
     if not base_url.startswith("https://"):
         raise SystemExit("GPU_MESH_API_URL must use HTTPS")
-    if not access_token:
-        raise SystemExit("GPU_MESH_ACCESS_TOKEN is required")
     if state_path.exists():
         state = json.loads(state_path.read_text(encoding="utf-8"))
         node_id = state["node_id"]
         worker_token = state["worker_token"]
     else:
+        if not access_token:
+            raise SystemExit("GPU_MESH_ACCESS_TOKEN is required for first-time worker registration")
         resources = detect_resources()
         result = _request(
             base_url + "/v1/mesh/workers",
@@ -106,7 +108,7 @@ def run_agent() -> None:
         resources = detect_resources()
         _request(
             f"{base_url}/v1/mesh/workers/{node_id}/heartbeat",
-            access_token,
+            "",
             method="POST",
             worker_token=worker_token,
             body={
