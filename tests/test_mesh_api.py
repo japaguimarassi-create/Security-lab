@@ -83,7 +83,7 @@ def test_worker_heartbeat_uses_node_token_without_account_session(tmp_path, monk
     assert heartbeat.json()["accepted"] is True
 
 
-def test_job_planning_reserves_weekly_capacity_but_does_not_execute(tmp_path, monkeypatch):
+def test_job_dispatch_reserves_weekly_capacity_and_cancels_pending_tasks(tmp_path, monkeypatch):
     client = configure_mesh(tmp_path, monkeypatch)
     token = create_account(client)
     headers = {"Authorization": f"Bearer {token}"}
@@ -112,7 +112,7 @@ def test_job_planning_reserves_weekly_capacity_but_does_not_execute(tmp_path, mo
     })
     assert planned.status_code == 201
     result = planned.json()
-    assert result["status"] == "planned"
+    assert result["status"] == "dispatched"
     assert result["scheduled_tasks"] == 1
     assert result["execution_started"] is False
     assert result["execution_status"] == "dispatched"
