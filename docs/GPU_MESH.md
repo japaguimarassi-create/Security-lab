@@ -29,6 +29,7 @@ As branches de Kodex, Enturma, Stevebo, Voxelforge e as etapas antigas de treina
 - VRAM nunca é somada entre placas diferentes.
 - Limites por GPU incluem VRAM disponível e duração máxima por tarefa (`max_task_seconds`).
 - Tarefas não alocadas são persistidas e podem ser redistribuídas pelo endpoint de reequilíbrio.
+- Tarefas atribuídas a workers revogados/offline são recuperadas depois que o lease expira; o lease anterior é invalidado e a quota já reservada é reutilizada, sem cobrança duplicada.
 - Reservas de hardware e cotas são feitas antes da entrega ao worker; uma falha na reserva faz rollback.
 - Manifests são assinados com HMAC-SHA256 usando o segredo individual do worker.
 - Leases temporários reduzem duplicação; um token antigo deixa de funcionar quando um lease novo é emitido.
