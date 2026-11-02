@@ -43,3 +43,47 @@ def test_worker_token_authentication_and_revocation(tmp_path):
     assert not registry.authenticate_worker(worker["node_id"], "wrong")
     assert registry.revoke(worker["node_id"], "owner")
     assert not registry.authenticate_worker(worker["node_id"], worker["worker_token"])
+
+
+def test_scheduler_respects_provider_gpu_maximum_task_duration(tmp_path):
+    from klod.mesh.scheduler import TaskScheduler
+
+    registry = ResourceRegistry(str(tmp_path / "mesh.sqlite"))
+    worker = registry.register(
+        owner_id="owner",
+        provider_id="huggingface-zerogpu",
+        cpu_cores=2,
+        ram_gib=8,
+        storage_gib=0,
+        gpus=[{
+            "name": "ZeroGPU large",
+            "total_vram_gib": 48,
+            "available_vram_gib": 48,
+            "max_task_seconds": 120,
+        }],
+        shared=True,
+    )
+    assert registry.heartbeat(
+        worker["node_id"], worker["worker_token"], owner_id=None,
+        cpu_available=2, ram_available_gib=8, storage_available_gib=0,
+        gpus=[{
+            "name": "ZeroGPU large",
+            "total_vram_gib": 48,
+            "available_vram_gib": 48,
+            "max_task_seconds": 120,
+        }],
+    )
+    nodes = registry.list_schedulable("other", include_shared=True)
+    scheduler = TaskScheduler()
+    too_long = scheduler.plan(
+        owner_id="other", workload="gpu-matmul", task_count=1,
+        nodes=nodes, requires_gpu=True, min_vram_gib_per_task=1,
+        max_runtime_seconds_per_task=300,
+    )
+    fits = scheduler.plan(
+        owner_id="other", workload="gpu-matmul", task_count=1,
+        nodes=nodes, requires_gpu=True, min_vram_gib_per_task=1,
+        max_runtime_seconds_per_task=120,
+    )
+    assert too_long["scheduled_tasks"] == 0
+    assert fits["scheduled_tasks"] == 1
