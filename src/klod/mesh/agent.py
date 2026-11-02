@@ -48,6 +48,12 @@ def detect_resources() -> dict[str, Any]:
     cpu_total = max(1, os.cpu_count() or 1)
     cpu_fraction = min(1.0, max(0.05, float(os.getenv("GPU_MESH_CPU_FRACTION", "0.5"))))
     ram_fraction = min(1.0, max(0.05, float(os.getenv("GPU_MESH_RAM_FRACTION", "0.5"))))
+    try:
+        max_task_seconds = int(os.getenv("GPU_MESH_MAX_TASK_SECONDS", "3600"))
+    except ValueError as exc:
+        raise RuntimeError("GPU_MESH_MAX_TASK_SECONDS must be an integer") from exc
+    if not 1 <= max_task_seconds <= 86400:
+        raise RuntimeError("GPU_MESH_MAX_TASK_SECONDS must be between 1 and 86400")
     memory = psutil.virtual_memory()
     ram_total = memory.total / (1024 ** 3)
     ram_available = min(ram_total * ram_fraction, memory.available / (1024 ** 3) * ram_fraction)
@@ -68,6 +74,7 @@ def detect_resources() -> dict[str, Any]:
                     "name": str(props.name)[:120],
                     "total_vram_gib": round(total_gib, 3),
                     "available_vram_gib": round(min(total_gib, free_bytes / (1024 ** 3)), 3),
+                    "max_task_seconds": max_task_seconds,
                 })
     except ImportError:
         pass
