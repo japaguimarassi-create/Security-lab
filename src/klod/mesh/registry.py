@@ -175,10 +175,8 @@ class ResourceRegistry:
                     ORDER BY last_seen DESC
                 """, (cutoff, owner_id)).fetchall()
             reservation_rows = db.execute("""
-                SELECT node_id,gpu_index,SUM(cpu_cores) AS cpu_cores,
-                       SUM(ram_gib) AS ram_gib,SUM(vram_gib) AS vram_gib
-                FROM mesh_resource_reservations
-                WHERE expires_at>? GROUP BY node_id,gpu_index
+                SELECT node_id,gpu_index,cpu_cores,ram_gib,vram_gib
+                FROM mesh_resource_reservations WHERE expires_at>?
             """, (now,)).fetchall()
         reservations: dict[str, dict[str, Any]] = {}
         for item in reservation_rows:
