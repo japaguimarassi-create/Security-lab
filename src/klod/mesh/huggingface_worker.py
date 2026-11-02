@@ -45,6 +45,16 @@ def _profile() -> dict[str, Any]:
     }
 
 
+def required_quota_seconds(runtime_seconds: float, profile: dict[str, Any]) -> float:
+    runtime = float(runtime_seconds)
+    if runtime <= 0:
+        raise HuggingFaceWorkerError("GPU runtime must be positive")
+    multiplier = float(profile.get("quota_multiplier", 1))
+    if multiplier not in (1.0, 2.0):
+        raise HuggingFaceWorkerError("Unsupported ZeroGPU quota multiplier")
+    return runtime * multiplier
+
+
 def _quota_remaining_seconds(token: str) -> float:
     try:
         from huggingface_hub import HfApi
@@ -136,8 +146,8 @@ class HuggingFaceZeroGPUWorker:
     def _invoke_space(self, manifest: dict[str, Any]) -> dict[str, Any]:
         if manifest["requires_gpu"]:
             remaining = _quota_remaining_seconds(self.hf_token)
-            required = float(manifest["max_runtime_seconds"]) * float(
-                self.profile.get("quota_multiplier", 1)
+            required = required_quota_seconds(
+                manifest["max_runtime_seconds"], self.profile
             )
             if remaining < required:
                 raise HuggingFaceWorkerError(
