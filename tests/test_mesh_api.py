@@ -133,6 +133,12 @@ def test_dashboard_is_served_with_security_headers(tmp_path, monkeypatch):
     response = client.get("/mesh")
     assert response.status_code == 200
     assert "GPU MESH" in response.text
+    assert 'id="copy-account-token"' in response.text
+    assert "gpu-mesh-kaggle-worker" in response.text
+    asset = client.get("/mesh-assets/app.js")
+    assert asset.status_code == 200
+    assert "rescheduleJob" in asset.text
+    assert asset.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-frame-options"] == "DENY"
     assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
