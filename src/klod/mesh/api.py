@@ -464,7 +464,10 @@ def renew_worker_task(
 ):
     _require_worker(node_id, worker_token)
     try:
-        return task_store.renew(task_id, node_id, lease_token or "")
+        state = task_store.renew(task_id, node_id, lease_token or "")
+        if state.get("renewed"):
+            registry.renew_capacity(task_id, ttl_seconds=900)
+        return state
     except TaskError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
