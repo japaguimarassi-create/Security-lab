@@ -41,6 +41,7 @@ def _profile() -> dict[str, Any]:
             "max_task_seconds": max_task_seconds,
         }],
         "max_task_seconds": max_task_seconds,
+        "quota_multiplier": 2 if size == "xlarge" else 1,
     }
 
 
@@ -135,7 +136,9 @@ class HuggingFaceZeroGPUWorker:
     def _invoke_space(self, manifest: dict[str, Any]) -> dict[str, Any]:
         if manifest["requires_gpu"]:
             remaining = _quota_remaining_seconds(self.hf_token)
-            required = float(manifest["max_runtime_seconds"])
+            required = float(manifest["max_runtime_seconds"]) * float(
+                self.profile.get("quota_multiplier", 1)
+            )
             if remaining < required:
                 raise HuggingFaceWorkerError(
                     f"ZeroGPU quota too low: {remaining:.0f}s remaining, {required:.0f}s requested"
