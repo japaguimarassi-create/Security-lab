@@ -131,3 +131,27 @@ def test_heartbeat_without_resource_payload_preserves_existing_base_capacity(tmp
     assert node["cpu_available"] == 3
     assert node["ram_available_gib"] == 6
     assert node["gpus"][0]["available_vram_gib"] == 3
+
+
+
+def test_worker_ram_capacity_is_distinct_from_free_ram(tmp_path):
+    registry = ResourceRegistry(str(tmp_path / "mesh.sqlite"))
+    worker = registry.register(
+        owner_id="owner",
+        provider_id="volunteer-worker",
+        cpu_cores=4,
+        ram_gib=16,
+        ram_available_gib=5,
+        storage_gib=0,
+        gpus=[],
+    )
+    assert registry.heartbeat(
+        worker["node_id"], worker["worker_token"], owner_id=None,
+        cpu_available=4,
+        ram_available_gib=3,
+        storage_available_gib=0,
+        gpus=[],
+    )
+    node = registry.list_schedulable("owner")[0]
+    assert node["ram_total_gib"] == 16
+    assert node["ram_available_gib"] == 3
