@@ -5,6 +5,7 @@ import json
 import os
 import sqlite3
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -309,7 +310,9 @@ def _refresh_job_state(job_id: str, owner_id: str) -> dict[str, Any] | None:
         return None
     summary = task_store.summary(job_id, owner_id)
     job.update(summary)
-    if job.get("queued_tasks", 0) and summary["execution_status"] == "completed":
+    job["queued_tasks"] = int(summary.get("unassigned", 0))
+    job["scheduled_tasks"] = max(0, int(summary.get("total_tasks", 0)) - job["queued_tasks"])
+    if job["queued_tasks"] and summary["execution_status"] == "completed":
         job["execution_status"] = "partially_completed"
     job["status"] = job["execution_status"]
     job["execution_started"] = bool(job.get("execution_started") or summary["execution_started"])
@@ -412,12 +415,21 @@ def create_job(request: JobRequest, user: dict[str, str] = Depends(require_user)
     plan["execution_started"] = False
     plan["execution_status"] = "dispatched" if scheduled else "queued"
     plan["status"] = plan["execution_status"]
+    plan["queued_tasks"] = int(plan["queued_tasks"])
     plan["execution_note"] = (
         "Allowlisted task manifests are assigned to authenticated workers. "
         "Workers verify the per-node HMAC, lease and fixed device before executing a built-in workload. "
         "No arbitrary user-supplied code is accepted."
     )
-    plan["task_ids"] = [record["task_id"] for record in task_records]
+    pending_task_ids = task_store.create_pending_from_plan(plan, payload)
+    plan["task_ids"] = [record["task_id"] for record in task_records] + pending_task_ids
+    if quota_reservation and task_records:
+        plan["quota_batches"] = [{
+            "task_ids": [record["task_id"] for record in task_records],
+            "reservation": quota_reservation,
+        }]
+    else:
+        plan["quota_batches"] = []
     plan["task_summary"] = task_store.summary(plan["job_id"], user["user_id"])
     job_store.save(plan)
     return plan
@@ -529,7 +541,9 @@ def jobs(limit: int = 50, user: dict[str, str] = Depends(require_user)):
     items = job_store.list(user["user_id"], limit)
     for item in items:
         item.update(task_store.summary(item["job_id"], user["user_id"]))
-        if item.get("queued_tasks", 0) and item["execution_status"] == "completed":
+        item["queued_tasks"] = int(item.get("unassigned", 0))
+        item["scheduled_tasks"] = max(0, int(item.get("total_tasks", 0)) - item["queued_tasks"])
+        if item["queued_tasks"] and item["execution_status"] == "completed":
             item["execution_status"] = "partially_completed"
         item["status"] = item["execution_status"]
     return {"jobs": items}
