@@ -138,3 +138,85 @@ def test_reclaimed_lease_invalidates_the_previous_worker_token(tmp_path):
     assert second["manifest"]["attempt"] == 2
     with pytest.raises(TaskError, match="lease rejected"):
         store.renew(task_id, "node-1", first["lease_token"])
+
+
+
+def test_gpu_results_must_match_signed_device_and_workload_dimensions(tmp_path):
+    store = TaskStore(str(tmp_path / "tasks.sqlite"))
+    plan = {
+        "job_id": "gpu-result-verify",
+        "owner_id": "owner-1",
+        "workload": "gpu-matmul",
+        "requires_gpu": True,
+        "min_vram_gib_per_task": 1.0,
+        "max_runtime_seconds_per_task": 120,
+        "assignments": [{
+            "node_id": "gpu-node",
+            "provider_id": "volunteer-worker",
+            "task_count": 1,
+            "gpu_devices": [{"index": 1}],
+            "cpu_cores_per_task": 1.0,
+            "ram_gib_per_task": 2.0,
+        }],
+    }
+    created = store.create_from_plan(plan, {"matrix_size": 64, "seed": 9})
+    task_id = created[0]["task_id"]
+    claim = store.claim("gpu-node", "gpu-worker-token")
+    store.start(task_id, "gpu-node", claim["lease_token"])
+    forged = {
+        "workload": "gpu-matmul",
+        "sha256": "a" * 64,
+        "matrix_size": 128,
+        "device_index": 1,
+        "execution_device": "cuda",
+        "result_validation": "worker-reported-digest",
+    }
+    with pytest.raises(TaskError, match="matrix result size"):
+        store.complete(task_id, "gpu-node", claim["lease_token"], forged)
+
+    correct = {
+        **forged,
+        "matrix_size": 64,
+    }
+    done = store.complete(task_id, "gpu-node", claim["lease_token"], correct)
+    assert done["completed"] is True
+    saved = store.list_results("gpu-result-verify", "owner-1")[0]["result"]
+    assert saved["result_validation"] == "worker-reported"
+
+
+def test_gpu_result_rejects_wrong_physical_device_index(tmp_path):
+    store = TaskStore(str(tmp_path / "tasks.sqlite"))
+    plan = {
+        "job_id": "gpu-index-verify",
+        "owner_id": "owner-1",
+        "workload": "gpu-mandelbrot",
+        "requires_gpu": True,
+        "min_vram_gib_per_task": 1.0,
+        "max_runtime_seconds_per_task": 120,
+        "assignments": [{
+            "node_id": "gpu-node",
+            "provider_id": "volunteer-worker",
+            "task_count": 1,
+            "gpu_devices": [{"index": 0}],
+            "cpu_cores_per_task": 1.0,
+            "ram_gib_per_task": 2.0,
+        }],
+    }
+    created = store.create_from_plan(
+        plan, {"width": 128, "height": 128, "max_iterations": 32}
+    )
+    task_id = created[0]["task_id"]
+    claim = store.claim("gpu-node", "gpu-worker-token")
+    store.start(task_id, "gpu-node", claim["lease_token"])
+    result = {
+        "workload": "gpu-mandelbrot",
+        "sha256": "b" * 64,
+        "width": 128,
+        "height": 128,
+        "max_iterations": 32,
+        "device_index": 1,
+        "execution_device": "cuda",
+        "result_validation": "worker-reported-digest",
+    }
+    with pytest.raises(TaskError, match="device index"):
+        store.complete(task_id, "gpu-node", claim["lease_token"], result)
