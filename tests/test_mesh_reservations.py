@@ -87,3 +87,17 @@ def test_scheduler_respects_provider_gpu_maximum_task_duration(tmp_path):
     )
     assert too_long["scheduled_tasks"] == 0
     assert fits["scheduled_tasks"] == 1
+
+
+def test_gpu_maximum_runtime_rejects_fractional_and_boolean_values(tmp_path):
+    registry = ResourceRegistry(str(tmp_path / "mesh.sqlite"))
+    with pytest.raises(ValueError, match="max_task_seconds"):
+        registry.register(
+            "owner", "provider", 2, 4, 0,
+            [{"total_vram_gib": 8, "available_vram_gib": 8, "max_task_seconds": 120.5}],
+        )
+    with pytest.raises(ValueError, match="max_task_seconds"):
+        registry.register(
+            "owner", "provider", 2, 4, 0,
+            [{"total_vram_gib": 8, "available_vram_gib": 8, "max_task_seconds": True}],
+        )
