@@ -276,6 +276,23 @@ class ResourceRegistry:
                 db.rollback()
                 raise
 
+    def renew_capacity(self, task_id: str, ttl_seconds: int = 900) -> bool:
+        if not 60 <= int(ttl_seconds) <= 86400:
+            raise ValueError("Reservation TTL must be between 60 and 86400 seconds")
+        now = time.time()
+        with self._connect() as db:
+            result = db.execute(
+                """UPDATE mesh_resource_reservations
+                   SET expires_at=?
+                   WHERE task_id=? AND EXISTS (
+                       SELECT 1 FROM mesh_workers
+                       WHERE mesh_workers.node_id=mesh_resource_reservations.node_id
+                         AND mesh_workers.enabled=1
+                   )""",
+                (now + int(ttl_seconds), task_id),
+            )
+        return result.rowcount == 1
+
     def release_capacity(self, task_id: str) -> bool:
         with self._connect() as db:
             result = db.execute(
