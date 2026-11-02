@@ -1,0 +1,4 @@
+gradio>=4.44,<6
+spaces>=0.39
+huggingface_hub>=0.30,<2
+git+https://github.com/japaguimarassi-create/Security-lab.git
