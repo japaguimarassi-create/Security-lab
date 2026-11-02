@@ -50,12 +50,14 @@ class TaskScheduler:
             if requires_gpu:
                 for gpu in node.get("gpus", []):
                     available = float(gpu.get("available_vram_gib", 0))
-                    if available >= min_vram_gib_per_task:
+                    max_task_seconds = int(gpu.get("max_task_seconds", 86400))
+                    if available >= min_vram_gib_per_task and max_task_seconds >= max_runtime_seconds_per_task:
                         selected_gpus.append({
                             "index": int(gpu.get("index", 0)),
                             "name": str(gpu.get("name", "GPU"))[:120],
                             "available_vram_gib": available,
                             "required_vram_gib": min_vram_gib_per_task,
+                            "max_task_seconds": max_task_seconds,
                         })
                 slots = min(slots, len(selected_gpus))
             count = min(remaining, max(0, slots))
