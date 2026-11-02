@@ -48,6 +48,11 @@ R_(sigma nu) = R^rho_(sigma rho nu).
 R = g^(mu nu) R_(mu nu).
 G_(mu nu) = R_(mu nu) - (1/2) R g_(mu nu).
 R_(rho sigma mu nu) = g_(rho alpha) R^alpha_(sigma mu nu).
+In four dimensions the Weyl conformal-curvature tensor is
+C_(mu nu rho sigma) = R_(mu nu rho sigma)
+- (g_(mu rho) R_(sigma nu) - g_(mu sigma) R_(rho nu)
+   - g_(nu rho) R_(sigma mu) + g_(nu sigma) R_(rho mu))
++ (R/3) (g_(mu rho) g_(sigma nu) - g_(mu sigma) g_(rho nu)).
 For the Levi-Civita connection:
 R_(rho sigma mu nu) = -R_(sigma rho mu nu)
 = -R_(rho sigma nu mu) = R_(mu nu rho sigma).
@@ -72,7 +77,10 @@ S = (c^3 / (16 pi G_N)) integral_M (R - 2 Lambda) sqrt(-g) d^4 x
 T_(mu nu) = (-2 c / sqrt(-g)) delta S_matter / delta g^(mu nu)
 for the stated x^0 = c t convention.
 Stationarity delta S / delta g^(mu nu) = 0 gives the field equations,
-with the required boundary term for a well-posed metric variation.
+with the Gibbons-Hawking-York boundary term for a non-null boundary:
+S_GHY = (c^3 / (8 pi G_N)) integral_boundary epsilon K sqrt(|h|) d^3 x,
+where h is the induced boundary metric, K is the trace of its extrinsic curvature
+and epsilon encodes the boundary normal orientation.
 Stress-energy conservation follows:
 nabla_mu T^(mu nu) = 0.
 
@@ -101,6 +109,14 @@ For a connecting vector xi^mu between neighboring geodesics, with the
 curvature convention declared above:
 D^2 xi^mu / D tau^2 = R^mu_(nu alpha beta) u^nu u^alpha xi^beta.
 The equation determines relative tidal acceleration.
+For a null geodesic k^mu, k^mu k_mu = 0 and
+k^nu nabla_nu k^mu = 0 for an affine parameter.
+For a timelike congruence with expansion theta, shear sigma, vorticity omega
+and four-acceleration a^mu, the Raychaudhuri equation is
+D theta / D tau = -(1/3) theta^2 - sigma_(mu nu) sigma^(mu nu)
++ omega_(mu nu) omega^(mu nu) - R_(mu nu) u^mu u^nu
++ nabla_mu a^mu.
+For geodesic flow, a^mu = 0.
 
 7. WEAK FIELD AND LINEARIZED GRAVITY
 g_(mu nu) = eta_(mu nu) + h_(mu nu), with |h_(mu nu)| << 1.
@@ -132,7 +148,7 @@ a = J/(M c), define Sigma = r^2 + a^2 cos^2(theta),
 Delta = r^2 - (2 G_N M/c^2) r + a^2.
 In Boyer-Lindquist coordinates:
 ds^2 = -(1 - 2 G_N M r/(c^2 Sigma)) c^2 dt^2
-- (4 G_N M a r sin^2(theta)/(c Sigma)) c dt dphi
+- (4 G_N M a r sin^2(theta)/(c^2 Sigma)) c dt dphi
 + (Sigma/Delta) dr^2 + Sigma dtheta^2
 + [r^2 + a^2 + (2 G_N M a^2 r sin^2(theta))/(c^2 Sigma)]
 sin^2(theta) dphi^2.
