@@ -143,29 +143,52 @@ class HuggingFaceZeroGPUWorker:
                 if stop.wait(5):
                     return
 
-    def _invoke_space(self, manifest: dict[str, Any]) -> dict[str, Any]:
+    def _invoke_space(self, manifest: dict[str, Any],
+                      cancel_event: Event | None = None) -> dict[str, Any]:
+        cancelled = cancel_event or Event()
+        runtime_seconds = int(manifest["max_runtime_seconds"])
+        if runtime_seconds > int(self.profile["max_task_seconds"]):
+            raise HuggingFaceWorkerError(
+                "Task runtime exceeds this ZeroGPU worker's configured duration limit"
+            )
+        client = self._get_client()
         if manifest["requires_gpu"]:
             remaining = _quota_remaining_seconds(self.hf_token)
-            required = required_quota_seconds(
-                manifest["max_runtime_seconds"], self.profile
-            )
+            required = required_quota_seconds(runtime_seconds, self.profile)
             if remaining < required:
                 raise HuggingFaceWorkerError(
                     f"ZeroGPU quota too low: {remaining:.0f}s remaining, {required:.0f}s requested"
                 )
-            result = self._get_client().predict(
+            job = client.submit(
                 manifest["workload"],
                 json.dumps(manifest["payload"], ensure_ascii=False, allow_nan=False),
                 int(manifest.get("device_index") or 0),
-                int(manifest["max_runtime_seconds"]),
+                runtime_seconds,
                 api_name="/run_gpu_task",
             )
         else:
-            result = self._get_client().predict(
+            job = client.submit(
                 manifest["workload"],
                 json.dumps(manifest["payload"], ensure_ascii=False, allow_nan=False),
                 api_name="/run_cpu_task",
             )
+
+        deadline = time.monotonic() + runtime_seconds + 300
+        while not job.done():
+            if cancelled.is_set():
+                cancelled_before_start = bool(job.cancel())
+                if cancelled_before_start:
+                    raise HuggingFaceWorkerError("Queued ZeroGPU task was cancelled before execution")
+                raise HuggingFaceWorkerError(
+                    "Cancellation requested after the provider started the function; "
+                    "the remote GPU call may continue until the provider function returns"
+                )
+            if time.monotonic() >= deadline:
+                job.cancel()
+                raise HuggingFaceWorkerError("Gradio Space call exceeded the worker deadline")
+            time.sleep(0.5)
+
+        result = job.result()
         if not isinstance(result, dict):
             raise HuggingFaceWorkerError("Hugging Face Space returned a non-object result")
         return result
@@ -200,7 +223,7 @@ class HuggingFaceZeroGPUWorker:
         )
         keeper.start()
         try:
-            result = self._invoke_space(manifest)
+            result = self._invoke_space(manifest, cancel_event=cancel)
             completion = self._api(
                 f"/v1/mesh/workers/{self.node_id}/tasks/{manifest['task_id']}/complete",
                 method="POST",
