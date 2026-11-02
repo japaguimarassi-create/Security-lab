@@ -69,9 +69,10 @@
         <details class="install-box">
           <summary>Conectar uma máquina voluntária</summary>
           <p>Execute o agente em uma máquina que você controla. A participação compartilhada só deve ser ativada com autorização do proprietário.</p>
-          <pre id="worker-command">pip install "git+https://github.com/japaguimarassi-create/Security-lab.git"
+          <pre id="worker-command">pip install "klod-ai[worker] @ git+https://github.com/japaguimarassi-create/Security-lab.git"
 export GPU_MESH_API_URL="https://SEU-DOMINIO"
 export GPU_MESH_ACCESS_TOKEN="TOKEN_DA_CONTA"
+export GPU_MESH_SHARE="true"
 gpu-mesh-worker</pre>
           <p class="fine-print">O worker atual anuncia hardware e envia heartbeats. Execução remota de código ainda não está habilitada.</p>
         </details>
