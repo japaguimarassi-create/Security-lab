@@ -5,10 +5,10 @@ import os
 import sqlite3
 import time
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from pydantic import BaseModel, EmailStr, Field
+from fastapi import APIRouter, Depends, Header, HTTPException, status
+from pydantic import BaseModel, Field
 
 from klod.mesh.auth import AccountExists, AuthStore, AuthenticationError
 from klod.mesh.providers import list_providers
@@ -84,7 +84,7 @@ WORKLOADS = {
 
 
 class RegisterRequest(BaseModel):
-    email: EmailStr
+    email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=12, max_length=1024)
 
 
@@ -146,7 +146,7 @@ def providers():
 @router.post("/auth/register", status_code=status.HTTP_201_CREATED)
 def register_account(request: RegisterRequest):
     try:
-        result = auth_store.register(str(request.email), request.password)
+        result = auth_store.register(request.email, request.password)
     except AccountExists as exc:
         raise HTTPException(status_code=409, detail="Account already exists") from exc
     except AuthenticationError as exc:
