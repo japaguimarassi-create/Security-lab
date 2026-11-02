@@ -34,7 +34,7 @@ Worker registration accepts `volunteer-worker`, `kaggle-notebooks` and `huggingf
 ## Workload and job routes
 
 - `POST /v1/mesh/jobs`: validate a built-in workload, reserve resources and quota, persist assigned and pending tasks.
-- `POST /v1/mesh/jobs/{job_id}/reschedule`: attempt to assign persisted pending tasks to newly available workers.
+- `POST /v1/mesh/jobs/{job_id}/reschedule`: recover tasks from revoked/offline workers after lease expiry, then assign persisted pending tasks to newly available workers. Existing weekly quota reservations are reused for recovered tasks; they are not charged twice.
 - `GET /v1/mesh/jobs`, `GET /v1/mesh/jobs/{job_id}`.
 - `GET /v1/mesh/jobs/{job_id}/results`: execution status and task results.
 - `DELETE /v1/mesh/jobs/{job_id}`: cancel queued/leased tasks and request cooperative cancellation from running tasks.
