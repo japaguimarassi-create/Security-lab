@@ -80,7 +80,8 @@ def detect_resources() -> dict[str, Any]:
         pass
     return {
         "cpu_cores": round(cpu_available, 2),
-        "ram_gib": round(max(0.1, ram_available), 3),
+        "ram_gib": round(ram_total * ram_fraction, 3),
+        "ram_available_gib": round(max(0.1, ram_available), 3),
         "storage_gib": 0.0,
         "gpus": gpus,
     }
