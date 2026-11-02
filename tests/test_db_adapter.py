@@ -30,4 +30,4 @@ def test_database_factory_keeps_sqlite_compatibility(tmp_path):
         connection.execute("INSERT INTO sample(value) VALUES(?)", ("persisted",))
     with connect(str(database)) as connection:
         row = connection.execute("SELECT value FROM sample").fetchone()
-    assert row["value"] == "persisted"
+    assert row[0] == "persisted"
