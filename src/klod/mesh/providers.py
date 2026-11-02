@@ -26,9 +26,9 @@ PROVIDER_CATALOG: tuple[dict[str, Any], ...] = (
         "name": "Kaggle Notebooks",
         "mode": "notebook-job",
         "resource_types": ["gpu-notebook", "cpu-notebook"],
-        "status": "adapter-required",
+        "status": "supported",
         "free_capacity_guaranteed": False,
-        "notes": "Notebook sessions are not a persistent general-purpose worker API; use only permitted notebook execution.",
+        "notes": "Private Kaggle kernel jobs are submitted and polled by the optional CLI adapter; the account owner configures accelerator and quotas.",
     },
     {
         "id": "google-colab",
