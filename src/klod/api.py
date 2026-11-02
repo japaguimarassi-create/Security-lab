@@ -20,7 +20,7 @@ from klod.knowledge import ALLOWED_LICENSES, KnowledgeStore
 from klod.memory import MemoryStore
 from klod.planner import build_planner_messages, parse_action_plan
 from klod.specialists import get_specialist, list_specialists, route_message
-from klod.mesh.api import router as mesh_router
+from klod.mesh import api as mesh_api
 
 logger = logging.getLogger("klod.api")
 APP_NAME = os.getenv("KLOD_APP_NAME", "Klod")
@@ -50,13 +50,40 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=APP_NAME, version=__version__)
 WEB_ROOT = Path(__file__).resolve().parent / "web"
-app.include_router(mesh_router, prefix="/v1/mesh")
+app.include_router(mesh_api.router, prefix="/v1/mesh")
 app.mount("/mesh-assets", StaticFiles(directory=WEB_ROOT), name="mesh-assets")
 
+
+@app.get("/", include_in_schema=False)
+def home():
+    return FileResponse(WEB_ROOT / "index.html")
 
 @app.get("/mesh", include_in_schema=False)
 def mesh_dashboard():
     return FileResponse(WEB_ROOT / "index.html")
+
+@app.get("/healthz", include_in_schema=False)
+def healthz():
+    stores = (
+        memory,
+        knowledge,
+        mesh_api.auth_store,
+        mesh_api.registry,
+        mesh_api.quota_ledger,
+        mesh_api.task_store,
+        mesh_api.job_store,
+    )
+    try:
+        for store in stores:
+            connection = store._connect()
+            try:
+                connection.execute("SELECT 1").fetchone()
+            finally:
+                connection.close()
+    except Exception as exc:
+        logger.exception("Readiness check failed")
+        raise HTTPException(status_code=503, detail="Service unavailable") from exc
+    return {"status": "ok", "version": __version__}
 
 
 @app.middleware("http")

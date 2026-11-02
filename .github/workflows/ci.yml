@@ -24,3 +24,4 @@ jobs:
       - run: node --check src/klod/web/app.js
       - run: python -c "import json; json.load(open('examples/colab/GPU_Mesh_Worker.ipynb', encoding='utf-8'))"
       - run: pytest -q
+      - run: docker build -t klod-gpu-mesh:ci .
