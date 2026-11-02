@@ -40,9 +40,37 @@ def _profile() -> dict[str, Any]:
             "available_vram_gib": vram,
             "max_task_seconds": max_task_seconds,
         }],
+        "size": size,
+        "vram_gib": vram,
         "max_task_seconds": max_task_seconds,
         "quota_multiplier": 2 if size == "xlarge" else 1,
     }
+
+
+def connect_and_validate_space(space_id: str, hf_token: str,
+                               expected_profile: dict[str, Any]):
+    try:
+        from gradio_client import Client
+    except ImportError as exc:
+        raise HuggingFaceWorkerError(
+            "Install klod-ai[huggingface] to call a Gradio Space"
+        ) from exc
+    try:
+        client = Client(space_id, token=hf_token, verbose=False)
+        actual = client.predict(api_name="/mesh_profile")
+    except Exception as exc:
+        raise HuggingFaceWorkerError(
+            "Unable to read the deployed ZeroGPU Space profile"
+        ) from exc
+    if not isinstance(actual, dict):
+        raise HuggingFaceWorkerError("ZeroGPU Space returned an invalid profile")
+    expected_keys = ("size", "vram_gib", "max_task_seconds", "quota_multiplier")
+    for key in expected_keys:
+        if actual.get(key) != expected_profile.get(key):
+            raise HuggingFaceWorkerError(
+                f"ZeroGPU Space {key} does not match the worker's advertised profile"
+            )
+    return client
 
 
 def required_quota_seconds(runtime_seconds: float, profile: dict[str, Any]) -> float:
@@ -78,7 +106,8 @@ def _quota_remaining_seconds(token: str) -> float:
 
 class HuggingFaceZeroGPUWorker:
     def __init__(self, base_url: str, node_id: str, worker_token: str,
-                 space_id: str, hf_token: str, profile: dict[str, Any]):
+                 space_id: str, hf_token: str, profile: dict[str, Any],
+                 client: Any | None = None):
         if not base_url.startswith("https://"):
             raise HuggingFaceWorkerError("GPU_MESH_API_URL must use HTTPS")
         if not all((node_id, worker_token, space_id, hf_token)):
@@ -89,7 +118,7 @@ class HuggingFaceZeroGPUWorker:
         self.space_id = space_id
         self.hf_token = hf_token
         self.profile = profile
-        self._client = None
+        self._client = client
 
     def _api(self, path: str, method: str = "GET",
              body: dict[str, Any] | None = None,
@@ -275,6 +304,7 @@ def main() -> None:
     if not access_token or not hf_token or not space_id:
         raise SystemExit("GPU_MESH_ACCESS_TOKEN, HF_TOKEN and GPU_MESH_HF_SPACE_ID are required")
     profile = _profile()
+    client = connect_and_validate_space(space_id, hf_token, profile)
     if state_path.exists():
         state = json.loads(state_path.read_text(encoding="utf-8"))
         node_id = state["node_id"]
@@ -306,7 +336,7 @@ def main() -> None:
         os.chmod(state_path, 0o600)
 
     HuggingFaceZeroGPUWorker(
-        base_url, node_id, worker_token, space_id, hf_token, profile
+        base_url, node_id, worker_token, space_id, hf_token, profile, client=client
     ).run_forever()
 
 
