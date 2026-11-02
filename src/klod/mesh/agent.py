@@ -209,8 +209,9 @@ def _maintain_task(base_url: str, node_id: str, worker_token: str,
                 cancel_event.set()
                 return
         except Exception:
-            cancel_event.set()
-            return
+            if stop_event.wait(5):
+                return
+            continue
 
 
 def _execute_claimed_task(base_url: str, node_id: str, worker_token: str,
