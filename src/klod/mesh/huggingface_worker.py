@@ -99,7 +99,7 @@ class HuggingFaceZeroGPUWorker:
                 raise HuggingFaceWorkerError(
                     "Install klod-ai[huggingface] to call a Gradio Space"
                 ) from exc
-            self._client = Client(self.space_id, hf_token=self.hf_token, verbose=False)
+            self._client = Client(self.space_id, token=self.hf_token, verbose=False)
         return self._client
 
     def _heartbeat(self) -> None:
