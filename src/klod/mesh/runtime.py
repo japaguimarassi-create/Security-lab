@@ -259,6 +259,8 @@ class TaskStore:
                 row = self._authorized_task(db, task_id, node_id, lease_token)
                 if row["state"] != "running":
                     raise TaskError("Task is not running")
+                if result.get("workload") != row["workload"]:
+                    raise TaskError("Result workload does not match the task manifest")
                 if str(row["workload"]) == "cpu-sha256":
                     payload = json.loads(row["payload_json"])
                     digest = hashlib.sha256(payload["text"].encode("utf-8")).digest()
@@ -272,10 +274,14 @@ class TaskStore:
                         raise TaskError("CPU result iteration count does not match the task manifest")
                     result["result_validation"] = "server-verified"
                     encoded = _json_bytes(result)
-                elif result.get("workload") != row["workload"]:
-                    raise TaskError("Result workload does not match the task manifest")
-                elif not isinstance(result.get("sha256"), str) or len(result["sha256"]) != 64:
-                    raise TaskError("Result must include a 64-character SHA-256 digest")
+                    if len(encoded) > MAX_RESULT_BYTES:
+                        raise TaskError("Task result exceeds 64 KiB after server verification")
+                else:
+                    digest = result.get("sha256")
+                    if not isinstance(digest, str) or len(digest) != 64 or any(
+                        char not in "0123456789abcdef" for char in digest.lower()
+                    ):
+                        raise TaskError("Result must include a hexadecimal SHA-256 digest")
                 now = time.time()
                 if row["cancel_requested"]:
                     db.execute("""
