@@ -11,11 +11,12 @@ from .crypto import decrypt_bytes, encrypt_bytes
 EXCLUDED_DIRS = {
     ".git", ".venv", "venv", "__pycache__", ".pytest_cache", ".ruff_cache",
     ".mypy_cache", "node_modules", "dist", "build", ".tox", ".idea",
+    ".ssh", ".aws", ".azure", ".gpu-mesh", "secrets",
     "data", "models", "outputs", "checkpoints", "target",
 }
 EXCLUDED_SUFFIXES = {
     ".sqlite", ".sqlite3", ".db", ".pem", ".key", ".p12", ".pfx",
-    ".safetensors", ".gguf", ".pt", ".pth", ".bin",
+    ".safetensors", ".gguf", ".pt", ".pth", ".bin", ".grmesh",
 }
 MAX_ARCHIVE_BYTES = 4 * 1024 * 1024 * 1024
 
@@ -24,7 +25,7 @@ def _excluded(relative: Path) -> bool:
     if any(part in EXCLUDED_DIRS for part in relative.parts):
         return True
     name = relative.name.lower()
-    if name == ".env" or name.startswith(".env.local") or name.startswith(".env.production"):
+    if name == ".env" or (name.startswith(".env.") and name != ".env.example"):
         return True
     if any(name.endswith(suffix) for suffix in EXCLUDED_SUFFIXES):
         return True
