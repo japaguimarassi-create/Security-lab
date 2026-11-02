@@ -37,6 +37,8 @@ def test_kernel_metadata_is_private_and_uses_gpu_only_for_gpu_workloads():
     assert gpu["enable_gpu"] == "true"
     assert gpu["enable_internet"] == "false"
     assert gpu["machine_shape"] == "NvidiaTeslaT4"
+    assert gpu["title"] == "GPU Mesh abc123"
+    assert "keywords" not in gpu
     assert cpu["enable_gpu"] == "false"
 
 
