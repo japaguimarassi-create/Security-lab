@@ -169,8 +169,10 @@ class ResourceRegistry:
                 GROUP BY gpu_index
             """, (node_id, time.time())).fetchall()
             reserved_vram = {int(item["gpu_index"]): float(item["vram"]) for item in reserved_by_gpu}
-            cpu = min(float(row["cpu_total"]), cpu + float(active_reservations["cpu"]))
-            ram = min(float(row["ram_total_gib"]), ram + float(active_reservations["ram"]))
+            if cpu_available is not None:
+                cpu = min(float(row["cpu_total"]), cpu + float(active_reservations["cpu"]))
+            if ram_available_gib is not None:
+                ram = min(float(row["ram_total_gib"]), ram + float(active_reservations["ram"]))
             for old, new in zip(previous_devices, gpu_devices):
                 if new["total_vram_gib"] > old["total_vram_gib"] + 0.001:
                     raise ValueError("Heartbeat cannot increase registered VRAM capacity")
@@ -178,10 +180,11 @@ class ResourceRegistry:
                     raise ValueError("Heartbeat VRAM availability exceeds registered capacity")
                 if new["max_task_seconds"] != old.get("max_task_seconds", 86400):
                     raise ValueError("Heartbeat cannot change the registered maximum task duration")
-                new["available_vram_gib"] = min(
-                    float(old["total_vram_gib"]),
-                    float(new["available_vram_gib"]) + reserved_vram.get(int(new["index"]), 0.0),
-                )
+                if gpus is not None:
+                    new["available_vram_gib"] = min(
+                        float(old["total_vram_gib"]),
+                        float(new["available_vram_gib"]) + reserved_vram.get(int(new["index"]), 0.0),
+                    )
             db.execute("""
                 UPDATE mesh_workers SET cpu_available=?, ram_available_gib=?,
                     storage_available_gib=?, gpus_json=?, last_seen=?
