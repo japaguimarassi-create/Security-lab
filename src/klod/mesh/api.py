@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sqlite3
@@ -7,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from klod.mesh.auth import AccountExists, AuthStore, AuthenticationError
@@ -143,10 +144,28 @@ def providers():
     return {"providers": list_providers()}
 
 
+def _enforce_auth_rate_limit(request: Request, scope: str,
+                             identifier: str | None = None) -> None:
+    remote = request.client.host if request.client else "unknown"
+    candidates = [(f"{scope}:ip:{hashlib.sha256(remote.encode()).hexdigest()}", 8, 600)]
+    if identifier:
+        normalized = identifier.strip().lower()
+        candidates.append((f"{scope}:id:{hashlib.sha256(normalized.encode()).hexdigest()}", 6, 600))
+    for bucket, limit, window in candidates:
+        retry_after = auth_store.consume_rate_limit(bucket, limit, window)
+        if retry_after:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many authentication attempts. Try again later.",
+                headers={"Retry-After": str(retry_after)},
+            )
+
+
 @router.post("/auth/register", status_code=status.HTTP_201_CREATED)
-def register_account(request: RegisterRequest):
+def register_account(payload: RegisterRequest, http_request: Request):
+    _enforce_auth_rate_limit(http_request, "register")
     try:
-        result = auth_store.register(request.email, request.password)
+        result = auth_store.register(payload.email, payload.password)
     except AccountExists as exc:
         raise HTTPException(status_code=409, detail="Account already exists") from exc
     except AuthenticationError as exc:
