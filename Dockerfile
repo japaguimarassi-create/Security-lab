@@ -5,7 +5,6 @@ ENV KLOD_LOAD_MODEL=false
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
-COPY web ./web
 RUN pip install --no-cache-dir . && useradd --system --uid 10001 --create-home app && mkdir -p /app/data && chown -R app:app /app
 USER app
 EXPOSE 8000
