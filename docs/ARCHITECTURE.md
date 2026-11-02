@@ -40,3 +40,6 @@ GPU Mesh now persists queued tasks, reassigns pending tasks when workers join, r
 Provider bridges include private Kaggle kernels and a Hugging Face ZeroGPU Gradio Space. Google Colab is supported through an interactive notebook template; its runtime is temporary. Provider limits and quotas remain separate from GPU Mesh quotas.
 
 The worker process applies OS resource limits where supported, but is not a container or microVM. The source vault remains separate: the general-relativity corpus and a private master secret derive keys for encrypted export bundles. Git objects in the public repository remain readable.
+
+
+The rebalancer also recovers tasks whose assigned node is revoked or no longer heartbeat-online. It waits for the lease to expire before invalidating the previous worker assignment, then returns the same task record to the pending queue. It reuses that task's original quota reservation rather than charging again.
