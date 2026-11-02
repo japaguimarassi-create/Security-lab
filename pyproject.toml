@@ -4,10 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "klod-ai"
-version = "0.6.0"
-description = "General-purpose multilingual AI with teacher-student distillation, domain routing, memory and retrieval"
+version = "0.7.0"
+description = "Klod AI and GPU Mesh distributed resource orchestration"
 requires-python = ">=3.11"
-dependencies = ["fastapi>=0.115,<1", "uvicorn[standard]>=0.30,<1", "pydantic>=2.8,<3"]
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.30,<1",
+  "pydantic>=2.8,<3",
+  "argon2-cffi>=23.1,<26",
+  "cryptography>=42,<47"
+]
 
 [project.optional-dependencies]
 model = ["torch>=2.6", "transformers>=4.56.2,<6", "accelerate>=1.11.0", "safetensors>=0.4", "peft>=0.17.0"]
@@ -15,8 +21,14 @@ embeddings = ["sentence-transformers>=4.1,<6"]
 data = ["datasets>=4.7.0", "ftfy>=6.3"]
 training = ["torch>=2.6", "transformers>=4.56.2,<6", "accelerate>=1.11.0", "datasets>=4.7.0", "peft>=0.17.0", "trl>=1.17.1,<2", "bitsandbytes>=0.45.2", "PyYAML>=6"]
 training-cpu = ["transformers>=4.56.2,<6", "accelerate>=1.11.0", "datasets>=4.7.0", "peft>=0.17.0", "trl>=1.17.1,<2", "PyYAML>=6"]
+worker = ["psutil>=6.1,<8", "torch>=2.6"]
+security = ["argon2-cffi>=23.1,<26", "cryptography>=42,<47"]
 test = ["pytest>=8.3", "httpx>=0.27", "ruff>=0.9", "PyYAML>=6"]
 all = ["torch>=2.6", "transformers>=4.56.2,<6", "accelerate>=1.11.0", "safetensors>=0.4", "peft>=0.17.0", "sentence-transformers>=4.1,<6", "datasets>=4.7.0", "ftfy>=6.3", "trl>=1.17.1,<2", "bitsandbytes>=0.45.2", "PyYAML>=6"]
+
+[project.scripts]
+gpu-mesh-vault = "klod.mesh.vault:main"
+gpu-mesh-worker = "klod.mesh.agent:run_agent"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
