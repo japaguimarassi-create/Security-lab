@@ -52,3 +52,52 @@ def test_worker_executes_allowlisted_workload_in_bounded_child_process():
     assert result["workload"] == "cpu-sha256"
     assert len(result["sha256"]) == 64
     assert result["execution_device"] == "cpu"
+
+
+
+def test_local_worker_advertises_configured_gpu_task_duration(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    from klod.mesh.agent import detect_resources
+
+    gib = 1024 ** 3
+    fake_psutil = SimpleNamespace(
+        virtual_memory=lambda: SimpleNamespace(total=8 * gib, available=4 * gib)
+    )
+    fake_cuda = SimpleNamespace(
+        is_available=lambda: True,
+        device_count=lambda: 1,
+        get_device_properties=lambda index: SimpleNamespace(
+            name="Test CUDA GPU",
+            total_memory=8 * gib,
+        ),
+        mem_get_info=lambda index: (6 * gib, 8 * gib),
+    )
+    fake_torch = SimpleNamespace(cuda=fake_cuda)
+    monkeypatch.setitem(sys.modules, "psutil", fake_psutil)
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setenv("GPU_MESH_MAX_TASK_SECONDS", "1800")
+    profile = detect_resources()
+    assert profile["gpus"][0]["max_task_seconds"] == 1800
+    assert profile["gpus"][0]["available_vram_gib"] == 6
+
+
+def test_local_worker_rejects_invalid_gpu_task_duration(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    import pytest
+
+    from klod.mesh.agent import detect_resources
+
+    monkeypatch.setitem(
+        sys.modules,
+        "psutil",
+        SimpleNamespace(virtual_memory=lambda: SimpleNamespace(
+            total=8 * 1024 ** 3, available=4 * 1024 ** 3,
+        )),
+    )
+    monkeypatch.setenv("GPU_MESH_MAX_TASK_SECONDS", "not-a-number")
+    with pytest.raises(RuntimeError, match="GPU_MESH_MAX_TASK_SECONDS"):
+        detect_resources()
