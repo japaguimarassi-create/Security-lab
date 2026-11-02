@@ -220,3 +220,61 @@ def test_gpu_result_rejects_wrong_physical_device_index(tmp_path):
     }
     with pytest.raises(TaskError, match="device index"):
         store.complete(task_id, "gpu-node", claim["lease_token"], result)
+
+
+
+def test_orphan_recovery_waits_for_expired_lease_and_requeues_offline_worker(tmp_path):
+    store = TaskStore(str(tmp_path / "tasks.sqlite"))
+    created = store.create_from_plan(cpu_plan(), {"text": "orphan", "iterations": 8})
+    task_id = created[0]["task_id"]
+    claim = store.claim("node-1", "old-worker-token")
+    store.start(task_id, "node-1", claim["lease_token"])
+
+    online = store.recover_orphaned_tasks(
+        "job-runtime-test", "owner-1", {"node-1"}
+    )
+    assert online["requeued"] == []
+    assert online["cancelled"] == []
+
+    early = store.recover_orphaned_tasks(
+        "job-runtime-test", "owner-1", set(), at=time.time() + 1
+    )
+    assert early["requeued"] == []
+
+    expired_at = time.time() + 1000
+    recovered = store.recover_orphaned_tasks(
+        "job-runtime-test", "owner-1", set(), at=expired_at
+    )
+    assert recovered["requeued"] == [task_id]
+
+    with store._connect() as db:
+        row = db.execute(
+            "SELECT node_id,state,lease_hash,lease_expires_at FROM mesh_tasks WHERE task_id=?",
+            (task_id,),
+        ).fetchone()
+    assert row["node_id"] == ""
+    assert row["state"] == "queued"
+    assert row["lease_hash"] is None
+    assert row["lease_expires_at"] is None
+
+    assert store.assign_pending(task_id, "node-2", None)
+    replacement = store.claim("node-2", "new-worker-token")
+    assert replacement["manifest"]["attempt"] == 2
+    with pytest.raises(TaskError):
+        store.renew(task_id, "node-1", claim["lease_token"])
+
+
+def test_orphan_recovery_cancels_offline_task_with_cancel_request(tmp_path):
+    store = TaskStore(str(tmp_path / "tasks.sqlite"))
+    created = store.create_from_plan(cpu_plan(), {"text": "orphan-cancel", "iterations": 8})
+    task_id = created[0]["task_id"]
+    claim = store.claim("node-1", "worker-token")
+    store.start(task_id, "node-1", claim["lease_token"])
+    store.cancel_job("job-runtime-test", "owner-1")
+
+    recovered = store.recover_orphaned_tasks(
+        "job-runtime-test", "owner-1", set(), at=time.time() + 1000
+    )
+    assert recovered["cancelled"] == [task_id]
+    assert recovered["requeued"] == []
+    assert store.summary("job-runtime-test", "owner-1")["cancelled"] == 1
