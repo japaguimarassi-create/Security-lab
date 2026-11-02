@@ -111,6 +111,10 @@ class TaskStore:
                             "node_id": node_id,
                             "gpu_index": gpu_index,
                             "task_index": task_index,
+                            "cpu_cores": float(assignment["cpu_cores_per_task"]),
+                            "ram_gib": float(assignment["ram_gib_per_task"]),
+                            "vram_gib": float(plan["min_vram_gib_per_task"]) if plan["requires_gpu"] else 0.0,
+                            "max_runtime_seconds": int(plan["max_runtime_seconds_per_task"]),
                         })
                         task_index += 1
                 db.commit()
