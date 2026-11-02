@@ -87,7 +87,7 @@ gpu-mesh-kaggle-worker
 
 CPU, RAM, quantidade de GPUs, VRAM e duração máxima são declarações locais de capacidade. Configure esses números de acordo com o acelerador que sua conta realmente pode usar. O adaptador não concede acesso a GPUs bloqueadas por competição ou restrição de conta.
 
-O adapter cria kernels privados com código fixo gerado a partir de `workloads.py`; o token do worker e o lease não são enviados no código do kernel. O kernel privado é removido depois do download por padrão. Defina `GPU_MESH_KAGGLE_KEEP_KERNELS=true` para preservar o histórico.
+O adapter cria kernels privados com código fixo gerado a partir de `workloads.py`; o token do worker e o lease não são enviados no código do kernel. O kernel privado é removido depois do download por padrão. Defina `GPU_MESH_KAGGLE_KEEP_KERNELS=true` para preservar o histórico. Em cancelamentos, o adaptador tenta remover o kernel; a interrupção efetiva de uma execução já iniciada continua sujeita ao ciclo de vida gerenciado pelo Kaggle.
 
 ### Hugging Face ZeroGPU
 
@@ -106,7 +106,7 @@ export GPU_MESH_SHARE="true"
 gpu-mesh-hf-worker
 ```
 
-O perfil `large` anuncia 48 GiB e `xlarge` 96 GiB; a duração máxima de uma tarefa é configurada por `GPU_MESH_HF_MAX_TASK_SECONDS` (1–120 segundos). O scheduler não envia uma tarefa que exceda a duração cadastrada para aquela GPU. A quota ZeroGPU é por conta Hugging Face e é consultada pelo bridge antes do pedido; o token precisa da permissão de leitura de uso/faturamento. Quota gratuita não equivale a capacidade contínua ou garantida.
+O perfil `large` anuncia 48 GiB e `xlarge` 96 GiB; a duração máxima de uma tarefa é configurada por `GPU_MESH_HF_MAX_TASK_SECONDS` (1–120 segundos). O scheduler não envia uma tarefa que exceda a duração cadastrada para aquela GPU. A quota ZeroGPU é por conta Hugging Face e é consultada pelo bridge antes do pedido; o token precisa da permissão de leitura de uso/faturamento. O perfil xlarge aplica multiplicador de consumo de quota 2x. Chamadas Gradio que ainda estão na fila podem ser canceladas; uma função que já começou pode continuar no provedor até terminar, mesmo após o Mesh registrar cancelamento. Quota gratuita não equivale a capacidade contínua ou garantida.
 
 ### Google Colab
 
