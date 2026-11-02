@@ -113,6 +113,13 @@ def test_job_planning_reserves_weekly_capacity_but_does_not_execute(tmp_path, mo
     assert result["execution_started"] is False
     assert result["execution_status"] == "planning_only"
     assert client.get("/v1/mesh/jobs", headers=headers).json()["jobs"]
+    cancelled = client.delete(f"/v1/mesh/jobs/{result['job_id']}", headers=headers)
+    assert cancelled.status_code == 200
+    assert cancelled.json()["quota_released"] is True
+    assert client.get("/v1/mesh/jobs/{result['job_id']}", headers=headers).status_code == 404
+    assert client.get("/v1/mesh/jobs/" + result["job_id"], headers=headers).json()["status"] == "cancelled"
+    quota = client.get("/v1/mesh/quota", headers=headers).json()
+    assert quota["resources"]["gpu_seconds"]["used"] == 0
 
 
 def test_dashboard_is_served_with_security_headers(tmp_path, monkeypatch):
