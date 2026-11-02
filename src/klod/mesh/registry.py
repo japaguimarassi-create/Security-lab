@@ -153,15 +153,35 @@ class ResourceRegistry:
             if cpu > row["cpu_total"] or ram > row["ram_total_gib"] or storage > row["storage_total_gib"]:
                 raise ValueError("Heartbeat availability cannot exceed registered capacity")
             gpu_devices = json.loads(row["gpus_json"]) if gpus is None else self._normalize_gpus(gpus)
-            if len(gpu_devices) != len(json.loads(row["gpus_json"])):
+            previous_devices = json.loads(row["gpus_json"])
+            if len(gpu_devices) != len(previous_devices):
                 raise ValueError("Heartbeat GPU count cannot change after registration")
-            for old, new in zip(json.loads(row["gpus_json"]), gpu_devices):
+            active_reservations = db.execute("""
+                SELECT COALESCE(SUM(cpu_cores),0) AS cpu,
+                       COALESCE(SUM(ram_gib),0) AS ram
+                FROM mesh_resource_reservations
+                WHERE node_id=? AND expires_at>?
+            """, (node_id, time.time())).fetchone()
+            reserved_by_gpu = db.execute("""
+                SELECT gpu_index,COALESCE(SUM(vram_gib),0) AS vram
+                FROM mesh_resource_reservations
+                WHERE node_id=? AND gpu_index IS NOT NULL AND expires_at>?
+                GROUP BY gpu_index
+            """, (node_id, time.time())).fetchall()
+            reserved_vram = {int(item["gpu_index"]): float(item["vram"]) for item in reserved_by_gpu}
+            cpu = min(float(row["cpu_total"]), cpu + float(active_reservations["cpu"]))
+            ram = min(float(row["ram_total_gib"]), ram + float(active_reservations["ram"]))
+            for old, new in zip(previous_devices, gpu_devices):
                 if new["total_vram_gib"] > old["total_vram_gib"] + 0.001:
                     raise ValueError("Heartbeat cannot increase registered VRAM capacity")
                 if new["available_vram_gib"] > old["total_vram_gib"]:
                     raise ValueError("Heartbeat VRAM availability exceeds registered capacity")
                 if new["max_task_seconds"] != old.get("max_task_seconds", 86400):
                     raise ValueError("Heartbeat cannot change the registered maximum task duration")
+                new["available_vram_gib"] = min(
+                    float(old["total_vram_gib"]),
+                    float(new["available_vram_gib"]) + reserved_vram.get(int(new["index"]), 0.0),
+                )
             db.execute("""
                 UPDATE mesh_workers SET cpu_available=?, ram_available_gib=?,
                     storage_available_gib=?, gpus_json=?, last_seen=?
