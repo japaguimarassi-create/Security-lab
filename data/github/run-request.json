@@ -1,0 +1,4 @@
+{
+  "phase": "cpu_smoke",
+  "note": "Run SFTTrainer after converting warmup_ratio to warmup_steps."
+}

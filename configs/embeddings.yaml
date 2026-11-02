@@ -1,0 +1,18 @@
+embedding:
+  model_id: intfloat/multilingual-e5-small
+  license: MIT
+  languages: 94
+  dimensions: 384
+  max_sequence_length: 512
+  device_default: cpu
+  query_prefix: "query: "
+  passage_prefix: "passage: "
+  normalization: l2
+retrieval:
+  method: reciprocal_rank_fusion
+  fusion_constant: 60
+  passage_chars: 1800
+  passage_overlap: 180
+  lexical_candidates: 20
+  semantic_candidates: 20
+  note: "SQLite vector scan is suitable for a small local corpus. Use a vector database or pgvector when corpus size grows."

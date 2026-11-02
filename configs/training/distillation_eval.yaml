@@ -1,0 +1,11 @@
+teacher_model: Qwen/Qwen3-1.7B
+student_base_model: Qwen/Qwen3-1.7B-Base
+student_adapter: outputs/klod-teacher-distilled
+heldout_prompts_path: data/eval/distillation_heldout.jsonl
+blind_output_path: evaluation/distillation_blind.jsonl
+answer_key_path: evaluation/distillation_answer_key.json
+max_input_tokens: 2048
+max_new_tokens: 256
+repetition_penalty: 1.05
+device_map: cpu
+seed: 1701

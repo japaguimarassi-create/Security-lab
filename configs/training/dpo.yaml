@@ -1,0 +1,25 @@
+base_model: Qwen/Qwen3-1.7B-Base
+previous_adapter: outputs/klod-sft
+dataset_path: data/processed/preferences.jsonl
+output_dir: outputs/klod-dpo
+max_sequence_length: 4096
+max_prompt_length: 2048
+max_steps: 1000
+learning_rate: 0.000005
+beta: 0.1
+per_device_train_batch_size: 1
+per_device_eval_batch_size: 1
+gradient_accumulation_steps: 16
+eval_steps: 100
+save_steps: 200
+save_total_limit: 3
+validation_ratio: 0.05
+load_in_4bit: true
+bf16: true
+fp16: false
+seed: 42
+lora:
+  rank: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]

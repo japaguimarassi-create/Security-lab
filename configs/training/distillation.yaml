@@ -1,0 +1,16 @@
+teacher_model: Qwen/Qwen3-1.7B
+student_base_model: Qwen/Qwen3-1.7B-Base
+seed_prompts_path: configs/distillation_prompts.jsonl
+candidate_output_path: data/generated/teacher_candidates.jsonl
+max_examples: 48
+max_input_tokens: 2048
+max_new_tokens: 256
+temperature: 0.65
+top_p: 0.90
+repetition_penalty: 1.08
+minimum_answer_chars: 40
+maximum_answer_chars: 16000
+load_in_4bit: false
+device_map: cpu
+require_cuda: false
+seed: 42

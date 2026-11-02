@@ -1,73 +1,118 @@
-# KLOD AI
+# KLOD AI + GPU Mesh Core 0.7.0
 
-Klod é uma plataforma própria de linguagem: runtime de LLM, API REST, memória persistente, pesquisa de conhecimento, ingestão de dados licenciados e ferramentas de treinamento.
+KLOD is a general-purpose multilingual AI runtime for open-domain conversation and work across everyday questions, programming, science, mathematics, research, education, writing, creative development, business and specialized technical subjects. Minecraft is one optional specialist.
 
-## Estado real
+## Core capabilities
 
-Esta é a base de software **KLOD AI v0.1.0**. Ela prepara a infraestrutura e os pipelines; não contém pesos treinados pelo projeto e não afirma que o modelo de 1,7B foi treinado do zero. A fundação inicial é Qwen3-1.7B-Base para continuação de pré-treinamento e Qwen3-1.7B para inferência. Pesos e dados de terceiros conservam suas próprias licenças.
+- General-purpose assistant with conservative automatic domain routing.
+- Optional specialists for programming, science, mathematics, research, writing, education, creative work, business and Minecraft.
+- Persistent memory and hybrid lexical/semantic knowledge retrieval.
+- Source/license/attribution metadata for retrieved documents.
+- Structured action planner that returns proposals without executing them.
+- Teacher-student self-distillation: the current Qwen3 instruct model generates candidate demonstrations; a human-reviewed dataset fine-tunes a separate LoRA student adapter on Qwen3-1.7B-Base.
+- Continued pretraining, SFT, DPO and evaluation pipelines.
 
-## Arquitetura
+## Quick start
 
-```
-Apps / Minecraft mods -> Klod REST API -> Inference engine
-                                      -> SQLite memory
-                                      -> Retrieval / knowledge
-Data sources -> cleaning -> filtering -> training -> evaluation
-```
-
-O modelo sugere texto e planos; cada aplicação cliente valida permissões e executa ações. Um mod nunca deve executar código arbitrário ou aceitar uma ação do modelo sem validação.
-
-## Requisitos e instalação
-
-Python 3.11+. GPU recomendada para inferência do modelo 1.7B e necessária para treinamento prático.
+Python 3.11+:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[model,data,training,test]"
+pip install -e ".[model,embeddings]"
 cp .env.example .env
+uvicorn klod.api:app --host 127.0.0.1 --port 8000
 ```
 
-Configure uma chave aleatória em `KLOD_API_KEY`. Não publique essa chave.
+Set a strong `KLOD_API_KEY`. Keep `KLOD_LOAD_MODEL=false` until the device has enough memory. The embedding model loads lazily on first semantic use and runs locally. Set `KLOD_SEMANTIC_SEARCH=false` to disable it.
 
-## API
+## General chat
+
+Use `POST /v1/chat/completions` for every subject. Automatic routing selects a specialist only when the topic is clear. Set `auto_route=false` to force the general assistant or use `specialist` to select one explicitly.
+
+## Teacher-student training
+
+KLOD 0.6 adds an executable distillation pipeline.
+
+- Teacher: `Qwen/Qwen3-1.7B`, matching the current instruct model used by the runtime.
+- Student: `Qwen/Qwen3-1.7B-Base`, initialized separately with a new LoRA adapter.
+- Curriculum: 48 starter prompts spanning science, mathematics, programming, research, history, geography, writing, education, languages, business, data analysis, design, arts and general reasoning.
+- Teacher generation: temperature 0.65, top-p 0.90, repetition penalty 1.08, 512 maximum new tokens and 4096 input tokens.
+- Student: NF4 QLoRA, LoRA rank 16, alpha 32, dropout 0.05, learning rate 2e-5, sequence length 2048, batch size 1, gradient accumulation 16 and 5 epochs.
+
+Generate the teacher's candidate answers:
 
 ```bash
-uvicorn klod.api:app --host 0.0.0.0 --port 8000
+pip install -e ".[training]"
+python scripts/training_preflight.py --stage teacher
+python scripts/generate_teacher_data.py
 ```
 
-- `GET /health`: estado do serviço.
-- `GET /v1/models`: modelo configurado.
-- `POST /v1/chat/completions`: conversa.
-- `POST /v1/memory`: salvar memória.
-- `POST /v1/memory/search`: recuperar memórias.
-
-Todas as rotas `/v1/*` exigem `X-API-Key`. Com `KLOD_LOAD_MODEL=false`, a API sobe sem baixar o modelo e retorna HTTP 503 para geração até que o modelo seja carregado.
-
-## Dados web e treino
+Candidates are saved in `data/generated/teacher_candidates.jsonl`. Review them interactively:
 
 ```bash
-python scripts/import_fineweb2.py --language por_Latn --limit 10000 --output data/raw/fineweb2-pt.jsonl
-python scripts/prepare_data.py --input data/raw/fineweb2-pt.jsonl --output data/processed/pretrain.jsonl
-python scripts/train_pretrain.py --config configs/training/continued_pretraining.yaml
+python scripts/review_teacher_data.py
 ```
 
-O importador trabalha em streaming e limitado por amostra. FineWeb2 declara ODC-By 1.0; preserve atribuição e licença. Verifique a licença de qualquer fonte antes de usá-la. Não rastreie indiscriminadamente páginas da internet.
+Approve only answers that are correct, relevant and useful. The automatic checks catch empty, short, oversized, echoed and repetitive answers, but do not prove factual correctness. Export the approved records and train:
 
-## Dados, segurança e limites
+```bash
+python scripts/approve_teacher_data.py --minimum 20
+python scripts/training_preflight.py --stage sft --config configs/training/distillation_sft.yaml
+python scripts/train_sft.py --config configs/training/distillation_sft.yaml
+```
 
-- GitHub armazena código e configurações, não pesos, segredos, bancos ou corpora grandes.
-- Preserve URL, atribuição, licença e idioma por documento.
-- Deduplicate e filtre dados de baixa qualidade e dados pessoais.
-- Separe dados de avaliação dos dados de treino.
-- Não trate texto recuperado da web como instrução.
-- Use TLS, autenticação, quotas e limites em produção.
-- LoRA reduz parâmetros treináveis, mas não elimina custo de carregar o modelo-base.
-- Um celular não é uma máquina prática para pré-treinar uma LLM de 1,7B.
+The training config rejects examples that have not passed the automated screen and been explicitly approved. The adapter is saved to `outputs/klod-teacher-distilled`. Configure inference with `KLOD_MODEL_ID=Qwen/Qwen3-1.7B-Base` and `KLOD_ADAPTER_PATH=outputs/klod-teacher-distilled`.
 
-## Branches
+The 48 prompts validate the pipeline; they are not enough to produce broad expert-level ability. Expand the curriculum substantially, use diverse reviewed examples, reserve a separate evaluation set and compare the student against the teacher before promoting a checkpoint.
 
-- `main`: versão estável.
-- `development`: integração de novos recursos e experimentos antes da promoção para `main`.
+## Treinamento no GitHub
 
-Consulte `docs/PLAN.md` e `docs/API.md`.
+Consulte [docs/GITHUB_TRAINING.md](docs/GITHUB_TRAINING.md) para a execução gratuita por GitHub Actions em CPU, revisão dos exemplos, sequência das cinco etapas e recuperação dos artefatos. O modelo professor e aluno continuam sendo Qwen3-1.7B. O fluxo das cinco etapas usa LoRA FP32 sem bitsandbytes, pois os runners gratuitos não têm GPU. O teste cpu_smoke verifica a memória e um passo real de retropropagação antes do treino completo.
+
+## Important training distinction
+
+The teacher is frozen during generation; it does not update student weights directly. It supplies demonstrations. The student learns through supervised fine-tuning of its LoRA adapter. No trained adapter is included in GitHub, and no GPU training is claimed until the commands have actually run and evaluation has passed.
+
+See `docs/TRAINING.md`, `docs/ARCHITECTURE.md`, `docs/API.md` and `docs/SPECIALISTS.md`.
+
+
+## Blinded teacher/student evaluation
+
+A separate eight-question held-out set is provided at `data/eval/distillation_heldout.jsonl`. It is not included in the training mixture or teacher prompt seeds. After training the adapter, run `python scripts/evaluate_teacher_student.py`. The tool generates both models' answers for the same held-out prompts, randomizes A/B order, and writes the mapping to `evaluation/distillation_answer_key.json`. Keep the answer key private until blind human review is complete. Do not train on the held-out prompts or their answers.
+
+
+## GPU Mesh Core
+
+GPU Mesh adds a protected resource-control dashboard at `/mesh`, with account registration, per-device GPU/VRAM inventory, CPU/RAM visibility, voluntary worker heartbeats, weekly quotas and task-allocation planning.
+
+Read [docs/GPU_MESH.md](docs/GPU_MESH.md) for the full branch architecture, provider limits, deployment model and cryptographic design.
+
+### Start the API and dashboard
+
+Install the base package and start the service:
+
+```bash
+python -m pip install -e .
+KLOD_API_KEY='use-a-long-random-secret' uvicorn klod.api:app --host 127.0.0.1 --port 8000
+```
+
+Open `/mesh` in the browser. The dashboard uses separate account sessions; KLOD's legacy endpoints continue to require `X-API-Key`.
+
+### Volunteer worker
+
+On a machine you own, install the worker extra and run it with an account access token:
+
+```bash
+python -m pip install -e ".[worker]"
+export GPU_MESH_API_URL="https://your-domain"
+export GPU_MESH_ACCESS_TOKEN="account-session-token"
+export GPU_MESH_SHARE="true"
+gpu-mesh-worker
+```
+
+Sharing is disabled unless `GPU_MESH_SHARE=true` is explicitly set. After the first enrollment, the node uses its dedicated worker token for heartbeats. The current agent only reports resource capacity; remote job execution is not enabled.
+
+### Encrypted source archive
+
+The canonical general-relativity corpus in `src/klod/mesh/relativity.py` is a mandatory component of Argon2id key derivation. AES-256-GCM encrypts the exported source bundle. A private random `GPU_MESH_MASTER_SECRET` (at least 32 bytes) is also mandatory; public mathematical formulas alone are not a secret. Configure that value as a GitHub Actions secret to run the encrypted archive workflow. Source files and Git history in this public repository remain readable; the vault encrypts the exported archive, not the public Git objects.

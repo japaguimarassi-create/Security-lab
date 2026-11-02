@@ -1,0 +1,41 @@
+name: GPU Mesh encrypted source archive
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "gpu-mesh-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  seal-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install GPU Mesh vault
+        run: python -m pip install .
+      - name: Validate private secret and seal source
+        env:
+          GPU_MESH_MASTER_SECRET: ${{ secrets.GPU_MESH_MASTER_SECRET }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import sys
+          value = os.environ.get("GPU_MESH_MASTER_SECRET", "")
+          if len(value.encode("utf-8")) < 32:
+              sys.exit("GPU_MESH_MASTER_SECRET must be configured with at least 32 UTF-8 bytes")
+          PY
+          mkdir -p dist
+          gpu-mesh-vault seal --source . --output dist/gpu-mesh-source.grmesh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gpu-mesh-encrypted-source
+          path: dist/gpu-mesh-source.grmesh
+          if-no-files-found: error
+          retention-days: 14

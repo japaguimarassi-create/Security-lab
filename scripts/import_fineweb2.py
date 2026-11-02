@@ -10,7 +10,10 @@ def main():
     args = parser.parse_args()
     if args.limit < 1:
         raise SystemExit("--limit must be positive")
-    from datasets import load_dataset
+    try:
+        from datasets import load_dataset
+    except ImportError as exc:
+        raise SystemExit("Install the data extra: pip install -e '.[data]'") from exc
     data = load_dataset("HuggingFaceFW/fineweb-2", name=args.language,
                         split="train", streaming=True)
     args.output.parent.mkdir(parents=True, exist_ok=True)

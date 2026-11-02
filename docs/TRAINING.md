@@ -1,0 +1,132 @@
+# KLOD training pipeline
+
+## Teacher-student distillation (KLOD 0.6)
+
+The current instruct checkpoint is a frozen teacher. It generates candidate answers for a broad curriculum. A separate student starts from Qwen3-1.7B-Base and learns from reviewed teacher demonstrations through a new LoRA adapter. The teacher is not optimized and its weights are not copied into the student; the student receives gradients during SFT.
+
+Model roles:
+
+- Teacher: `Qwen/Qwen3-1.7B`, the current instruct model.
+- Student base: `Qwen/Qwen3-1.7B-Base`.
+- Student output adapter: `outputs/klod-teacher-distilled`.
+
+The starter curriculum in `configs/distillation_prompts.jsonl` has 48 Portuguese and English prompts spanning science, mathematics, programming, research, history, geography, humanities, writing, education, languages, business, data analysis, design, arts and general reasoning. Expand it before treating the result as a broadly capable model.
+
+### Teacher generation parameters
+
+Configured in `configs/training/distillation.yaml`:
+
+| Parameter | Value |
+|---|---:|
+| Teacher model | `Qwen/Qwen3-1.7B` |
+| Student base | `Qwen/Qwen3-1.7B-Base` |
+| Maximum input tokens | 4096 |
+| Maximum new tokens | 512 |
+| Temperature | 0.65 |
+| Top-p | 0.90 |
+| Repetition penalty | 1.08 |
+| Starter prompts | 48 |
+| Seed | 42 |
+| 4-bit teacher loading | Disabled |
+
+Generate candidates:
+
+```bash
+pip install -e ".[training]"
+python scripts/training_preflight.py --stage teacher
+python scripts/generate_teacher_data.py
+```
+
+The script saves candidate conversations and provenance metadata at `data/generated/teacher_candidates.jsonl`. Automated checks detect empty answers, short/long answers, prompt echoes and excessive repetition. These checks cannot validate factual correctness; every candidate starts with `approved: false`.
+
+Review candidates interactively:
+
+```bash
+python scripts/review_teacher_data.py
+```
+
+Approve only responses that are factually sound, relevant, clear, in the requested language and safe to use as teaching examples. The review command records approvals, rejections and pending records. Export only approved responses:
+
+```bash
+python scripts/approve_teacher_data.py --minimum 20
+```
+
+The export writes `data/processed/teacher_approved.jsonl`. The student training config requires approval metadata; pending examples cannot enter the training run.
+
+### Student QLoRA parameters
+
+Configured in `configs/training/distillation_sft.yaml`:
+
+| Parameter | Value |
+|---|---:|
+| Base model | `Qwen/Qwen3-1.7B-Base` |
+| LoRA rank | 16 |
+| LoRA alpha | 32 |
+| LoRA dropout | 0.05 |
+| Learning rate | 0.00002 |
+| Maximum sequence length | 2048 |
+| Epochs | 5 |
+| Per-device batch size | 1 |
+| Gradient accumulation | 16 |
+| Effective batch size | 16 |
+| Validation ratio | 10% |
+| Quantization | NF4 4-bit |
+| Gradient checkpointing | Enabled |
+| Seed | 42 |
+
+Run preflight and SFT:
+
+```bash
+python scripts/training_preflight.py --stage sft --config configs/training/distillation_sft.yaml
+python scripts/train_sft.py --config configs/training/distillation_sft.yaml
+```
+
+The adapter is saved to `outputs/klod-teacher-distilled`. The trainer also writes `training_metrics.json` with the base model, data counts, precision and evaluation metrics. On GPUs without BF16 support (including GPUs without BF16 support), generation and evaluation automatically use FP16; BF16 is selected only when the active CUDA device reports support. Serve the adapter with:
+
+```bash
+KLOD_MODEL_ID=Qwen/Qwen3-1.7B-Base
+KLOD_ADAPTER_PATH=outputs/klod-teacher-distilled
+```
+
+These values are a starter experiment, not proven optimal hyperparameters. The 48 prompts are not enough for general-purpose mastery. Grow the dataset to thousands of diverse, reviewed examples, protect a held-out set from contamination, evaluate every major domain and check for regressions against the teacher.
+
+## Other training data
+
+Continued-pretraining JSONL uses `text`, `source_url`, `license`, `language` and `attribution`.
+
+SFT JSONL uses `messages`, an array of role/content messages. The final message must be from the assistant.
+
+DPO JSONL uses `prompt`, `chosen` and `rejected`; each pair must be reviewed.
+
+For continued pretraining, prepare separate, licensed and quality-filtered corpora for Portuguese, English, Spanish, other languages, code, mathematics/science, humanities, general instruction/conversation and technical documents. Initial proportions are experimental and should be balanced using measured tokens and held-out evaluations.
+
+```bash
+python scripts/build_mixture.py --config configs/data_mixture.yaml --output data/processed/mixture.jsonl --max-documents 500000
+python scripts/training_preflight.py --stage pretrain
+python scripts/train_pretrain.py
+```
+
+## Full training path
+
+After SFT, prepare at least 100 human-reviewed preference pairs for DPO:
+
+```bash
+python scripts/training_preflight.py --stage dpo
+python scripts/train_dpo.py
+python scripts/evaluate.py --model Qwen/Qwen3-1.7B-Base --adapter outputs/klod-dpo --dataset data/eval/heldout.jsonl
+```
+
+The general QLoRA configurations use 4-bit NF4 and require an NVIDIA CUDA GPU with bitsandbytes. The staged GitHub workflow uses a separate CPU profile: FP32 LoRA, frozen base weights, rank 8, sequence length 512 and PyTorch AdamW. It does not use 4-bit quantization. See [GITHUB_TRAINING.md](GITHUB_TRAINING.md) for the free public-runner setup and its runtime limits.
+
+## Release gate
+
+The source code and generated candidates are not trained model weights. No adapter is complete until a real CPU or GPU training run saves it and separate held-out evaluation passes. Record the base revision, adapter hash, datasets, licenses, config digest, Git commit and domain metrics before promoting any checkpoint.
+
+
+## Blind evaluation against the teacher
+
+Do not evaluate on prompts used to generate training demonstrations. The repository includes eight separate hold-out prompts at `data/eval/distillation_heldout.jsonl`; expand this set with new tasks before making quality claims. After training the student adapter, run:
+
+    python scripts/evaluate_teacher_student.py
+
+The script loads the frozen teacher and trained student sequentially to limit RAM usage, generates answers with the same system prompt and decoding settings, then randomizes which answer appears as A or B. The review file is `evaluation/distillation_blind.jsonl`. The answer mapping is stored separately in `evaluation/distillation_answer_key.json`; do not inspect that key until the blind review is finished. Record preference per row (`answer_a`, `answer_b` or `tie`) and review notes. This is a human comparison workflow, not an automatic proof that the student is better.

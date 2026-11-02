@@ -5,6 +5,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .coverage
+htmlcov/
 data/raw/*
 data/processed/*
 data/eval/*
@@ -18,3 +19,15 @@ models/
 *.pth
 *.gguf
 *.sqlite*
+evaluation/results.json
+
+data/generated/*
+!data/generated/.gitkeep
+evaluation/distillation_blind.jsonl
+evaluation/distillation_answer_key.json
+evaluation/*.tmp
+.ipynb_checkpoints/
+
+*.grmesh
+*.token
+.gpu-mesh/
