@@ -26,6 +26,14 @@ def test_resource_reservations_are_atomic_and_per_gpu(tmp_path):
         ],
     )
     assert registry.reserve_capacity("task-a", worker["node_id"], 0, 1, 2, 5, 600)
+    assert registry.heartbeat(
+        worker["node_id"], worker["worker_token"], owner_id=None,
+        cpu_available=3, ram_available_gib=6, storage_available_gib=0,
+        gpus=[
+            {"name": "GPU A", "total_vram_gib": 8, "available_vram_gib": 3},
+            {"name": "GPU B", "total_vram_gib": 8, "available_vram_gib": 8},
+        ],
+    )
     nodes = registry.list_schedulable("other-user", include_shared=True)
     assert nodes[0]["cpu_available"] == 3
     assert nodes[0]["ram_available_gib"] == 6
