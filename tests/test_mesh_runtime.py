@@ -93,9 +93,9 @@ def test_running_task_cancel_is_cooperative_and_lease_renewal_reports_it(tmp_pat
     assert cancelled["cancelled"] == 1
     renewed = store.renew(created[0]["task_id"], "node-1", claim["lease_token"])
     assert renewed["cancel_requested"] is True
+    result = execute_workload("cpu-sha256", claim["manifest"]["payload"])
     completed = store.complete(
-        created[0]["task_id"], "node-1", claim["lease_token"],
-        {"workload": "cpu-sha256", "sha256": "0" * 64, "iterations": 2},
+        created[0]["task_id"], "node-1", claim["lease_token"], result,
     )
     assert completed["cancelled"] is True
 
