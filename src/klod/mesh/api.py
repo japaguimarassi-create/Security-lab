@@ -99,7 +99,7 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=1024)
 
 
@@ -183,9 +183,10 @@ def register_account(payload: RegisterRequest, http_request: Request):
 
 
 @router.post("/auth/login")
-def login(request: LoginRequest):
+def login(payload: LoginRequest, http_request: Request):
+    _enforce_auth_rate_limit(http_request, "login", payload.email)
     try:
-        return auth_store.login(str(request.email), request.password)
+        return auth_store.login(payload.email, payload.password)
     except AuthenticationError as exc:
         raise HTTPException(status_code=401, detail="Invalid email or password",
                             headers={"WWW-Authenticate": "Bearer"}) from exc
