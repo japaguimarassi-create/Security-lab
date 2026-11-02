@@ -64,6 +64,15 @@ class JobStore:
             ).fetchone()
         return json.loads(row["payload_json"]) if row else None
 
+    def update(self, job: dict[str, Any]) -> bool:
+        with self._connect() as db:
+            result = db.execute("""
+                UPDATE mesh_jobs SET status=?,payload_json=?
+                WHERE job_id=? AND owner_id=?
+            """, (job["status"], json.dumps(job, separators=(",", ":")),
+                  job["job_id"], job["owner_id"]))
+        return result.rowcount == 1
+
     def list(self, owner_id: str, limit: int = 50) -> list[dict[str, Any]]:
         with self._connect() as db:
             rows = db.execute("""
@@ -349,3 +358,33 @@ def job(job_id: str, user: dict[str, str] = Depends(require_user)):
     if result is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return result
+
+
+
+@router.delete("/jobs/{job_id}")
+def cancel_job(job_id: str, user: dict[str, str] = Depends(require_user)):
+    result = job_store.get(job_id, user["user_id"])
+    if result is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if result.get("execution_started"):
+        raise HTTPException(status_code=409, detail="An executing job cannot be cancelled by the planning API")
+    if result.get("execution_status") == "cancelled":
+        return {"cancelled": True, "quota_released": True, "job_id": job_id}
+
+    reservation = result.get("quota_reservation")
+    released = None
+    if reservation:
+        amounts = {
+            metric: float(item["reserved"])
+            for metric, item in reservation.get("resources", {}).items()
+            if float(item.get("reserved", 0)) > 0
+        }
+        if amounts:
+            released = quota_ledger.release(user["user_id"], amounts)
+
+    result["status"] = "cancelled"
+    result["execution_status"] = "cancelled"
+    result["quota_release"] = released
+    if not job_store.update(result):
+        raise HTTPException(status_code=409, detail="Job state changed; refresh and retry")
+    return {"cancelled": True, "quota_released": bool(released), "job_id": job_id}
