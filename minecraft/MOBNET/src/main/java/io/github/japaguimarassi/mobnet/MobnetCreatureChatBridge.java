@@ -113,10 +113,10 @@ public final class MobnetCreatureChatBridge {
             Path target = Paths.get(requiredString(state, "configPath"));
             startApiServer(key);
             patchCreatureChatConfig(target, key);
-            LOGGER.info("MOBNET CreatureChat bridge restored for world {}", server.getWorldData().getLevelName());
+            MobnetRuntime.LOGGER.info("MOBNET CreatureChat bridge restored for world {}", server.getWorldData().getLevelName());
         } catch (Exception exception) {
             stopApiServer();
-            LOGGER.error("Could not restore MOBNET CreatureChat bridge: {}", safeMessage(exception));
+            MobnetRuntime.LOGGER.error("Could not restore MOBNET CreatureChat bridge: {}", safeMessage(exception));
             server.getPlayerList().getPlayers().forEach(player ->
                     player.sendSystemMessage(Component.literal("§cMOBNET não conseguiu restaurar a conexão com CreatureChat: "
                             + safeMessage(exception))));
