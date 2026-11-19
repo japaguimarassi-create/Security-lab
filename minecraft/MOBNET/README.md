@@ -1,72 +1,98 @@
-# MOBNET 0.2.0 — Minecraft 1.20.1 Forge
+# MOBNET CreatureChat Bridge 0.3.0 — Minecraft 1.20.1 Forge
 
-MOBNET is a Forge-native mob conversation and behavior mod with a local neural action policy. It reimplements selected conversational gameplay patterns from CreatureChat and adds MOBNET memory and action selection. It does not require Fabric, Connector, or Fabric API.
+MOBNET is an add-on provider bridge for the original CreatureChat. CreatureChat remains responsible for its own chat screen, character sheets, conversation history, friendship system, behavior tags and in-game presentation. MOBNET supplies an OpenAI-compatible local endpoint and forwards dialogue requests to the configured MOBNET inference service.
 
 ## Requirements
 
 - Minecraft Java 1.20.1
-- Forge 47.4.28 (47.x)
+- Minecraft Forge 47.x
 - Java 17
+- The original CreatureChat 1.20.1 build, loaded on Forge through the compatible Sinytra Connector setup (including the required Forgified Fabric API)
+- A running MOBNET language-inference API that implements OpenAI Chat Completions
 
 ## Install
 
-Place `mobnet-0.2.0.jar` in the instance's `mods` folder and launch Forge 1.20.1. H2 is bundled inside the mod JAR using Forge Jar-in-Jar.
+1. Install Forge 1.20.1 and the compatible Connector/Forgified Fabric API setup required by CreatureChat.
+2. Install the original CreatureChat 1.20.1 mod.
+3. Put `mobnet-0.3.0.jar` in the same `mods` folder.
+4. Start the world once so Forge creates `config/mobnet-common.toml`.
+5. Configure the upstream MOBNET inference endpoint as described below.
+6. Run `/mobnet Key active true` as an operator.
 
-## Talk to a mob
+MOBNET does not replace or reimplement CreatureChat's user interface or gameplay. It only changes the API provider configuration used by CreatureChat.
 
-1. Hold an empty hand.
-2. Sneak and right-click a mob.
-3. The MOBNET chat window opens. Type a message and press Enter or click **Enviar**.
-4. The conversation is stored per mob UUID and player UUID. Nearby players can see the mob's speech bubble.
+## Configure the trained MOBNET model endpoint
 
-The first interaction creates a character sheet (name, personality, tone, class, skills, likes, dislikes, alignment, background and greeting). Without a configured dialogue provider, the sheet and dialogue use local Portuguese fallbacks.
-
-## Optional natural-language provider
-
-By default MOBNET is fully offline. To enable free-form dialogue, configure the server's `config/mobnet-common.toml`:
+Open `config/mobnet-common.toml` and configure:
 
 ```toml
 [conversation]
-apiUrl = "https://YOUR_OPENAI_COMPATIBLE_ENDPOINT/v1/chat/completions"
-apiKey = "YOUR_KEY"
-model = "YOUR_MODEL"
+apiUrl = "https://YOUR-MOBNET-HOST/v1/chat/completions"
+apiKey = ""
+model = "mobnet"
 timeoutSeconds = 30
 maxOutputTokens = 180
+localApiPort = 18765
 ```
 
-The endpoint must use HTTPS. Plain HTTP is accepted only for loopback endpoints such as localhost, 127.0.0.1 or ::1. The provider is used only for character-sheet/dialogue text. It never executes actions: the response is parsed for recognized behavior markers, and the MOBNET policy plus action validation decides what the mob may do. If a request fails, a bounded local response is used.
+- `apiUrl` must point to the actual running MOBNET text-generation service and must include the full `/v1/chat/completions` path.
+- `apiKey` is only the credential for that upstream inference service. Leave it empty if the service does not require authentication.
+- `model` is the model identifier accepted by that service.
+- HTTPS is required for remote endpoints. Plain HTTP is accepted only for loopback endpoints.
+- `localApiPort` is the port used by the local CreatureChat bridge. It binds only to `127.0.0.1`.
 
-Do not commit `mobnet-common.toml` or share API keys. The key is sent only in the Authorization header to the endpoint configured by the server owner.
+The generated local CreatureChat key is separate from the upstream API key. It is generated with a cryptographically secure random generator, saved in the active world's `mobnet/creaturechat-bridge.json`, and sent only over loopback between the Minecraft server and its own local bridge. It is not sent to the remote inference service.
 
 ## Commands
 
-- `/mobnet say <message>` — chat with the selected mob.
-- `/mobnet gift` — offer the item in your hand and increase friendship.
-- `/mobnet memory` — show recent memories.
-- `/mobnet relationship` — show friendship (-3 to +3).
-- `/mobnet reward <-1..1>` — give feedback on the last neural decision.
-- `/mobnet stop` — stop the current MOBNET behavior.
-- `/mobnet help` — show help.
+```text
+/mobnet Key active true
+/mobnet Key active false
+/mobnet Key status
+```
 
-## Included systems
+The lowercase alias is also accepted:
 
-- CreatureChat-style character sheets, per-player conversation history, chat window and synchronized speech bubbles.
-- Behavior marker parser for FOLLOW, UNFOLLOW, LEAD, UNLEAD, FLEE, UNFLEE, ATTACK, PROTECT, UNPROTECT and FRIENDSHIP.
-- Friendship on the original -3 to +3 scale.
-- UUID-based profiles, relationships and memories in per-world H2 storage.
-- Byte-level BPE tokenizer.
-- MOBNET 12 residual blocks × 678 width and a feedback-adjustable action head.
-- Follow, flee, attack, protect, guide and stay behavior execution with server-side validation.
-- Optional OpenAI-compatible dialogue provider; no provider is required.
+```text
+/mobnet key active true
+```
 
-## Important limitations of 0.2.0
+When activated, MOBNET:
 
-- The initial neural backbone is deterministically initialized and has not been pretrained on a billion observations. The feedback-adjustable action head is not a pretrained language model.
-- Local fallback dialogue is rule-based and deliberately concise; natural free-form dialogue requires a configured compatible provider.
-- The chat interface and speech bubbles are independent MOBNET artwork/code, not a pixel-identical copy of CreatureChat.
-- A dedicated mob inventory screen, full advancement set, click-to-page bubble navigation, voice input and the full set of CreatureChat reactions are not yet included.
-- Compilation and unit tests do not replace in-game client, dedicated-server and multiplayer testing.
+1. Generates a random 256-bit bridge key.
+2. Starts an OpenAI-compatible endpoint at `http://127.0.0.1:18765/v1/chat/completions`.
+3. Saves the previous `apiKey`, `url`, `model` and `timeout` values from CreatureChat's JSON configuration.
+4. Sets CreatureChat's API URL to the local MOBNET endpoint, sets the generated bearer key and selects model `mobnet`.
+5. Forwards CreatureChat's system prompt and recent player/mob messages to the configured upstream MOBNET inference endpoint.
+6. Returns the generated answer in the response schema that CreatureChat already understands.
+
+Deactivation restores the previous CreatureChat settings and stops the local HTTP server. The active state and generated key persist across world/server restarts.
+
+## Response contract
+
+The upstream model must return OpenAI-compatible JSON containing:
+
+```json
+{
+  "choices": [
+    {
+      "message": {
+        "role": "assistant",
+        "content": "A natural mob reply, optionally followed by CreatureChat behavior markers."
+      }
+    }
+  ]
+}
+```
+
+CreatureChat interprets behavior markers in the returned text, including `<FOLLOW>`, `<UNFOLLOW>`, `<LEAD>`, `<UNLEAD>`, `<FLEE>`, `<UNFLEE>`, `<ATTACK>`, `<PROTECT>`, `<UNPROTECT>` and `<FRIENDSHIP -3..3>`. The upstream model should preserve these markers exactly when a behavior is requested.
+
+## Important model limitation
+
+The MOBNET neural core currently included in this repository is an action-classification policy, not a trained autoregressive language model. Its residual backbone is deterministically initialized and its feedback mechanism updates an action head; it does not generate free-form Portuguese dialogue. The bridge therefore requires the actual trained MOBNET language model to be available through the configured `apiUrl`. The random key activates and authenticates the local bridge; it does not create or train model weights.
+
+Compilation and unit tests do not replace in-game testing with the exact CreatureChat, Connector and Forge versions being used.
 
 ## Source and licensing
 
-MOBNET is licensed under GPL-3.0-or-later because it incorporates an adapted behavior-marker parser from CreatureChat. See `LICENSE` and `NOTICE.md` for attribution and scope. CreatureChat's non-code assets, prompts, UI artwork, icons, textures, sounds and trademark are not included; MOBNET's presentation and prompts are independently authored.
+MOBNET is licensed under GPL-3.0-or-later. See `LICENSE` and `NOTICE.md` for attribution and scope. CreatureChat's original assets and trademark are not bundled by this add-on.
