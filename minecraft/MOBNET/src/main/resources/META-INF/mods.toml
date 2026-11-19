@@ -4,11 +4,11 @@ license = "GPL-3.0-or-later"
 
 [[mods]]
 modId = "mobnet"
-version = "0.2.0"
-displayName = "MOBNET"
+version = "0.3.0"
+displayName = "MOBNET - CreatureChat Bridge"
 authors = "japaguimarassi-create"
 description = '''
-A Forge-native mob conversation, memory, relationship, behavior and neural action-policy mod.
+Connects the original CreatureChat OpenAI-compatible chat interface to a configured MOBNET inference endpoint through a secure local loopback bridge.
 '''
 
 [[dependencies.mobnet]]
