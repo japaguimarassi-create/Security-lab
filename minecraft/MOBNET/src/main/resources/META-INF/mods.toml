@@ -14,7 +14,7 @@ Connects the original CreatureChat OpenAI-compatible chat interface to a configu
 [[dependencies.mobnet]]
 modId = "forge"
 mandatory = true
-versionRange = "[47.4.28,)"
+versionRange = "[47.4.0,)"
 ordering = "NONE"
 side = "BOTH"
 
