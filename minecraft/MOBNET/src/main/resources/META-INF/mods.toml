@@ -1,10 +1,10 @@
 modLoader = "javafml"
 loaderVersion = "[47,)"
-license = "MIT"
+license = "GPL-3.0-or-later"
 
 [[mods]]
 modId = "mobnet"
-version = "0.1.0"
+version = "0.2.0"
 displayName = "MOBNET"
 authors = "japaguimarassi-create"
 description = '''
