@@ -99,36 +99,162 @@ public final class MobnetRuntime {
                 + "§f. Use §a/mobnet say <mensagem>§f para conversar."));
     }
 
-    public static void say(ServerPlayer player, String rawMessage) {
-        String message = rawMessage == null ? "" : rawMessage.trim();
-        if (message.isEmpty()) {
-            player.sendSystemMessage(Component.literal("§cA mensagem está vazia."));
-            return;
-        }
-        if (message.length() > 512) {
-            player.sendSystemMessage(Component.literal("§cA mensagem deve ter no máximo 512 caracteres."));
-            return;
-        }
-        Mob mob = selectedMob(player);
+    public static void openChat(ServerPlayer player, UUID mobId) {
+        Mob mob = findMob(player, mobId);
         if (mob == null) return;
 
+        player.getPersistentData().putUUID(ACTIVE_MOB, mob.getUUID());
+        attachGoal(mob);
+        MobnetProfile profile = profile(mob);
+        List<MobnetChatLine> lines = recentChat(mob.getUUID(), player.getUUID(), 40);
+        if (lines.isEmpty()) {
+            MobnetCharacterSheet sheet = MobnetCharacterSheet.parse(
+                    profile.characterSheet(), profile.displayName(), profile.personality());
+            String greeting = sheet.shortGreeting();
+            storeMemory(mob, player, "MOB", greeting);
+            lines = recentChat(mob.getUUID(), player.getUUID(), 40);
+            MobnetNetwork.sendBubble(mob, greeting, friendship(mob.getUUID(), player.getUUID()));
+        } else {
+            MobnetChatLine latest = lines.get(lines.size() - 1);
+            if ("MOB".equalsIgnoreCase(latest.speaker())) {
+                MobnetNetwork.sendBubble(mob, latest.message(), friendship(mob.getUUID(), player.getUUID()));
+            }
+        }
+        MobnetNetwork.sendConversation(player, mob.getUUID(), mob.getName().getString(),
+                friendship(mob.getUUID(), player.getUUID()), lines);
+    }
+
+    public static void say(ServerPlayer player, String rawMessage) {
+        Mob mob = selectedMob(player);
+        if (mob != null) say(player, mob.getUUID(), rawMessage);
+    }
+
+    public static void say(ServerPlayer player, UUID mobId, String rawMessage) {
+        String message = rawMessage == null ? "" : rawMessage.trim();
+        if (message.isEmpty() || message.length() > 512) {
+            player.sendSystemMessage(Component.literal("§cA mensagem precisa ter entre 1 e 512 caracteres."));
+            return;
+        }
+        Mob mob = findMob(player, mobId);
+        if (mob == null) return;
+
+        player.getPersistentData().putUUID(ACTIVE_MOB, mob.getUUID());
         MobnetProfile profile = profile(mob);
         int friendship = friendship(mob.getUUID(), player.getUUID());
         MobnetAction intent = MobnetIntentParser.parse(message);
         float[] state = MobnetStateEncoder.encode(mob, player, intent, friendship);
-        MobnetAction action = neural.chooseAction(state);
-        action = MobnetActionMask.validate(action, mob.canAttack(player), player.isCreative(), player.isSpectator());
+        MobnetAction action = MobnetActionMask.validate(neural.chooseAction(state),
+                mob.canAttack(player), player.isCreative(), player.isSpectator());
         LAST_DECISIONS.put(decisionKey(mob.getUUID(), player.getUUID()), new Decision(state, action));
 
-        if (isBehavior(action)) applyBehavior(mob, player, action);
-
-        List<String> memories = recentMemories(mob.getUUID(), player.getUUID(), 6);
         storeMemory(mob, player, "PLAYER", message);
-        String reply = MobnetConversationEngine.reply(profile, player.getName().getString(), message, action, friendship, memories);
-        storeMemory(mob, player, "MOB", reply);
-        recordExperience(mob, player, state, action, 0.0f);
-        showBubble(mob, reply);
-        broadcastNearby((ServerLevel) mob.level(), mob, reply);
+        List<MobnetChatLine> history = recentChat(mob.getUUID(), player.getUUID(), 40);
+        String systemPrompt = buildSystemPrompt(profile, mob, player, friendship);
+        MinecraftServer server = player.getServer();
+        if (server == null) return;
+
+        if (MobnetDialogueClient.isConfigured()) {
+            MobnetDialogueClient.complete(systemPrompt, history, null).whenComplete((response, error) -> {
+                String resolved = error == null ? response : null;
+                server.execute(() -> finishResponse(player, mob, message, profile, friendship, state, action, resolved));
+            });
+        } else {
+            String fallback = MobnetConversationEngine.reply(profile, player.getName().getString(),
+                    message, action, friendship, recentMemories(mob.getUUID(), player.getUUID(), 8));
+            finishResponse(player, mob, message, profile, friendship, state, action, fallback);
+        }
+    }
+
+    private static void finishResponse(ServerPlayer player, Mob mob, String userMessage, MobnetProfile profile,
+                                       int oldFriendship, float[] originalState, MobnetAction inputAction,
+                                       String rawResponse) {
+        if (player.isRemoved() || mob.isRemoved() || !mob.isAlive()
+                || player.level() != mob.level() || player.distanceToSqr(mob) > 32.0 * 32.0) return;
+
+        String response = rawResponse == null || rawResponse.isBlank()
+                ? MobnetConversationEngine.reply(profile, player.getName().getString(), userMessage,
+                    inputAction, oldFriendship, recentMemories(mob.getUUID(), player.getUUID(), 8))
+                : rawResponse;
+
+        ParsedMessage parsed = MessageParser.parseMessage(response);
+        MobnetAction suggestion = actionFromBehaviors(parsed.getBehaviors(), MobnetIntentParser.parse(userMessage));
+        int currentFriendship = oldFriendship;
+        for (Behavior behavior : parsed.getBehaviors()) {
+            if ("FRIENDSHIP".equals(behavior.getName()) && behavior.getArgument() != null) {
+                currentFriendship = Math.max(-3, Math.min(3, behavior.getArgument()));
+                break;
+            }
+        }
+        if (currentFriendship != oldFriendship && memory != null) {
+            try {
+                memory.setFriendship(mob.getUUID(), player.getUUID(), currentFriendship);
+            } catch (SQLException exception) {
+                LOGGER.error("Could not persist MOBNET friendship update", exception);
+            }
+        }
+
+        float[] decisionState = MobnetStateEncoder.encode(mob, player, suggestion, currentFriendship);
+        MobnetAction finalAction = MobnetActionMask.validate(neural.chooseAction(decisionState),
+                mob.canAttack(player), player.isCreative(), player.isSpectator());
+        LAST_DECISIONS.put(decisionKey(mob.getUUID(), player.getUUID()), new Decision(decisionState, finalAction));
+        if (isBehavior(finalAction)) applyBehavior(mob, player, finalAction);
+        else if (finalAction == MobnetAction.STAY || finalAction == MobnetAction.IDLE) clearBehavior(mob);
+
+        String cleanReply = parsed.getCleanedMessage();
+        if (cleanReply.isBlank()) cleanReply = "Estou aqui. Pode continuar.";
+        storeMemory(mob, player, "MOB", cleanReply);
+        recordExperience(mob, player, originalState, inputAction, 0.0f);
+
+        int finalFriendship = friendship(mob.getUUID(), player.getUUID());
+        List<MobnetChatLine> lines = recentChat(mob.getUUID(), player.getUUID(), 40);
+        MobnetNetwork.sendConversation(player, mob.getUUID(), mob.getName().getString(), finalFriendship, lines);
+        MobnetNetwork.sendBubble(mob, cleanReply, finalFriendship);
+        broadcastNearby((ServerLevel) mob.level(), mob, cleanReply);
+    }
+
+    private static MobnetAction actionFromBehaviors(List<Behavior> behaviors, MobnetAction fallback) {
+        for (Behavior behavior : behaviors) {
+            switch (behavior.getName()) {
+                case "FOLLOW": return MobnetAction.FOLLOW;
+                case "LEAD": return MobnetAction.GUIDE;
+                case "FLEE": return MobnetAction.FLEE;
+                case "ATTACK": return MobnetAction.ATTACK;
+                case "PROTECT": return MobnetAction.PROTECT;
+                case "UNFOLLOW", "UNLEAD", "UNPROTECT", "UNFLEE": return MobnetAction.STAY;
+                default: break;
+            }
+        }
+        return fallback == null ? MobnetAction.TALK : fallback;
+    }
+
+    private static String buildSystemPrompt(MobnetProfile profile, Mob mob, ServerPlayer player, int friendship) {
+        String biome = player.level().getBiome(player.blockPosition()).unwrapKey()
+                .map(key -> key.location().toString()).orElse("desconhecido");
+        long dayTime = player.level().getDayTime() % 24000L;
+        String worldTime = String.format(java.util.Locale.ROOT, "%02d:%02d",
+                (int) (((dayTime / 1000L + 6L) % 24L)), (int) (((dayTime % 1000L) * 60L) / 1000L));
+        String heldItem = player.getMainHandItem().isEmpty()
+                ? "mãos vazias" : player.getMainHandItem().getHoverName().getString();
+        MobnetConversationEngine.Mob mobContext = new MobnetConversationEngine.Mob(
+                mob.getType().toString(), mob.getHealth(), mob.getMaxHealth());
+        MobnetConversationEngine.ServerPlayerContext playerContext =
+                new MobnetConversationEngine.ServerPlayerContext(player.getName().getString(), player.getHealth(),
+                        heldItem, biome, worldTime, player.level().isRaining(), mob.distanceTo(player));
+        return MobnetConversationEngine.systemPrompt(profile, mobContext, playerContext, friendship, List.of());
+    }
+
+    private static Mob findMob(ServerPlayer player, UUID mobId) {
+        if (mobId == null || player.serverLevel() == null) return null;
+        Entity entity = player.serverLevel().getEntity(mobId);
+        if (!(entity instanceof Mob mob) || mob.isRemoved() || !mob.isAlive()) {
+            player.sendSystemMessage(Component.literal("§cEssa criatura não está mais disponível."));
+            return null;
+        }
+        if (mob.level() != player.level() || player.distanceToSqr(mob) > 32.0 * 32.0) {
+            player.sendSystemMessage(Component.literal("§cAproxime-se até 32 blocos da criatura."));
+            return null;
+        }
+        return mob;
     }
 
     public static void gift(ServerPlayer player) {
