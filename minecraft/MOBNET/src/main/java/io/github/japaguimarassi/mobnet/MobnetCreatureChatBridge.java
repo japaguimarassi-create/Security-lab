@@ -162,11 +162,26 @@ public final class MobnetCreatureChatBridge {
             }
 
             startApiServer(key);
+            boolean configPatched = false;
             try {
                 patchCreatureChatConfig(target, key);
+                configPatched = true;
                 writeJsonAtomic(stateFile, state);
             } catch (Exception exception) {
-                if (!active) Files.deleteIfExists(stateFile);
+                if (!active && configPatched) {
+                    try {
+                        restoreCreatureChatConfig(target, state);
+                    } catch (Exception rollbackError) {
+                        exception.addSuppressed(rollbackError);
+                    }
+                }
+                if (!active) {
+                    try {
+                        Files.deleteIfExists(stateFile);
+                    } catch (Exception cleanupError) {
+                        exception.addSuppressed(cleanupError);
+                    }
+                }
                 stopApiServer();
                 throw exception;
             }
