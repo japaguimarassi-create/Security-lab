@@ -37,11 +37,25 @@ public final class MobnetModEvents {
     }
 
     @SubscribeEvent
+    public static void onEntityInteractSpecific(PlayerInteractEvent.EntityInteractSpecific event) {
+        selectMob(event);
+    }
+
+    @SubscribeEvent
     public static void onEntityInteract(PlayerInteractEvent.EntityInteract event) {
+        selectMob(event);
+    }
+
+    private static void selectMob(PlayerInteractEvent event) {
         if (event.getLevel().isClientSide()) return;
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
         if (!player.isShiftKeyDown() || !event.getItemStack().isEmpty()) return;
-        if (!(event.getTarget() instanceof Mob mob)) return;
+        if (!(event instanceof PlayerInteractEvent.EntityInteract) &&
+                !(event instanceof PlayerInteractEvent.EntityInteractSpecific)) return;
+        net.minecraft.world.entity.Entity target;
+        if (event instanceof PlayerInteractEvent.EntityInteract specific) target = specific.getTarget();
+        else target = ((PlayerInteractEvent.EntityInteractSpecific) event).getTarget();
+        if (!(target instanceof Mob mob)) return;
 
         MobnetRuntime.select(player, mob);
         event.setCancellationResult(InteractionResult.SUCCESS);
@@ -51,7 +65,12 @@ public final class MobnetModEvents {
     @SubscribeEvent
     public static void onEntityJoin(EntityJoinLevelEvent event) {
         if (event.getLevel().isClientSide()) return;
-        if (event.getEntity() instanceof Mob mob) MobnetRuntime.attachGoal(mob);
+        if (event.getEntity() instanceof Mob mob) {
+            String action = mob.getPersistentData().getString(MobnetRuntime.NBT_ACTION);
+            if (!action.isBlank() && !action.equals(MobnetAction.IDLE.name()) && !action.equals(MobnetAction.TALK.name())) {
+                MobnetRuntime.attachGoal(mob);
+            }
+        }
     }
 
     @SubscribeEvent
