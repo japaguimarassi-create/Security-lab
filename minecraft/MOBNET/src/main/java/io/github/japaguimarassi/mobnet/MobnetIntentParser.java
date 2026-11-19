@@ -2,13 +2,19 @@ package io.github.japaguimarassi.mobnet;
 
 import java.text.Normalizer;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 public final class MobnetIntentParser {
+    private static final Pattern NEGATED_ACTION = Pattern.compile(
+            "(?s)\\bnao\\b.{0,48}\\b(?:me\\s+)?(?:proteja|defenda|proteger|fuja|foge|afaste|va\\s+embora|saia\\s+daqui|corra|ataque|lute|guie|mostre\\s+o\\s+caminho|leve|siga|acompanhe)\\b"
+    );
+
     private MobnetIntentParser() {}
 
     public static MobnetAction parse(String input) {
         if (input == null || input.isBlank()) return MobnetAction.TALK;
         String text = normalize(input);
+        if (NEGATED_ACTION.matcher(text).find()) return MobnetAction.TALK;
 
         if (containsAny(text, "me proteja", "proteja", "me defenda", "defenda", "proteger")) return MobnetAction.PROTECT;
         if (containsAny(text, "fuja", "foge", "afaste", "va embora", "saia daqui", "corra")) return MobnetAction.FLEE;
