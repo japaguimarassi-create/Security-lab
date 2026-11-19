@@ -203,7 +203,7 @@ public final class MobnetRuntime {
         String cleanReply = parsed.getCleanedMessage();
         if (cleanReply.isBlank()) cleanReply = "Estou aqui. Pode continuar.";
         storeMemory(mob, player, "MOB", cleanReply);
-        recordExperience(mob, player, originalState, inputAction, 0.0f);
+        recordExperience(mob, player, decisionState, finalAction, 0.0f);
 
         int finalFriendship = friendship(mob.getUUID(), player.getUUID());
         List<MobnetChatLine> lines = recentChat(mob.getUUID(), player.getUUID(), 40);
@@ -271,7 +271,9 @@ public final class MobnetRuntime {
         String reply = "Obrigado pelo presente, " + player.getName().getString() + "! Agora nossa amizade está em " + friendship + ".";
         storeMemory(mob, player, "PLAYER", "Deu um presente: " + itemName);
         storeMemory(mob, player, "MOB", reply);
-        showBubble(mob, reply);
+        MobnetNetwork.sendConversation(player, mob.getUUID(), mob.getName().getString(), friendship,
+                recentChat(mob.getUUID(), player.getUUID(), 40));
+        MobnetNetwork.sendBubble(mob, reply, friendship);
         broadcastNearby((ServerLevel) mob.level(), mob, reply);
     }
 
@@ -291,7 +293,7 @@ public final class MobnetRuntime {
         Mob mob = selectedMob(player);
         if (mob == null) return;
         int value = friendship(mob.getUUID(), player.getUUID());
-        player.sendSystemMessage(Component.literal("§b[MOBNET] §fRelação com " + mob.getName().getString() + ": §e" + value + "§f/10"));
+        player.sendSystemMessage(Component.literal("§b[MOBNET] §fRelação com " + mob.getName().getString() + ": §e" + value + "§f/3"));
     }
 
     public static void reward(ServerPlayer player, float reward) {
@@ -428,7 +430,10 @@ public final class MobnetRuntime {
                 LOGGER.error("Could not load mob profile", exception);
             }
         }
-        return new MobnetProfile(mob.getUUID(), mob.getType().toString(), mob.getName().getString(), "observador");
+        String type = mob.getType().toString();
+        String name = mob.getName().getString();
+        MobnetCharacterSheet sheet = MobnetCharacterSheet.defaultFor(type, name, "observador");
+        return new MobnetProfile(mob.getUUID(), type, name, "observador", sheet.toPromptText());
     }
 
     private static int friendship(UUID mob, UUID player) {
@@ -442,7 +447,7 @@ public final class MobnetRuntime {
     }
 
     private static int adjustFriendship(UUID mob, UUID player, int delta) {
-        if (memory == null) return Math.max(-10, Math.min(10, delta));
+        if (memory == null) return Math.max(-3, Math.min(3, delta));
         try {
             return memory.adjustFriendship(mob, player, delta);
         } catch (SQLException exception) {
@@ -457,6 +462,16 @@ public final class MobnetRuntime {
             return memory.recentMemories(mob, player, limit);
         } catch (SQLException exception) {
             LOGGER.error("Could not read MOBNET memories", exception);
+            return List.of();
+        }
+    }
+
+    private static List<MobnetChatLine> recentChat(UUID mob, UUID player, int limit) {
+        if (memory == null) return List.of();
+        try {
+            return memory.recentChat(mob, player, limit);
+        } catch (SQLException exception) {
+            LOGGER.error("Could not read MOBNET conversation history", exception);
             return List.of();
         }
     }
