@@ -1,0 +1,78 @@
+plugins {
+    id 'eclipse'
+    id 'idea'
+    id 'maven-publish'
+    id 'net.minecraftforge.gradle' version '[6.0,6.2)'
+}
+
+group = 'io.github.japaguimarassi'
+version = '0.3.1'
+base {
+    archivesName = 'mobnet'
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(17)
+    withSourcesJar()
+}
+
+minecraft {
+    mappings channel: 'official', version: '1.20.1'
+    copyIdeResources = true
+
+    runs {
+        configureEach {
+            workingDirectory project.file('run')
+            property 'forge.logging.console.level', 'info'
+            mods {
+                mobnet {
+                    source sourceSets.main
+                }
+            }
+        }
+        client {}
+        server {
+            args '--nogui'
+        }
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+jarJar.enable()
+
+dependencies {
+    minecraft 'net.minecraftforge:forge:1.20.1-47.4.5'
+
+    implementation(jarJar('com.h2database:h2') {
+        version {
+            strictly '[2.2.224,3.0.0)'
+            prefer '2.2.224'
+        }
+    })
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 17
+}
+
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
+}
+
+tasks.named('jar').configure {
+    archiveClassifier = 'slim'
+}
+
+tasks.named('jarJar').configure {
+    archiveClassifier = ''
+}
+
+tasks.named('build').configure {
+    dependsOn 'jarJar'
+}

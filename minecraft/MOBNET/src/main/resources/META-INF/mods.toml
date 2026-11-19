@@ -1,0 +1,26 @@
+modLoader = "javafml"
+loaderVersion = "[47,)"
+license = "GPL-3.0-or-later"
+
+[[mods]]
+modId = "mobnet"
+version = "0.3.1"
+displayName = "MOBNET - CreatureChat Bridge"
+authors = "japaguimarassi-create"
+description = '''
+Connects the original CreatureChat OpenAI-compatible chat interface to a configured MOBNET inference endpoint through a secure local loopback bridge.
+'''
+
+[[dependencies.mobnet]]
+modId = "forge"
+mandatory = true
+versionRange = "[47.4.0,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.mobnet]]
+modId = "minecraft"
+mandatory = true
+versionRange = "[1.20.1,1.21)"
+ordering = "NONE"
+side = "BOTH"
