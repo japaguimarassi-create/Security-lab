@@ -68,7 +68,7 @@ public final class MobnetBehaviorGoal extends Goal {
             }
             case FLEE -> {
                 if (distance < 1024.0 && pathCooldown == 0) {
-                    Vec3 away = mob.position().subtract(owner.position()).normalize();
+                    Vec3 away = new Vec3(mob.getX() - owner.getX(), 0.0, mob.getZ() - owner.getZ()).normalize();
                     if (away.lengthSqr() < 0.001) away = new Vec3(1.0, 0.0, 0.0);
                     Vec3 destination = mob.position().add(away.scale(14.0));
                     mob.getNavigation().moveTo(destination.x, destination.y, destination.z, 1.15);
