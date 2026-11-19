@@ -37,8 +37,9 @@ public final class MobnetMemoryStore implements AutoCloseable {
         try (Statement statement = requireConnection().createStatement()) {
             statement.execute("CREATE TABLE IF NOT EXISTS mob_profiles (" +
                     "mob_uuid VARCHAR(36) PRIMARY KEY, entity_type VARCHAR(128) NOT NULL, " +
-                    "display_name VARCHAR(128) NOT NULL, personality VARCHAR(32) NOT NULL, created_at BIGINT NOT NULL)");
-            statement.execute("CREATE TABLE IF NOT EXISTS mob_relationships (" +
+                    "display_name VARCHAR(128) NOT NULL, personality VARCHAR(32) NOT NULL, character_sheet CLOB, created_at BIGINT NOT NULL)");
+            statement.execute("ALTER TABLE mob_profiles ADD COLUMN IF NOT EXISTS character_sheet CLOB");
+            statement.execute("CREATE TABLE IF NOT EXISTS mob_relationships ("
                     "mob_uuid VARCHAR(36) NOT NULL, player_uuid VARCHAR(36) NOT NULL, friendship INT NOT NULL, " +
                     "interactions INT NOT NULL, PRIMARY KEY (mob_uuid, player_uuid))");
             statement.execute("CREATE TABLE IF NOT EXISTS mob_memories (" +
@@ -56,26 +57,30 @@ public final class MobnetMemoryStore implements AutoCloseable {
     public synchronized MobnetProfile getOrCreateProfile(UUID mobId, String entityType, String displayName) throws SQLException {
         String id = mobId.toString();
         try (PreparedStatement query = requireConnection().prepareStatement(
-                "SELECT entity_type, display_name, personality FROM mob_profiles WHERE mob_uuid=?")) {
+                "SELECT entity_type, display_name, personality, character_sheet FROM mob_profiles WHERE mob_uuid=?")) {
             query.setString(1, id);
             try (ResultSet rows = query.executeQuery()) {
                 if (rows.next()) {
-                    return new MobnetProfile(mobId, rows.getString(1), rows.getString(2), rows.getString(3));
+                    return new MobnetProfile(mobId, rows.getString(1), rows.getString(2), rows.getString(3),
+                            rows.getString(4) == null ? MobnetCharacterSheet.defaultFor(rows.getString(1), rows.getString(2), rows.getString(3)).toPromptText() : rows.getString(4));
                 }
             }
         }
         String[] personalities = {"curioso", "cauteloso", "leal", "brincalhão", "observador", "corajoso"};
         String personality = personalities[Math.floorMod(entityType.hashCode(), personalities.length)];
         try (PreparedStatement insert = requireConnection().prepareStatement(
-                "INSERT INTO mob_profiles(mob_uuid, entity_type, display_name, personality, created_at) VALUES(?,?,?,?,?)")) {
+                "INSERT INTO mob_profiles(mob_uuid, entity_type, display_name, personality, character_sheet, created_at) VALUES(?,?,?,?,?,?)")) {
             insert.setString(1, id);
             insert.setString(2, safe(entityType, 128));
             insert.setString(3, safe(displayName, 128));
             insert.setString(4, personality);
-            insert.setLong(5, System.currentTimeMillis());
+            String characterSheet = MobnetCharacterSheet.defaultFor(entityType, displayName, personality).toPromptText();
+            insert.setString(5, characterSheet);
+            insert.setLong(6, System.currentTimeMillis());
             insert.executeUpdate();
         }
-        return new MobnetProfile(mobId, entityType, displayName, personality);
+        return new MobnetProfile(mobId, entityType, displayName, personality,
+                MobnetCharacterSheet.defaultFor(entityType, displayName, personality).toPromptText());
     }
 
     public synchronized int friendship(UUID mobId, UUID playerId) throws SQLException {
@@ -92,7 +97,7 @@ public final class MobnetMemoryStore implements AutoCloseable {
 
     public synchronized int adjustFriendship(UUID mobId, UUID playerId, int delta) throws SQLException {
         ensureRelationship(mobId, playerId);
-        int next = Math.max(-10, Math.min(10, friendship(mobId, playerId) + delta));
+        int next = Math.max(-3, Math.min(3, friendship(mobId, playerId) + delta));
         try (PreparedStatement update = requireConnection().prepareStatement(
                 "UPDATE mob_relationships SET friendship=?, interactions=interactions+1 WHERE mob_uuid=? AND player_uuid=?")) {
             update.setInt(1, next);
@@ -118,6 +123,44 @@ public final class MobnetMemoryStore implements AutoCloseable {
             insert.setString(2, playerId.toString());
             insert.executeUpdate();
         }
+    }
+
+    public synchronized void setFriendship(UUID mobId, UUID playerId, int value) throws SQLException {
+        ensureRelationship(mobId, playerId);
+        int bounded = Math.max(-3, Math.min(3, value));
+        try (PreparedStatement update = requireConnection().prepareStatement(
+                "UPDATE mob_relationships SET friendship=?, interactions=interactions+1 WHERE mob_uuid=? AND player_uuid=?")) {
+            update.setInt(1, bounded);
+            update.setString(2, mobId.toString());
+            update.setString(3, playerId.toString());
+            update.executeUpdate();
+        }
+    }
+
+    public synchronized void saveCharacterSheet(UUID mobId, String sheet) throws SQLException {
+        String bounded = safe(sheet, 7000);
+        try (PreparedStatement update = requireConnection().prepareStatement(
+                "UPDATE mob_profiles SET character_sheet=? WHERE mob_uuid=?")) {
+            update.setString(1, bounded);
+            update.setString(2, mobId.toString());
+            update.executeUpdate();
+        }
+    }
+
+    public synchronized List<MobnetChatLine> recentChat(UUID mobId, UUID playerId, int limit) throws SQLException {
+        int bounded = Math.max(1, Math.min(40, limit));
+        List<MobnetChatLine> results = new ArrayList<>();
+        try (PreparedStatement query = requireConnection().prepareStatement(
+                "SELECT speaker, message, created_at FROM mob_memories WHERE mob_uuid=? AND player_uuid=? ORDER BY id DESC LIMIT ?")) {
+            query.setString(1, mobId.toString());
+            query.setString(2, playerId.toString());
+            query.setInt(3, bounded);
+            try (ResultSet rows = query.executeQuery()) {
+                while (rows.next()) results.add(new MobnetChatLine(rows.getString(1), rows.getString(2), rows.getLong(3)));
+            }
+        }
+        java.util.Collections.reverse(results);
+        return results;
     }
 
     public synchronized void addMemory(UUID mobId, UUID playerId, String speaker, String message, List<Integer> tokens) throws SQLException {
