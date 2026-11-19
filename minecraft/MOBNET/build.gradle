@@ -44,7 +44,7 @@ repositories {
 jarJar.enable()
 
 dependencies {
-    minecraft 'net.minecraftforge:forge:1.20.1-47.4.28'
+    minecraft 'net.minecraftforge:forge:1.20.1-47.4.5'
 
     implementation(jarJar('com.h2database:h2') {
         version {
