@@ -117,6 +117,7 @@ public final class MobnetRuntime {
         MobnetAction intent = MobnetIntentParser.parse(message);
         float[] state = MobnetStateEncoder.encode(mob, player, intent, friendship);
         MobnetAction action = neural.chooseAction(state);
+        action = MobnetActionMask.validate(action, mob.canAttack(player), player.isCreative(), player.isSpectator());
         LAST_DECISIONS.put(decisionKey(mob.getUUID(), player.getUUID()), new Decision(state, action));
 
         if (isBehavior(action)) applyBehavior(mob, player, action);
