@@ -23,7 +23,9 @@ public final class MobnetBehaviorGoal extends Goal {
     @Override
     public boolean canUse() {
         MobnetAction action = readAction();
-        return action != MobnetAction.IDLE && action != MobnetAction.TALK && owner() != null;
+        ServerPlayer owner = owner();
+        return action != MobnetAction.IDLE && action != MobnetAction.TALK
+                && owner != null && owner.isAlive() && owner.level() == mob.level();
     }
 
     @Override
