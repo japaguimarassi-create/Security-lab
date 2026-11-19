@@ -33,6 +33,25 @@ public final class MobnetConversationEngine {
         return prompt.toString();
     }
 
+    public static String characterPrompt(String entityType, String displayName, String personality) {
+        return "Você cria personagens originais para criaturas de Minecraft. Gere uma ficha curta, consistente e "
+                + "apropriada à espécie indicada. Não crie habilidades que a criatura não possa representar no jogo. "
+                + "Responda em português brasileiro, sem introdução e exatamente com estes campos, um por linha:\\n"
+                + "- Name: nome curto\\n"
+                + "- Personality: traços de personalidade\\n"
+                + "- Speaking Style / Tone: estilo de fala\\n"
+                + "- Class: papel narrativo\\n"
+                + "- Skills: habilidades plausíveis\\n"
+                + "- Likes: coisas de que gosta\\n"
+                + "- Dislikes: coisas de que não gosta\\n"
+                + "- Alignment: alinhamento simples\\n"
+                + "- Background: origem curta\\n"
+                + "- Short Greeting: saudação em uma frase\\n\\n"
+                + "Tipo de entidade: " + entityType + "\\n"
+                + "Nome atual: " + displayName + "\\n"
+                + "Personalidade-base: " + personality;
+    }
+
     public static String reply(MobnetProfile profile, String playerName, String input,
                                MobnetAction action, int friendship, List<String> recentMemories) {
         String name = profile.displayName() == null || profile.displayName().isBlank() ? "criatura" : profile.displayName();
