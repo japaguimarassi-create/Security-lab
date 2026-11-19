@@ -1,4 +1,4 @@
-# MOBNET CreatureChat Bridge 0.3.0 — Minecraft 1.20.1 Forge
+# MOBNET CreatureChat Bridge 0.3.1 — Minecraft 1.20.1 Forge
 
 MOBNET is an add-on provider bridge for the original CreatureChat. CreatureChat remains responsible for its own chat screen, character sheets, conversation history, friendship system, behavior tags and in-game presentation. MOBNET supplies an OpenAI-compatible local endpoint and forwards dialogue requests to the configured MOBNET inference service.
 
@@ -14,7 +14,7 @@ MOBNET is an add-on provider bridge for the original CreatureChat. CreatureChat 
 
 1. Install Forge 1.20.1 and the compatible Connector/Forgified Fabric API setup required by CreatureChat.
 2. Install the original CreatureChat 1.20.1 mod.
-3. Put `mobnet-0.3.0.jar` in the same `mods` folder.
+3. Put `mobnet-0.3.1.jar` in the same `mods` folder.
 4. Start the world once so Forge creates `config/mobnet-common.toml`.
 5. Configure the upstream MOBNET inference endpoint as described below.
 6. Run `/mobnet Key active true` as an operator.
