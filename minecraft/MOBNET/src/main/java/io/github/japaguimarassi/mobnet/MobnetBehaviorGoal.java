@@ -13,6 +13,7 @@ import java.util.UUID;
 public final class MobnetBehaviorGoal extends Goal {
     private final Mob mob;
     private int pathCooldown;
+    private LivingEntity previousTarget;
 
     public MobnetBehaviorGoal(Mob mob) {
         this.mob = mob;
