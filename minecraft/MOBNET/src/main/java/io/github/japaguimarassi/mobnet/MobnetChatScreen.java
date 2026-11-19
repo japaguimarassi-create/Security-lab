@@ -16,6 +16,7 @@ public final class MobnetChatScreen extends Screen {
     private Button sendButton;
     private int panelLeft;
     private int panelTop;
+    private int historyOffset;
 
     public MobnetChatScreen(UUID mobId, String mobName) {
         super(Component.literal("MOBNET"));
@@ -48,6 +49,7 @@ public final class MobnetChatScreen extends Screen {
         if (value.isEmpty()) return;
         MobnetNetwork.sendChat(mobId, value);
         input.setValue("");
+        historyOffset = 0;
         setFocused(input);
     }
 
@@ -55,6 +57,14 @@ public final class MobnetChatScreen extends Screen {
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if ((keyCode == 257 || keyCode == 335) && input != null && input.isFocused()) {
             sendMessage();
+            return true;
+        }
+        if (keyCode == 266) {
+            historyOffset = Math.min(MobnetClientState.conversation(mobId).lines().size(), historyOffset + 5);
+            return true;
+        }
+        if (keyCode == 267) {
+            historyOffset = Math.max(0, historyOffset - 5);
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
@@ -74,10 +84,17 @@ public final class MobnetChatScreen extends Screen {
                 panelLeft + 10, panelTop + 30, 0xFFB9D6E5, false);
 
         List<MobnetChatLine> lines = conversation.lines();
-        int y = panelTop + 48;
         int maxLines = 6;
-        int start = Math.max(0, lines.size() - maxLines);
-        for (int i = start; i < lines.size(); i++) {
+        historyOffset = Math.max(0, Math.min(historyOffset, Math.max(0, lines.size() - 1)));
+        int end = Math.max(0, lines.size() - historyOffset);
+        int start = Math.max(0, end - maxLines);
+        int y = panelTop + 48;
+        if (start > 0) {
+            graphics.drawString(font, "↑ Mensagens anteriores · Page Up / rolagem", panelLeft + 12,
+                    panelTop + 42, 0xFF93A7B4, false);
+            y += 9;
+        }
+        for (int i = start; i < end; i++) {
             MobnetChatLine line = lines.get(i);
             boolean assistant = "MOB".equalsIgnoreCase(line.speaker());
             String label = assistant ? initialName : "Você";
@@ -91,8 +108,24 @@ public final class MobnetChatScreen extends Screen {
             graphics.drawString(font, "Comece a conversa com esta criatura.",
                     panelLeft + 12, panelTop + 64, 0xFFBFC7CE, false);
         }
+        if (historyOffset > 0) {
+            graphics.drawString(font, "↓ Mensagens recentes · Page Down / rolagem", panelLeft + 12,
+                    panelTop + 151, 0xFF93A7B4, false);
+        }
 
         super.render(graphics, mouseX, mouseY, partialTick);
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+        if (mouseX >= panelLeft && mouseX <= panelLeft + 330
+                && mouseY >= panelTop + 40 && mouseY <= panelTop + 158) {
+            int count = MobnetClientState.conversation(mobId).lines().size();
+            historyOffset = Math.max(0, Math.min(Math.max(0, count - 1),
+                    historyOffset + (delta > 0 ? 5 : -5)));
+            return true;
+        }
+        return super.mouseScrolled(mouseX, mouseY, delta);
     }
 
     @Override
