@@ -42,14 +42,14 @@ jobs:
 
       - name: Verify JAR artifact exists
         run: |
-          test -f build/libs/mobnet-0.3.0.jar
-          jar tf build/libs/mobnet-0.3.0.jar | grep -q 'META-INF/mods.toml'
-          jar tf build/libs/mobnet-0.3.0.jar | grep -q 'MobnetCreatureChatBridge.class'
+          test -f build/libs/mobnet-0.3.1.jar
+          jar tf build/libs/mobnet-0.3.1.jar | grep -q 'META-INF/mods.toml'
+          jar tf build/libs/mobnet-0.3.1.jar | grep -q 'MobnetCreatureChatBridge.class'
 
       - name: Upload MOBNET JAR
         uses: actions/upload-artifact@v4
         with:
           name: mobnet-creaturechat-bridge-forge-1.20.1
-          path: minecraft/MOBNET/build/libs/mobnet-0.3.0.jar
+          path: minecraft/MOBNET/build/libs/mobnet-0.3.1.jar
           if-no-files-found: error
           retention-days: 14
