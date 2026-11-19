@@ -41,15 +41,23 @@ public final class MobnetDialogueClient {
 
     public static CompletableFuture<String> complete(String systemPrompt, List<MobnetChatLine> history,
                                                       String currentUserMessage) {
+        return complete(systemPrompt, history, currentUserMessage, false, MobnetConfig.MAX_OUTPUT_TOKENS.get());
+    }
+
+    public static CompletableFuture<String> complete(String systemPrompt, List<MobnetChatLine> history,
+                                                      String currentUserMessage, boolean jsonMode, int maxTokens) {
         if (!isConfigured()) return CompletableFuture.completedFuture(null);
+        int safeMaxTokens = Math.max(32, Math.min(1024, maxTokens));
         try {
-            return CompletableFuture.supplyAsync(() -> request(systemPrompt, history, currentUserMessage), EXECUTOR);
+            return CompletableFuture.supplyAsync(
+                    () -> request(systemPrompt, history, currentUserMessage, jsonMode, safeMaxTokens), EXECUTOR);
         } catch (RuntimeException exception) {
             return CompletableFuture.completedFuture(null);
         }
     }
 
-    private static String request(String systemPrompt, List<MobnetChatLine> history, String currentUserMessage) {
+    private static String request(String systemPrompt, List<MobnetChatLine> history,
+                                  String currentUserMessage, boolean jsonMode, int maxTokens) {
         String endpoint = MobnetConfig.API_URL.get().trim();
         String model = MobnetConfig.MODEL.get().trim();
         try {
@@ -64,7 +72,12 @@ public final class MobnetDialogueClient {
             JsonObject payload = new JsonObject();
             payload.addProperty("model", model);
             payload.addProperty("temperature", 0.85);
-            payload.addProperty("max_tokens", MobnetConfig.MAX_OUTPUT_TOKENS.get());
+            payload.addProperty("max_tokens", maxTokens);
+            if (jsonMode) {
+                JsonObject responseFormat = new JsonObject();
+                responseFormat.addProperty("type", "json_object");
+                payload.add("response_format", responseFormat);
+            }
             JsonArray messages = new JsonArray();
             JsonObject system = new JsonObject();
             system.addProperty("role", "system");
