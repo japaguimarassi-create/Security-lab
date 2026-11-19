@@ -38,6 +38,7 @@ public final class MobnetRuntime {
     private static MobnetMemoryStore memory;
     private static Path modelPath;
     private static final Set<UUID> ATTACHED_GOALS = ConcurrentHashMap.newKeySet();
+    private static final Set<String> OPENING_CHATS = ConcurrentHashMap.newKeySet();
     private static final Map<String, Decision> LAST_DECISIONS = new ConcurrentHashMap<>();
 
     private MobnetRuntime() {}
@@ -107,21 +108,74 @@ public final class MobnetRuntime {
         attachGoal(mob);
         MobnetProfile profile = profile(mob);
         List<MobnetChatLine> lines = recentChat(mob.getUUID(), player.getUUID(), 40);
-        if (lines.isEmpty()) {
-            MobnetCharacterSheet sheet = MobnetCharacterSheet.parse(
-                    profile.characterSheet(), profile.displayName(), profile.personality());
-            String greeting = sheet.shortGreeting();
-            storeMemory(mob, player, "MOB", greeting);
-            lines = recentChat(mob.getUUID(), player.getUUID(), 40);
-            MobnetNetwork.sendBubble(mob, greeting, friendship(mob.getUUID(), player.getUUID()));
-        } else {
+        int currentFriendship = friendship(mob.getUUID(), player.getUUID());
+
+        if (!lines.isEmpty()) {
+            MobnetNetwork.sendConversation(player, mob.getUUID(), mob.getName().getString(), currentFriendship, lines);
             MobnetChatLine latest = lines.get(lines.size() - 1);
             if ("MOB".equalsIgnoreCase(latest.speaker())) {
-                MobnetNetwork.sendBubble(mob, latest.message(), friendship(mob.getUUID(), player.getUUID()));
+                MobnetNetwork.sendBubble(mob, latest.message(), currentFriendship);
             }
+            return;
         }
-        MobnetNetwork.sendConversation(player, mob.getUUID(), mob.getName().getString(),
-                friendship(mob.getUUID(), player.getUUID()), lines);
+
+        if (MobnetDialogueClient.isConfigured()) {
+            String initializationKey = decisionKey(mob.getUUID(), player.getUUID());
+            MobnetNetwork.sendConversation(player, mob.getUUID(), mob.getName().getString(), currentFriendship, List.of());
+            if (!OPENING_CHATS.add(initializationKey)) return;
+
+            String characterPrompt = MobnetConversationEngine.characterPrompt(
+                    profile.entityType(), profile.displayName(), profile.personality());
+            MinecraftServer server = player.getServer();
+            if (server == null) {
+                OPENING_CHATS.remove(initializationKey);
+                return;
+            }
+            MobnetDialogueClient.complete(characterPrompt, List.of(), "Crie a ficha completa do personagem.")
+                    .whenComplete((generatedSheet, error) -> server.execute(() -> {
+                        OPENING_CHATS.remove(initializationKey);
+                        if (!isValidConversationTarget(player, mob)) return;
+
+                        MobnetCharacterSheet sheet = generatedSheet == null || generatedSheet.isBlank()
+                                ? MobnetCharacterSheet.defaultFor(profile.entityType(), profile.displayName(), profile.personality())
+                                : MobnetCharacterSheet.parse(generatedSheet, profile.displayName(), profile.personality());
+                        persistCharacterSheet(mob.getUUID(), sheet);
+                        MobnetProfile updatedProfile = new MobnetProfile(profile.mobId(), profile.entityType(),
+                                profile.displayName(), profile.personality(), sheet.toPromptText());
+                        publishFirstGreeting(player, mob, updatedProfile, sheet);
+                    }));
+            return;
+        }
+
+        MobnetCharacterSheet sheet = MobnetCharacterSheet.parse(
+                profile.characterSheet(), profile.displayName(), profile.personality());
+        publishFirstGreeting(player, mob, profile, sheet);
+    }
+
+    private static boolean isValidConversationTarget(ServerPlayer player, Mob mob) {
+        return player != null && !player.isRemoved() && player.isAlive()
+                && mob != null && !mob.isRemoved() && mob.isAlive()
+                && player.level() == mob.level() && player.distanceToSqr(mob) <= 32.0 * 32.0;
+    }
+
+    private static void persistCharacterSheet(UUID mobId, MobnetCharacterSheet sheet) {
+        if (memory == null) return;
+        try {
+            memory.saveCharacterSheet(mobId, sheet.toPromptText());
+        } catch (SQLException exception) {
+            LOGGER.error("Could not save MOBNET character sheet", exception);
+        }
+    }
+
+    private static void publishFirstGreeting(ServerPlayer player, Mob mob,
+                                             MobnetProfile profile, MobnetCharacterSheet sheet) {
+        if (!isValidConversationTarget(player, mob)) return;
+        String greeting = sheet.shortGreeting();
+        storeMemory(mob, player, "MOB", greeting);
+        int currentFriendship = friendship(mob.getUUID(), player.getUUID());
+        List<MobnetChatLine> lines = recentChat(mob.getUUID(), player.getUUID(), 40);
+        MobnetNetwork.sendConversation(player, mob.getUUID(), mob.getName().getString(), currentFriendship, lines);
+        MobnetNetwork.sendBubble(mob, greeting, currentFriendship);
     }
 
     public static void say(ServerPlayer player, String rawMessage) {
