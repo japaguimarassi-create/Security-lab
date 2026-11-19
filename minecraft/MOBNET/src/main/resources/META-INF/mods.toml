@@ -1,0 +1,26 @@
+modLoader = "javafml"
+loaderVersion = "[47,)"
+license = "MIT"
+
+[[mods]]
+modId = "mobnet"
+version = "0.1.0"
+displayName = "MOBNET"
+authors = "japaguimarassi-create"
+description = '''
+A Forge-native mob conversation, memory, relationship, behavior and neural action-policy mod.
+'''
+
+[[dependencies.mobnet]]
+modId = "forge"
+mandatory = true
+versionRange = "[47.4.28,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.mobnet]]
+modId = "minecraft"
+mandatory = true
+versionRange = "[1.20.1,1.21)"
+ordering = "NONE"
+side = "BOTH"
