@@ -1,0 +1,55 @@
+name: MOBNET Forge 1.20.1
+
+on:
+  push:
+    branches:
+      - mobnet-forge-1.20.1
+    paths:
+      - 'minecraft/MOBNET/**'
+      - '.github/workflows/mobnet-forge.yml'
+  pull_request:
+    paths:
+      - 'minecraft/MOBNET/**'
+      - '.github/workflows/mobnet-forge.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: minecraft/MOBNET
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.8'
+
+      - name: Run unit tests and build mod
+        run: gradle --no-daemon clean test build
+
+      - name: Verify JAR artifact exists
+        run: |
+          test -f build/libs/mobnet-0.1.0.jar
+          jar tf build/libs/mobnet-0.1.0.jar | grep -q 'META-INF/mods.toml'
+          jar tf build/libs/mobnet-0.1.0.jar | grep -q 'META-INF/jarjar/metadata.json'
+
+      - name: Upload MOBNET JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobnet-forge-1.20.1
+          path: minecraft/MOBNET/build/libs/mobnet-0.1.0.jar
+          if-no-files-found: error
+          retention-days: 14
