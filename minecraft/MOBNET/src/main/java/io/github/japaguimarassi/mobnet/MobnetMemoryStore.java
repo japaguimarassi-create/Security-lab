@@ -39,7 +39,7 @@ public final class MobnetMemoryStore implements AutoCloseable {
                     "mob_uuid VARCHAR(36) PRIMARY KEY, entity_type VARCHAR(128) NOT NULL, " +
                     "display_name VARCHAR(128) NOT NULL, personality VARCHAR(32) NOT NULL, character_sheet CLOB, created_at BIGINT NOT NULL)");
             statement.execute("ALTER TABLE mob_profiles ADD COLUMN IF NOT EXISTS character_sheet CLOB");
-            statement.execute("CREATE TABLE IF NOT EXISTS mob_relationships ("
+            statement.execute("CREATE TABLE IF NOT EXISTS mob_relationships (" +
                     "mob_uuid VARCHAR(36) NOT NULL, player_uuid VARCHAR(36) NOT NULL, friendship INT NOT NULL, " +
                     "interactions INT NOT NULL, PRIMARY KEY (mob_uuid, player_uuid))");
             statement.execute("CREATE TABLE IF NOT EXISTS mob_memories (" +
