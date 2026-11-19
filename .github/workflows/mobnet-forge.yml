@@ -42,14 +42,14 @@ jobs:
 
       - name: Verify JAR artifact exists
         run: |
-          test -f build/libs/mobnet-0.1.0.jar
-          jar tf build/libs/mobnet-0.1.0.jar | grep -q 'META-INF/mods.toml'
-          jar tf build/libs/mobnet-0.1.0.jar | grep -q 'META-INF/jarjar/metadata.json'
+          test -f build/libs/mobnet-0.2.0.jar
+          jar tf build/libs/mobnet-0.2.0.jar | grep -q 'META-INF/mods.toml'
+          jar tf build/libs/mobnet-0.2.0.jar | grep -q 'META-INF/jarjar/metadata.json'
 
       - name: Upload MOBNET JAR
         uses: actions/upload-artifact@v4
         with:
           name: mobnet-forge-1.20.1
-          path: minecraft/MOBNET/build/libs/mobnet-0.1.0.jar
+          path: minecraft/MOBNET/build/libs/mobnet-0.2.0.jar
           if-no-files-found: error
           retention-days: 14
