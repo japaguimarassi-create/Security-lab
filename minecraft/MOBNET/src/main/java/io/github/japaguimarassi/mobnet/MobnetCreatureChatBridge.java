@@ -317,8 +317,19 @@ public final class MobnetCreatureChatBridge {
                     ? payload.getAsJsonArray("messages") : new JsonArray();
             StringBuilder system = new StringBuilder();
             List<MobnetChatLine> history = new ArrayList<>();
-            int start = Math.max(0, messages.size() - 32);
 
+            for (int i = 0; i < messages.size(); i++) {
+                JsonElement element = messages.get(i);
+                if (!element.isJsonObject()) continue;
+                JsonObject message = element.getAsJsonObject();
+                if (!"system".equalsIgnoreCase(stringValue(message, "role"))) continue;
+                String content = stringValue(message, "content");
+                if (content.isBlank()) continue;
+                if (system.length() > 0) system.append("\\n\\n");
+                system.append(limit(content, 16000));
+            }
+
+            int start = Math.max(0, messages.size() - 32);
             for (int i = start; i < messages.size(); i++) {
                 JsonElement element = messages.get(i);
                 if (!element.isJsonObject()) continue;
@@ -327,10 +338,7 @@ public final class MobnetCreatureChatBridge {
                 String content = stringValue(message, "content");
                 if (content.isBlank()) continue;
 
-                if ("system".equalsIgnoreCase(role)) {
-                    if (system.length() > 0) system.append("\n\n");
-                    system.append(limit(content, 16000));
-                } else if ("user".equalsIgnoreCase(role)) {
+                if ("user".equalsIgnoreCase(role)) {
                     history.add(new MobnetChatLine("PLAYER", limit(content, 2048), System.currentTimeMillis()));
                 } else if ("assistant".equalsIgnoreCase(role)) {
                     history.add(new MobnetChatLine("MOB", limit(content, 2048), System.currentTimeMillis()));
