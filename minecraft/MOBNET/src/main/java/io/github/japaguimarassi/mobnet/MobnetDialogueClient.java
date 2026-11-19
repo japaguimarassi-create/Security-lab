@@ -91,7 +91,7 @@ public final class MobnetDialogueClient {
             JsonObject message = choices.get(0).getAsJsonObject().getAsJsonObject("message");
             if (message == null || !message.has("content") || message.get("content").isJsonNull()) return null;
             String content = message.get("content").getAsString();
-            return content == null || content.isBlank() ? null : limit(content.trim(), 1500);
+            return content == null || content.isBlank() ? null : limit(content.trim(), 8000);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             return null;
