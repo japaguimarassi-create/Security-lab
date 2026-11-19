@@ -36,11 +36,16 @@ public final class MobnetBehaviorGoal extends Goal {
     @Override
     public void start() {
         pathCooldown = 0;
+        previousTarget = mob.getTarget();
     }
 
     @Override
     public void stop() {
         mob.getNavigation().stop();
+        if (mob.getTarget() != previousTarget) {
+            mob.setTarget(previousTarget != null && previousTarget.isAlive() ? previousTarget : null);
+        }
+        previousTarget = null;
     }
 
     @Override
