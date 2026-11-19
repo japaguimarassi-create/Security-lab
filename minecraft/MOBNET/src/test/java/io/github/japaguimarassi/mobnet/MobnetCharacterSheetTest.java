@@ -21,7 +21,7 @@ class MobnetCharacterSheetTest {
         assertEquals("Explorador", sheet.characterClass());
         assertEquals("Cavernas e mapas", sheet.likes());
         assertEquals("Vamos descobrir algo novo!", sheet.shortGreeting());
-        assertEquals("Aventuras, abrigo e amizade", sheet.dislikes().isBlank() ? "" : "Aventuras, abrigo e amizade");
+        assertEquals("Perigo desnecessário e hostilidade", sheet.dislikes());
     }
 
     @Test
