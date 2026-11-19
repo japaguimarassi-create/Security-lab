@@ -236,19 +236,27 @@ public final class MobnetRuntime {
             return;
         }
 
-        if (data.getBoolean(OLD_HAS_NAME)) {
-            String json = data.getString(OLD_NAME_JSON);
-            Component oldName = Component.Serializer.fromJson(json);
-            mob.setCustomName(oldName == null ? Component.literal("") : oldName);
-        } else {
-            mob.setCustomName(null);
+        try {
+            if (data.getBoolean(OLD_HAS_NAME)) {
+                String json = data.getString(OLD_NAME_JSON);
+                Component oldName = null;
+                try {
+                    oldName = Component.Serializer.fromJson(json);
+                } catch (RuntimeException exception) {
+                    LOGGER.warn("Discarding corrupted saved MOBNET bubble name for entity {}", mob.getUUID());
+                }
+                mob.setCustomName(oldName == null ? Component.literal("") : oldName);
+            } else {
+                mob.setCustomName(null);
+            }
+            mob.setCustomNameVisible(data.getBoolean(OLD_NAME_VISIBLE));
+        } finally {
+            data.remove(BUBBLE_ACTIVE);
+            data.remove(BUBBLE_TICKS);
+            data.remove(OLD_NAME_JSON);
+            data.remove(OLD_HAS_NAME);
+            data.remove(OLD_NAME_VISIBLE);
         }
-        mob.setCustomNameVisible(data.getBoolean(OLD_NAME_VISIBLE));
-        data.remove(BUBBLE_ACTIVE);
-        data.remove(BUBBLE_TICKS);
-        data.remove(OLD_NAME_JSON);
-        data.remove(OLD_HAS_NAME);
-        data.remove(OLD_NAME_VISIBLE);
     }
 
     private static void showBubble(Mob mob, String text) {
