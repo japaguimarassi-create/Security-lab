@@ -28,7 +28,7 @@ public record MobnetCharacterSheet(
         String characterClass = value(source, "Class", "Companheiro");
         String skills = value(source, "Skills", "Explorar, observar e ajudar");
         String likes = value(source, "Likes", "Aventuras, abrigo e amizade");
-        String dislikes = value(source, "Dislikes", "Perigo desnecessário e abandono");
+        String dislikes = value(source, "Dislikes", "Perigo desnecessário e hostilidade");
         String alignment = value(source, "Alignment", "Neutro e leal");
         String background = value(source, "Background", "Uma criatura que aprendeu a observar os jogadores");
         String greeting = value(source, "Short Greeting", "Olá. Quer conversar ou explorar comigo?");
