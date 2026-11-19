@@ -13,7 +13,7 @@ public final class MobnetStateEncoder {
         state[16] = ratio(mob.getHealth(), mob.getMaxHealth());
         state[17] = (float) Math.min(1.0, mob.distanceToSqr(player) / 1024.0);
         state[18] = ratio(player.getHealth(), player.getMaxHealth());
-        state[19] = Math.max(-1.0f, Math.min(1.0f, friendship / 10.0f));
+        state[19] = Math.max(-1.0f, Math.min(1.0f, friendship / 3.0f));
         state[20] = mob.getType().getCategory().isFriendly() ? 0.0f : 1.0f;
         state[21] = mob.isInWater() ? 1.0f : 0.0f;
         state[22] = mob.level().isNight() ? 1.0f : 0.0f;
@@ -23,7 +23,7 @@ public final class MobnetStateEncoder {
         state[26] = mob.onGround() ? 1.0f : 0.0f;
         state[27] = mob.isOnFire() ? 1.0f : 0.0f;
         state[28] = mob.isBaby() ? 1.0f : 0.0f;
-        state[29] = Math.min(1.0f, friendship / 10.0f);
+        state[29] = Math.min(1.0f, friendship / 3.0f);
         return state;
     }
 
