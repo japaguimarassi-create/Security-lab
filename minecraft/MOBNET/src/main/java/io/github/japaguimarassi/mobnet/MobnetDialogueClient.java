@@ -69,39 +69,7 @@ public final class MobnetDialogueClient {
                 return null;
             }
 
-            JsonObject payload = new JsonObject();
-            payload.addProperty("model", model);
-            payload.addProperty("temperature", 0.85);
-            payload.addProperty("max_tokens", maxTokens);
-            if (jsonMode) {
-                JsonObject responseFormat = new JsonObject();
-                responseFormat.addProperty("type", "json_object");
-                payload.add("response_format", responseFormat);
-            }
-            JsonArray messages = new JsonArray();
-            JsonObject system = new JsonObject();
-            system.addProperty("role", "system");
-            system.addProperty("content", limit(systemPrompt, 12000));
-            messages.add(system);
-
-            if (history != null) {
-                int start = Math.max(0, history.size() - 12);
-                for (int i = start; i < history.size(); i++) {
-                    MobnetChatLine line = history.get(i);
-                    JsonObject item = new JsonObject();
-                    item.addProperty("role", "MOB".equalsIgnoreCase(line.speaker()) ? "assistant" : "user");
-                    item.addProperty("content", limit(line.message(), 1024));
-                    messages.add(item);
-                }
-            }
-
-            if (currentUserMessage != null && !currentUserMessage.isBlank()) {
-                JsonObject latest = new JsonObject();
-                latest.addProperty("role", "user");
-                latest.addProperty("content", limit(currentUserMessage, 512));
-                messages.add(latest);
-            }
-            payload.add("messages", messages);
+            JsonObject payload = buildPayload(model, systemPrompt, history, currentUserMessage, jsonMode, maxTokens);
 
             HttpRequest.Builder request = HttpRequest.newBuilder(uri)
                     .timeout(Duration.ofSeconds(MobnetConfig.TIMEOUT_SECONDS.get()))
@@ -131,6 +99,45 @@ public final class MobnetDialogueClient {
             MobnetRuntime.LOGGER.warn("MOBNET dialogue request failed: {}", exception.getClass().getSimpleName());
             return null;
         }
+    }
+
+    static JsonObject buildPayload(String model, String systemPrompt, List<MobnetChatLine> history,
+                                   String currentUserMessage, boolean jsonMode, int maxTokens) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("model", model);
+        payload.addProperty("temperature", 0.85);
+        payload.addProperty("max_tokens", Math.max(32, Math.min(1024, maxTokens)));
+        if (jsonMode) {
+            JsonObject responseFormat = new JsonObject();
+            responseFormat.addProperty("type", "json_object");
+            payload.add("response_format", responseFormat);
+        }
+
+        JsonArray messages = new JsonArray();
+        JsonObject system = new JsonObject();
+        system.addProperty("role", "system");
+        system.addProperty("content", limit(systemPrompt, 12000));
+        messages.add(system);
+
+        if (history != null) {
+            int start = Math.max(0, history.size() - 12);
+            for (int i = start; i < history.size(); i++) {
+                MobnetChatLine line = history.get(i);
+                JsonObject item = new JsonObject();
+                item.addProperty("role", "MOB".equalsIgnoreCase(line.speaker()) ? "assistant" : "user");
+                item.addProperty("content", limit(line.message(), 1024));
+                messages.add(item);
+            }
+        }
+
+        if (currentUserMessage != null && !currentUserMessage.isBlank()) {
+            JsonObject latest = new JsonObject();
+            latest.addProperty("role", "user");
+            latest.addProperty("content", limit(currentUserMessage, 512));
+            messages.add(latest);
+        }
+        payload.add("messages", messages);
+        return payload;
     }
 
     private static boolean isLoopback(String host) {
