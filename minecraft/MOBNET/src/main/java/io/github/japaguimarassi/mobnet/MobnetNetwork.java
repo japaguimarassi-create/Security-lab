@@ -161,8 +161,9 @@ public final class MobnetNetwork {
 
         public BubbleSync(UUID mobId, String mobName, String message, int friendship, int durationMillis) {
             this.mobId = mobId;
-            this.mobName = mobName == null ? "Mob" : mobName;
-            this.message = message == null ? "" : message;
+            this.mobName = mobName == null ? "Mob" : mobName.length() > 128 ? mobName.substring(0, 128) : mobName;
+            String safeMessage = message == null ? "" : message;
+            this.message = safeMessage.length() > 512 ? safeMessage.substring(0, 509) + "..." : safeMessage;
             this.friendship = Math.max(-3, Math.min(3, friendship));
             this.durationMillis = Math.max(500, Math.min(15000, durationMillis));
         }
