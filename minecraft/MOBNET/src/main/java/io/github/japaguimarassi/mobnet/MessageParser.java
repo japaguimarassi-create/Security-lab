@@ -24,8 +24,14 @@ public final class MessageParser {
 
         while (matcher.find()) {
             String behaviorName = matcher.group(1).toUpperCase(java.util.Locale.ROOT);
-            Integer argument = matcher.group(2) == null || matcher.group(2).isBlank()
-                    ? null : Integer.valueOf(matcher.group(2).trim());
+            Integer argument;
+            try {
+                argument = matcher.group(2) == null || matcher.group(2).isBlank()
+                        ? null : Integer.valueOf(matcher.group(2).trim());
+            } catch (NumberFormatException invalidArgument) {
+                matcher.appendReplacement(cleaned, Matcher.quoteReplacement(matcher.group()));
+                continue;
+            }
             behaviors.add(new Behavior(behaviorName, argument));
             matcher.appendReplacement(cleaned, "");
         }
