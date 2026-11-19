@@ -24,4 +24,10 @@ class MobnetIntentParserTest {
     void unknownTextRemainsConversational() {
         assertEquals(MobnetAction.TALK, MobnetIntentParser.parse("Como está o clima hoje?"));
     }
+    @Test
+    void negatedCommandDoesNotTriggerBehavior() {
+        assertEquals(MobnetAction.TALK, MobnetIntentParser.parse("Não me ataque, quero apenas conversar"));
+        assertEquals(MobnetAction.TALK, MobnetIntentParser.parse("Não me siga agora"));
+    }
+
 }
