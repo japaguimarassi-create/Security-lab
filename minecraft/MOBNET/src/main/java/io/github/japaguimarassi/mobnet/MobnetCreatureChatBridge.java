@@ -57,39 +57,44 @@ public final class MobnetCreatureChatBridge {
     @SubscribeEvent
     public static void registerCommands(RegisterCommandsEvent event) {
         event.getDispatcher().register(Commands.literal("mobnet")
-                .then(Commands.literal("key")
-                        .requires(source -> source.hasPermission(2))
-                        .then(Commands.literal("active")
-                                .then(Commands.argument("enabled", BoolArgumentType.bool())
-                                        .executes(context -> {
-                                            boolean enabled = BoolArgumentType.getBool(context, "enabled");
-                                            try {
-                                                setActive(context.getSource().getServer(), enabled);
-                                                context.getSource().sendSuccess(
-                                                        () -> Component.literal(enabled
-                                                                ? "MOBNET conectado ao CreatureChat."
-                                                                : "Conexão MOBNET removida; configuração anterior restaurada."),
-                                                        true
-                                                );
-                                                return 1;
-                                            } catch (Exception exception) {
-                                                context.getSource().sendFailure(Component.literal(
-                                                        "MOBNET: " + safeMessage(exception)
-                                                ));
-                                                return 0;
-                                            }
-                                        })))
-                        .then(Commands.literal("status")
+                .then(keyCommand("key"))
+                .then(keyCommand("Key")));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<net.minecraft.commands.CommandSourceStack> keyCommand(String literal) {
+        return Commands.literal(literal)
+                .requires(source -> source.hasPermission(2))
+                .then(Commands.literal("active")
+                        .then(Commands.argument("enabled", BoolArgumentType.bool())
                                 .executes(context -> {
-                                    boolean enabled = isActive(context.getSource().getServer());
-                                    context.getSource().sendSuccess(
-                                            () -> Component.literal(enabled
-                                                    ? "MOBNET está ativo como provedor do CreatureChat."
-                                                    : "MOBNET está desativado."),
-                                            false
-                                    );
-                                    return 1;
-                                }))));
+                                    boolean enabled = BoolArgumentType.getBool(context, "enabled");
+                                    try {
+                                        setActive(context.getSource().getServer(), enabled);
+                                        context.getSource().sendSuccess(
+                                                () -> Component.literal(enabled
+                                                        ? "MOBNET conectado ao CreatureChat."
+                                                        : "Conexão MOBNET removida; configuração anterior restaurada."),
+                                                true
+                                        );
+                                        return 1;
+                                    } catch (Exception exception) {
+                                        context.getSource().sendFailure(Component.literal(
+                                                "MOBNET: " + safeMessage(exception)
+                                        ));
+                                        return 0;
+                                    }
+                                })))
+                .then(Commands.literal("status")
+                        .executes(context -> {
+                            boolean enabled = isActive(context.getSource().getServer());
+                            context.getSource().sendSuccess(
+                                    () -> Component.literal(enabled
+                                            ? "MOBNET está ativo como provedor do CreatureChat."
+                                            : "MOBNET está desativado."),
+                                    false
+                            );
+                            return 1;
+                        }));
     }
 
     @SubscribeEvent
