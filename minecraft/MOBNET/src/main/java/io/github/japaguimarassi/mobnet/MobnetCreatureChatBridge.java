@@ -330,6 +330,18 @@ public final class MobnetCreatureChatBridge {
             JsonObject payload = parsed.getAsJsonObject();
             JsonArray messages = payload.has("messages") && payload.get("messages").isJsonArray()
                     ? payload.getAsJsonArray("messages") : new JsonArray();
+            boolean jsonMode = false;
+            if (payload.has("response_format") && payload.get("response_format").isJsonObject()) {
+                jsonMode = "json_object".equalsIgnoreCase(
+                        stringValue(payload.getAsJsonObject("response_format"), "type"));
+            }
+            int maxOutputTokens = MobnetConfig.MAX_OUTPUT_TOKENS.get();
+            if (payload.has("max_tokens") && payload.get("max_tokens").isJsonPrimitive()) {
+                try {
+                    maxOutputTokens = Math.max(32, Math.min(1024, payload.get("max_tokens").getAsInt()));
+                } catch (RuntimeException ignored) {
+                }
+            }
             StringBuilder system = new StringBuilder();
             List<MobnetChatLine> history = new ArrayList<>();
 
@@ -369,7 +381,8 @@ public final class MobnetCreatureChatBridge {
                 return;
             }
 
-            CompletableFuture<String> completion = MobnetDialogueClient.complete(system.toString(), history, null);
+            CompletableFuture<String> completion = MobnetDialogueClient.complete(
+                    system.toString(), history, null, jsonMode, maxOutputTokens);
             String answer;
             try {
                 answer = completion.get(MobnetConfig.TIMEOUT_SECONDS.get() + 8L, TimeUnit.SECONDS);
