@@ -1,0 +1,71 @@
+{
+  "run_id": "game-agent-prototype-001",
+  "test_suite": {
+    "passed": 15,
+    "failed": 0,
+    "command": "PYTHONPATH=src python -m pytest -q"
+  },
+  "network": {
+    "requested_topology": "4096x2048",
+    "requested_dense_parameters": 17175674880,
+    "runtime_topology": "16-32-16-4-expert-heads",
+    "runtime_parameters": 1140,
+    "expert_heads": 4,
+    "max_experts_per_action": 2
+  },
+  "initial_manual_adjustments": [
+    {"error": "missed_capture", "feature": "capture_value", "before": 2.2875, "after": 2.4075},
+    {"error": "hung_piece", "feature": "exposed_piece", "before": -2.5625, "after": -2.7225},
+    {"error": "missed_promotion", "feature": "promotion_value", "before": 2.8875, "after": 3.0375}
+  ],
+  "first_evaluation": {
+    "chess": {"winner": 1, "plies": 63, "termination": "terminal_position", "repetitions": 0, "error_flags": ["missed_capture", "missed_check"]},
+    "checkers": {"winner": null, "plies": 195, "termination": "terminal_position", "repetitions": 7, "error_flags": ["repeated_cycle"]}
+  },
+  "post_test_adjustments": [
+    {"error": "missed_capture", "feature": "capture_value", "before": 2.4075, "after": 2.5275},
+    {"error": "missed_check", "feature": "gives_check", "before": 0.72, "after": 0.78},
+    {"error": "repeated_cycle", "feature": "repetition_penalty", "before": -0.55, "after": -0.67},
+    {"error": "failed_to_progress", "feature": "advancement", "before": 0.3025, "after": 0.3825}
+  ],
+  "retest": {
+    "chess": {"winner": -1, "plies": 90, "termination": "terminal_position", "repetitions": 0, "error_flags": ["hung_piece", "missed_capture", "missed_check"]},
+    "checkers": {"winner": null, "plies": 207, "termination": "terminal_position", "repetitions": 0, "error_flags": []}
+  },
+  "reinforcement": {
+    "episodes": 8,
+    "wins": 4,
+    "losses": 4,
+    "draws_or_limits": 0,
+    "opponents": ["greedy", "random"],
+    "parallel_workers": 4,
+    "weights_changed": true,
+    "final_output_weights": {
+      "capture_value": 2.527890194176859,
+      "moving_piece_value": 0.030384913423981696,
+      "promotion_value": 3.0374874967048155,
+      "center_delta": 0.6078113505056753,
+      "advancement": 0.3823611931081455,
+      "exposed_piece": -2.723007516038978,
+      "gives_check": 0.7797773318437496,
+      "castling": 0.5249904440158184,
+      "protection": 0.44263397853231434,
+      "opponent_threat": -0.46499999999999997,
+      "mobility_delta": 0.345,
+      "repetition_penalty": -0.6701366072241028,
+      "material_gain": 1.200377690881674,
+      "multi_capture": 1.4375,
+      "king_piece": 0.1198089430561544,
+      "tempo": 0.052500000000000005
+    }
+  },
+  "interpretation": {
+    "universal_skill_proven": false,
+    "performance_consistent": false,
+    "notes": [
+      "Only symbolic chess and American-checkers states were used.",
+      "The short match set is a smoke experiment, not a statistically strong benchmark.",
+      "The 4,096x2,048 network is a recorded target profile, not the compact runtime topology."
+    ]
+  }
+}
